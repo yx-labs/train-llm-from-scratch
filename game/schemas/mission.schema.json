@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLM Learning Game Mission",
+  "type": "object",
+  "required": [
+    "id",
+    "order",
+    "stage",
+    "chapter",
+    "title",
+    "type",
+    "summary",
+    "learning_objectives",
+    "prerequisites",
+    "unlocks",
+    "inputs",
+    "default_submission",
+    "success",
+    "failure_rules",
+    "hints"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "order": { "type": "integer" },
+    "stage": { "type": "string" },
+    "chapter": { "type": "string" },
+    "title": { "type": "string" },
+    "type": { "type": "string" },
+    "summary": { "type": "string" },
+    "learning_objectives": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "unlocks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "unlock_artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "inputs": { "type": "object" },
+    "default_submission": { "type": "object" },
+    "success": { "type": "object" },
+    "failure_rules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "hints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "concept": { "type": "string" }
+  }
+}

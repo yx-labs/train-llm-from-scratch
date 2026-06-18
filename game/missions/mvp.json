@@ -1,0 +1,338 @@
+[
+  {
+    "id": "01_clean_text",
+    "order": 1,
+    "stage": "data",
+    "chapter": "文本矿场",
+    "title": "清理训练原料",
+    "type": "sample_filter",
+    "summary": "从混杂文本中保留能进入预训练语料的样本，剔除乱码、HTML 和重复数据。",
+    "learning_objectives": [
+      "识别脏数据会污染语言模型训练",
+      "理解数据清洗先于模型结构"
+    ],
+    "prerequisites": [],
+    "unlocks": ["data.clean_corpus"],
+    "unlock_artifacts": [],
+    "inputs": {
+      "samples": [
+        { "id": "pile_01", "text": "The transformer predicts the next token from left context.", "label": "clean" },
+        { "id": "pile_02", "text": "<div><script>buy cheap tokens!!!</script></div>", "label": "bad_html" },
+        { "id": "pile_03", "text": "The transformer predicts the next token from left context.", "label": "duplicate" },
+        { "id": "pile_04", "text": "A loss curve should be checked against validation data.", "label": "clean" },
+        { "id": "pile_05", "text": "Instruction data pairs a user request with an assistant answer.", "label": "clean" },
+        { "id": "pile_06", "text": "xqz ### \u0000 \u0000 \ufffd\ufffd\ufffd", "label": "bad_encoding" }
+      ]
+    },
+    "default_submission": {
+      "kept_sample_ids": ["pile_01", "pile_02", "pile_03", "pile_04"]
+    },
+    "success": {
+      "type": "exact_kept_samples",
+      "target_kept_sample_ids": ["pile_01", "pile_04", "pile_05"]
+    },
+    "failure_rules": ["dirty_data_kept", "duplicate_data_kept"],
+    "hints": [
+      "保留能代表自然语言分布的样本。",
+      "HTML、乱码、重复样本都会让指标看起来更好但泛化更差。",
+      "这一关应该只保留三个 clean 样本。"
+    ],
+    "concept": "data_quality"
+  },
+  {
+    "id": "02_token_merge",
+    "order": 2,
+    "stage": "tokenizer",
+    "chapter": "Tokenizer 车间",
+    "title": "合并高频片段",
+    "type": "token_merge",
+    "summary": "手动合并相邻 token，让常见片段占用更少上下文窗口。",
+    "learning_objectives": [
+      "理解 subword tokenization 的压缩作用",
+      "看到 token 粒度如何影响 context 占用"
+    ],
+    "prerequisites": ["01_clean_text"],
+    "unlocks": ["tokenizer.basic"],
+    "unlock_artifacts": [],
+    "inputs": {
+      "initial_tokens": ["L", "L", "M", " ", "learn", "s", " ", "token", "s"],
+      "required_tokens": ["LLM", "learns", "tokens"]
+    },
+    "default_submission": {
+      "tokens": ["L", "L", "M", " ", "learn", "s", " ", "token", "s"]
+    },
+    "success": {
+      "type": "token_merge_contains",
+      "required_tokens": ["LLM", "learns", "tokens"],
+      "max_token_count": 5
+    },
+    "failure_rules": ["tokenizer_too_fragmented"],
+    "hints": [
+      "点击相邻 token 之间的合并按钮。",
+      "目标不是把所有东西合成一个 token，而是把高频片段合成稳定单元。",
+      "试着得到 LLM、learns、tokens 三个片段。"
+    ],
+    "concept": "tokenization"
+  },
+  {
+    "id": "03_pack_shift",
+    "order": 3,
+    "stage": "data",
+    "chapter": "数据打包",
+    "title": "输入与目标错一位",
+    "type": "shift_pairs",
+    "summary": "把连续 token stream 切成 input 和 target。语言模型训练时，target 必须是下一个 token。",
+    "learning_objectives": [
+      "理解 next-token prediction 的 input/target shift",
+      "识别 target 对齐错误会让 loss 无意义"
+    ],
+    "prerequisites": ["02_token_merge"],
+    "unlocks": ["data.packer"],
+    "unlock_artifacts": [],
+    "inputs": {
+      "tokens": ["<bos>", "LLM", "learns", "tokens", "."],
+      "offset_options": [-1, 0, 1, 2]
+    },
+    "default_submission": {
+      "target_offset": 0
+    },
+    "success": {
+      "type": "target_offset",
+      "target_offset": 1
+    },
+    "failure_rules": ["target_shift_wrong"],
+    "hints": [
+      "输入位置 t 要预测位置 t+1。",
+      "如果 input 和 target 完全相同，模型学到的是复制当前 token。",
+      "正确 offset 是 +1。"
+    ],
+    "concept": "next_token_shift"
+  },
+  {
+    "id": "04_causal_mask",
+    "order": 4,
+    "stage": "attention",
+    "chapter": "Attention 实验室",
+    "title": "禁止偷看未来",
+    "type": "mask_grid",
+    "summary": "在 attention 矩阵里遮住未来位置，避免训练时看到答案。",
+    "learning_objectives": [
+      "理解 causal mask 的下三角结构",
+      "识别未来信息泄漏造成的假成功"
+    ],
+    "prerequisites": ["03_pack_shift"],
+    "unlocks": ["attention.causal_mask"],
+    "unlock_artifacts": [],
+    "inputs": {
+      "sequence": ["I", "train", "LLMs", "."],
+      "size": 4
+    },
+    "default_submission": {
+      "mask": [
+        [true, true, true, true],
+        [true, true, true, true],
+        [true, true, true, true],
+        [true, true, true, true]
+      ]
+    },
+    "success": {
+      "type": "lower_triangular_mask"
+    },
+    "failure_rules": ["causal_mask_leak"],
+    "hints": [
+      "行表示当前 token，列表示它能关注的位置。",
+      "每一行只能点亮自己和左侧 token。",
+      "右上角任何一个格子点亮，都是未来信息泄漏。"
+    ],
+    "concept": "causal_attention"
+  },
+  {
+    "id": "05_transformer_assembly",
+    "order": 5,
+    "stage": "model",
+    "chapter": "Transformer 装配线",
+    "title": "装配最小 Decoder Block",
+    "type": "module_assembly",
+    "summary": "选择能构成最小 decoder-only Transformer 的关键模块。",
+    "learning_objectives": [
+      "理解 decoder-only Transformer 的基本部件",
+      "知道 residual 和 LayerNorm 是稳定训练的一部分"
+    ],
+    "prerequisites": ["04_causal_mask"],
+    "unlocks": ["model.tiny_transformer"],
+    "unlock_artifacts": [],
+    "inputs": {
+      "modules": [
+        { "id": "token_embedding", "label": "Token Embedding" },
+        { "id": "position_embedding", "label": "Position Embedding" },
+        { "id": "causal_attention", "label": "Causal Self-Attention" },
+        { "id": "layer_norm", "label": "LayerNorm" },
+        { "id": "residual", "label": "Residual Path" },
+        { "id": "mlp", "label": "MLP" },
+        { "id": "lm_head", "label": "LM Head" },
+        { "id": "bidirectional_attention", "label": "Bidirectional Attention" }
+      ],
+      "required_modules": [
+        "token_embedding",
+        "position_embedding",
+        "causal_attention",
+        "layer_norm",
+        "residual",
+        "mlp",
+        "lm_head"
+      ],
+      "forbidden_modules": ["bidirectional_attention"]
+    },
+    "default_submission": {
+      "selected_modules": ["token_embedding", "position_embedding", "bidirectional_attention", "mlp", "lm_head"]
+    },
+    "success": {
+      "type": "module_set",
+      "required_modules": [
+        "token_embedding",
+        "position_embedding",
+        "causal_attention",
+        "layer_norm",
+        "residual",
+        "mlp",
+        "lm_head"
+      ],
+      "forbidden_modules": ["bidirectional_attention"]
+    },
+    "failure_rules": ["transformer_missing_stability", "bidirectional_attention_used"],
+    "hints": [
+      "Decoder-only 语言模型不能使用双向 attention。",
+      "深层网络需要 residual 和 normalization 稳住训练。",
+      "最小链路是 embedding、causal attention、MLP、LM head，加上稳定训练模块。"
+    ],
+    "concept": "decoder_transformer"
+  },
+  {
+    "id": "06_pretrain_sim",
+    "order": 6,
+    "stage": "pretrain",
+    "chapter": "预训练引擎",
+    "title": "稳定降低验证 loss",
+    "type": "train_simulation",
+    "summary": "在有限资源内调整学习率、batch、context 和数据质量，让 tiny base model 稳定收敛。",
+    "learning_objectives": [
+      "理解学习率、batch 和数据质量会影响训练曲线",
+      "识别 loss 爆炸、过拟合和泄漏假成功"
+    ],
+    "prerequisites": ["05_transformer_assembly"],
+    "unlocks": ["trainer.pretrain"],
+    "unlock_artifacts": ["pretrain_good"],
+    "inputs": {
+      "knobs": {
+        "learning_rate": { "min": 0.00005, "max": 0.002, "step": 0.00005 },
+        "batch_size": { "min": 4, "max": 64, "step": 4 },
+        "context_length": { "min": 64, "max": 512, "step": 64 },
+        "data_quality": { "min": 0.4, "max": 1.0, "step": 0.05 }
+      }
+    },
+    "default_submission": {
+      "learning_rate": 0.0015,
+      "batch_size": 8,
+      "context_length": 256,
+      "data_quality": 0.75,
+      "causal_mask": true
+    },
+    "success": {
+      "type": "training_simulation",
+      "stage": "pretrain"
+    },
+    "failure_rules": ["learning_rate_too_high", "batch_too_small", "data_quality_too_low"],
+    "hints": [
+      "学习率太大时 loss 会先降后爆。",
+      "batch 很小时曲线会抖，但未必完全失败。",
+      "这一关的稳定区域大致是 lr 0.0002 到 0.0008，batch >= 16，data_quality >= 0.7。"
+    ],
+    "concept": "pretraining_optimization"
+  },
+  {
+    "id": "07_generation_sampling",
+    "order": 7,
+    "stage": "inference",
+    "chapter": "生成舱",
+    "title": "调稳采样旋钮",
+    "type": "generation_controls",
+    "summary": "调整 temperature、top-p 和重复惩罚，让 base model 的续写既不发散也不机械重复。",
+    "learning_objectives": [
+      "理解 sampling 参数改变输出分布",
+      "体验 base model 是续写器而不是指令助手"
+    ],
+    "prerequisites": ["06_pretrain_sim"],
+    "unlocks": ["sampler.basic"],
+    "unlock_artifacts": [],
+    "inputs": {
+      "prompt": "The model learns",
+      "ranges": {
+        "temperature": { "min": 0.1, "max": 1.5, "step": 0.1 },
+        "top_p": { "min": 0.3, "max": 1.0, "step": 0.05 },
+        "repetition_penalty": { "min": 1.0, "max": 1.3, "step": 0.05 }
+      }
+    },
+    "default_submission": {
+      "temperature": 1.3,
+      "top_p": 0.98,
+      "repetition_penalty": 1.0
+    },
+    "success": {
+      "type": "generation_stable",
+      "temperature_min": 0.5,
+      "temperature_max": 0.9,
+      "top_p_min": 0.8,
+      "top_p_max": 0.95,
+      "repetition_penalty_min": 1.05
+    },
+    "failure_rules": ["sampling_too_hot", "sampling_too_narrow", "repetition_loop"],
+    "hints": [
+      "temperature 太高会发散，太低会单调。",
+      "top-p 太低会过于保守。",
+      "轻微重复惩罚可以减少循环。"
+    ],
+    "concept": "generation_sampling"
+  },
+  {
+    "id": "08_sft_mask",
+    "order": 8,
+    "stage": "sft",
+    "chapter": "SFT 指令工坊",
+    "title": "只训练助手回答",
+    "type": "sft_mask",
+    "summary": "在 chat 样本里只让 assistant token 参与 loss，避免模型学习复读用户输入。",
+    "learning_objectives": [
+      "理解 SFT loss mask",
+      "区分 user prompt 和 assistant target"
+    ],
+    "prerequisites": ["07_generation_sampling"],
+    "unlocks": ["sft.loss_mask", "arena.base_vs_sft"],
+    "unlock_artifacts": ["sft"],
+    "inputs": {
+      "tokens": [
+        { "text": "<system>", "role": "system", "expected_loss": false },
+        { "text": "Be helpful.", "role": "system", "expected_loss": false },
+        { "text": "<user>", "role": "user", "expected_loss": false },
+        { "text": "23 + 48 = ?", "role": "user", "expected_loss": false },
+        { "text": "<assistant>", "role": "assistant", "expected_loss": true },
+        { "text": "<think>", "role": "assistant", "expected_loss": true },
+        { "text": "23+48=71", "role": "assistant", "expected_loss": true },
+        { "text": "</think>", "role": "assistant", "expected_loss": true },
+        { "text": "<answer>71</answer>", "role": "assistant", "expected_loss": true }
+      ]
+    },
+    "default_submission": {
+      "loss_mask": [true, true, true, true, true, true, true, true, true]
+    },
+    "success": {
+      "type": "exact_loss_mask"
+    },
+    "failure_rules": ["sft_loss_mask_wrong"],
+    "hints": [
+      "SFT 不是让模型学习整段对话。",
+      "user/system token 是条件，assistant token 才是要预测的目标。",
+      "只点亮 assistant 区域。"
+    ],
+    "concept": "sft_masked_loss"
+  }
+]

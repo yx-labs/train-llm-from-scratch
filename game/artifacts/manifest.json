@@ -1,0 +1,40 @@
+{
+  "artifacts": [
+    {
+      "id": "pretrain_good",
+      "stage": "pretrain",
+      "kind": "checkpoint",
+      "display_name": "Base 预训练模型",
+      "description": "完成预训练模拟后解锁。MVP 中先使用样例输出 fallback，后续可替换为真实 checkpoint。",
+      "capabilities": ["continuation", "next_token_modeling"],
+      "unlocked_by": "06_pretrain_sim",
+      "paths": {
+        "checkpoint": "artifacts/checkpoints/pretrain_good.pt",
+        "config": "artifacts/configs/pretrain_good.json",
+        "eval": "artifacts/eval/pretrain_good.json"
+      },
+      "fallback": {
+        "mode": "sample_outputs",
+        "path": "artifacts/samples/model_outputs.json"
+      }
+    },
+    {
+      "id": "sft",
+      "stage": "sft",
+      "kind": "checkpoint",
+      "display_name": "SFT 指令模型",
+      "description": "完成 SFT mask 关卡后解锁。MVP 中先使用样例输出 fallback，后续可替换为真实 checkpoint。",
+      "capabilities": ["chat_template", "instruction_following", "answer_format"],
+      "unlocked_by": "08_sft_mask",
+      "paths": {
+        "checkpoint": "artifacts/checkpoints/sft.pt",
+        "config": "artifacts/configs/sft.json",
+        "eval": "artifacts/eval/sft.json"
+      },
+      "fallback": {
+        "mode": "sample_outputs",
+        "path": "artifacts/samples/model_outputs.json"
+      }
+    }
+  ]
+}

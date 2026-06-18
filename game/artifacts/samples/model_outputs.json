@@ -1,0 +1,38 @@
+[
+  {
+    "artifact_id": "pretrain_good",
+    "prompt": "请用 <think> 和 <answer> 回答：23 + 48 = ?",
+    "output": "请用 <think> 和 <answer> 回答：23 + 48 = ? The next step is to add the values and continue the explanation of arithmetic in natural language.",
+    "notes": "Base model behaves like a continuation model; it does not reliably follow the instruction."
+  },
+  {
+    "artifact_id": "sft",
+    "prompt": "请用 <think> 和 <answer> 回答：23 + 48 = ?",
+    "output": "<think>23 + 48 = 71。</think>\n<answer>71</answer>",
+    "notes": "SFT model follows the chat format and answers the instruction."
+  },
+  {
+    "artifact_id": "pretrain_good",
+    "prompt": "Explain causal mask in one sentence.",
+    "output": "Explain causal mask in one sentence. A mask can be used in sequence models to constrain the tokens and preserve the ordering of the generated text.",
+    "notes": "Continuation is plausible but not instruction-tuned."
+  },
+  {
+    "artifact_id": "sft",
+    "prompt": "Explain causal mask in one sentence.",
+    "output": "A causal mask prevents each token from attending to future tokens, so autoregressive training matches generation.",
+    "notes": "Instruction-following answer."
+  },
+  {
+    "artifact_id": "pretrain_good",
+    "prompt": "The model learns",
+    "output": "The model learns from data by predicting words, patterns, and documents that appear in a large corpus over many training steps.",
+    "notes": "Good continuation prompt for base model."
+  },
+  {
+    "artifact_id": "sft",
+    "prompt": "The model learns",
+    "output": "The model learns by minimizing next-token prediction loss during pretraining, then can be adapted with SFT to follow instructions.",
+    "notes": "Instruction model reframes the fragment as an answer."
+  }
+]

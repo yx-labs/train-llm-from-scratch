@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLM Learning Game Artifact Manifest",
+  "type": "object",
+  "required": ["artifacts"],
+  "properties": {
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "stage", "kind", "display_name", "description", "fallback"],
+        "properties": {
+          "id": { "type": "string" },
+          "stage": { "type": "string" },
+          "kind": { "type": "string" },
+          "display_name": { "type": "string" },
+          "description": { "type": "string" },
+          "capabilities": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "unlocked_by": { "type": "string" },
+          "paths": { "type": "object" },
+          "fallback": {
+            "type": "object",
+            "required": ["mode", "path"],
+            "properties": {
+              "mode": { "type": "string" },
+              "path": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
