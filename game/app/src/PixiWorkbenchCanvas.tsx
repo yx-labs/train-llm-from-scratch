@@ -7,6 +7,7 @@ const connectionSnapRadius = 44;
 const minCanvasScale = 0.42;
 const maxCanvasScale = 1.7;
 const worldBounds = new Rectangle(-2400, -1800, 5600, 4200);
+const repairTagDragMime = "application/x-llm-complete-repair-tag";
 
 export type RepairSlotOverlay = {
   slotId: string;
@@ -42,9 +43,28 @@ export type CanvasContextTarget = {
 export type CanvasActionHint = {
   kind: "node" | "slot";
   id: string;
-  icon: "menu" | "probe" | "run" | "wire";
+  icon: "menu" | "probe" | "run";
   tooltip: string;
   pulse?: boolean;
+};
+
+export type CanvasStageKnowledge = {
+  code: string;
+  title: string;
+  concept: string;
+  tool: string;
+  mission: string;
+  visual:
+    | "tensor_objects"
+    | "rank_axes"
+    | "shape_caliper"
+    | "semantic_gap"
+    | "token_grid"
+    | "embedding_expansion"
+    | "hidden_contract"
+    | "consumer_contract"
+    | "hidden_tests";
+  carryForward?: string;
 };
 
 type PixiWorkbenchCanvasProps = {
@@ -56,10 +76,14 @@ type PixiWorkbenchCanvasProps = {
   slotOverlays?: RepairSlotOverlay[];
   connectionOverlays?: CanvasConnectionOverlay[];
   actionHints?: CanvasActionHint[];
+  stageKnowledge?: CanvasStageKnowledge;
+  stageKnowledgePosition?: Point;
   onSlotSelect?: (slotId: string) => void;
   onCanvasConnect?: (slotId: string, tagId: string) => void;
+  onCanvasDropTag?: (slotId: string, tagId: string) => void;
   onCanvasContextMenu?: (target: CanvasContextTarget) => void;
   onNodeMove?: (nodeId: string, x: number, y: number) => void;
+  onStageKnowledgeMove?: (x: number, y: number) => void;
   onSelect: (id: string) => void;
 };
 
@@ -86,10 +110,14 @@ export function PixiWorkbenchCanvas({
   slotOverlays = [],
   connectionOverlays = [],
   actionHints = [],
+  stageKnowledge,
+  stageKnowledgePosition,
   onSlotSelect,
   onCanvasConnect,
+  onCanvasDropTag,
   onCanvasContextMenu,
   onNodeMove,
+  onStageKnowledgeMove,
   onSelect
 }: PixiWorkbenchCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -105,10 +133,14 @@ export function PixiWorkbenchCanvas({
     slotOverlays,
     connectionOverlays,
     actionHints,
+    stageKnowledge,
+    stageKnowledgePosition,
     onSlotSelect,
     onCanvasConnect,
+    onCanvasDropTag,
     onCanvasContextMenu,
     onNodeMove,
+    onStageKnowledgeMove,
     onSelect
   });
 
@@ -122,10 +154,14 @@ export function PixiWorkbenchCanvas({
       slotOverlays,
       connectionOverlays,
       actionHints,
+      stageKnowledge,
+      stageKnowledgePosition,
       onSlotSelect,
       onCanvasConnect,
+      onCanvasDropTag,
       onCanvasContextMenu,
       onNodeMove,
+      onStageKnowledgeMove,
       onSelect
     };
     if (!appRef.current) return;
@@ -141,10 +177,14 @@ export function PixiWorkbenchCanvas({
     slotOverlays,
     connectionOverlays,
     actionHints,
+    stageKnowledge,
+    stageKnowledgePosition,
     onSlotSelect,
     onCanvasConnect,
+    onCanvasDropTag,
     onCanvasContextMenu,
     onNodeMove,
+    onStageKnowledgeMove,
     onSelect
   ]);
 
@@ -164,7 +204,7 @@ export function PixiWorkbenchCanvas({
         backgroundAlpha: 0,
         antialias: true,
         autoDensity: true,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
         preference: "webgl"
       });
 
@@ -230,10 +270,14 @@ function drawScene(
     slotOverlays: RepairSlotOverlay[];
     connectionOverlays: CanvasConnectionOverlay[];
     actionHints: CanvasActionHint[];
+    stageKnowledge?: CanvasStageKnowledge;
+    stageKnowledgePosition?: Point;
     onSlotSelect?: (slotId: string) => void;
     onCanvasConnect?: (slotId: string, tagId: string) => void;
+    onCanvasDropTag?: (slotId: string, tagId: string) => void;
     onCanvasContextMenu?: (target: CanvasContextTarget) => void;
     onNodeMove?: (nodeId: string, x: number, y: number) => void;
+    onStageKnowledgeMove?: (x: number, y: number) => void;
     onSelect: (id: string) => void;
   },
   viewRef: MutableRefObject<ViewState>
@@ -252,8 +296,8 @@ function drawScene(
   if (!view.initialized) {
     const scale = Math.min((screenWidth - 28) / sceneSize.width, (screenHeight - 20) / sceneSize.height);
     view.scale = clamp(Math.max(scale, 0.74), minCanvasScale, maxCanvasScale);
-    view.x = screenWidth / 2 - 555 * view.scale;
-    view.y = screenHeight / 2 - 270 * view.scale;
+    view.x = snapCanvasPixel(screenWidth / 2 - 555 * view.scale);
+    view.y = snapCanvasPixel(screenHeight / 2 - 270 * view.scale);
     view.initialized = true;
   }
 
@@ -264,34 +308,71 @@ function drawScene(
   app.stage.addChild(scene);
 
   const gridLayer = new Graphics({ label: "infinite-grid" });
+  const knowledgeLayer = new Container({ label: "stage-knowledge" });
   const edgeLayer = new Container({ label: "typed-data-lines" });
   const connectionLayer = new Container({ label: "repair-connections" });
   const nodeLayer = new Container({ label: "tensor-nodes" });
+  const objectLayer = new Container({ label: "tensor-object-drag-layer", sortableChildren: true });
   const overlayLayer = new Container({ label: "labels-and-overlays" });
   const previewLayer = new Graphics({ label: "connection-preview" });
   const pulseLayer = new Graphics({ label: "flow-pulses" });
   const tooltipLayer = new Container({ label: "hover-tooltips" });
   gridLayer.eventMode = "none";
+  knowledgeLayer.eventMode = "static";
   edgeLayer.eventMode = "none";
   connectionLayer.eventMode = "none";
   nodeLayer.eventMode = "static";
+  objectLayer.eventMode = "static";
   overlayLayer.eventMode = "static";
   previewLayer.eventMode = "none";
   pulseLayer.eventMode = "none";
   tooltipLayer.eventMode = "none";
-  scene.addChild(gridLayer, edgeLayer, connectionLayer, nodeLayer, overlayLayer, previewLayer, pulseLayer, tooltipLayer);
+  scene.addChild(gridLayer, knowledgeLayer, edgeLayer, connectionLayer, nodeLayer, objectLayer, overlayLayer, previewLayer, pulseLayer, tooltipLayer);
   scene.eventMode = "static";
   scene.hitArea = worldBounds;
 
   drawWorldGrid(gridLayer, worldBounds);
+  let knowledgeDrag: {
+    group: Container;
+    startPointer: Point;
+    startPosition: Point;
+    moved: boolean;
+  } | null = null;
+
+  let tensorObjectDrag: {
+    group: Container;
+    item: TensorObjectDragItem;
+    startPointer: Point;
+    startPosition: Point;
+    moved: boolean;
+  } | null = null;
+
+  if (state.stageKnowledge) {
+    drawStageKnowledge(
+      knowledgeLayer,
+      state.stageKnowledge,
+      state.stageKnowledgePosition,
+      (event, group, position) => {
+        event.stopPropagation();
+        const pointer = event.getLocalPosition(scene);
+        knowledgeDrag = {
+          group,
+          startPointer: pointer,
+          startPosition: position,
+          moved: false
+        };
+        group.cursor = "grabbing";
+      }
+    );
+  }
 
   const nodeLookup = new Map(state.nodes.map((node) => [node.id, node]));
   const nodeHints = new Map(state.actionHints.filter((hint) => hint.kind === "node").map((hint) => [hint.id, hint]));
   const slotHints = new Map(state.actionHints.filter((hint) => hint.kind === "slot").map((hint) => [hint.id, hint]));
   const visibleEdges = state.edges.filter((edge) => edge.flow !== "gradient" || state.mode === "train");
-  visibleEdges.forEach((edge) => drawEdge(edgeLayer, overlayLayer, edge, state.mode, nodeLookup));
-
-  const connectionPorts = buildConnectionPorts(state.connectionOverlays, nodeLookup);
+  let currentNodeLookup = nodeLookup;
+  let currentConnectionPorts = buildConnectionPorts(state.connectionOverlays, currentNodeLookup);
+  let currentSlotBounds = buildRepairSlotBounds(state.slotOverlays, currentNodeLookup);
 
   let connectionDrag: {
     connection: CanvasConnectionOverlay;
@@ -313,6 +394,8 @@ function drawScene(
   let suppressNextTap = false;
 
   const syncSceneView = () => {
+    viewRef.current.x = snapCanvasPixel(viewRef.current.x);
+    viewRef.current.y = snapCanvasPixel(viewRef.current.y);
     scene.x = viewRef.current.x;
     scene.y = viewRef.current.y;
     scene.scale.set(viewRef.current.scale);
@@ -345,13 +428,6 @@ function drawScene(
     clearLayer(tooltipLayer);
   };
 
-  const connectCanvasConnection = (connection: CanvasConnectionOverlay) => {
-    if (!connection.enabled || connection.state !== "open") return;
-    state.onCanvasConnect?.(connection.slotId, connection.tagId);
-  };
-
-  drawCanvasConnectionLines(connectionLayer, overlayLayer, state.connectionOverlays, connectionPorts, connectCanvasConnection, showTooltip, hideTooltip);
-
   const drawConnectionPreview = (from: Point, to: Point, color: number, valid: boolean) => {
     const previewColor = valid ? 0x22c55e : color;
     previewLayer.clear();
@@ -365,6 +441,64 @@ function drawScene(
     });
     previewLayer.circle(to.x, to.y, valid ? 6 : 4.5).fill({ color: previewColor, alpha: valid ? 0.96 : 0.74 });
   };
+
+  const connectionPortHandlers = {
+    onStart: (connection: CanvasConnectionOverlay, point: Point, event: FederatedPointerEvent) => {
+      event.stopPropagation();
+      if (!connection.enabled || connection.state === "connected") return;
+      connectionDrag = { connection, from: point };
+      drawConnectionPreview(point, point, connectionColor(connection), true);
+    },
+    onComplete: (connection: CanvasConnectionOverlay, event: FederatedPointerEvent) => {
+      event.stopPropagation();
+      if (connectionDrag?.connection.id === connection.id) {
+        state.onCanvasConnect?.(connection.slotId, connection.tagId);
+      }
+      connectionDrag = null;
+      clearConnectionPreview();
+    }
+  };
+
+  const draggedNodeLookup = (nodeId: string, x: number, y: number) =>
+    new Map(
+      state.nodes.map((node) => [
+        node.id,
+        node.id === nodeId
+          ? {
+              ...node,
+              x,
+              y
+            }
+          : node
+      ])
+    );
+
+  const renderDynamicLayers = (lookup: Map<string, TensorNode>) => {
+    currentNodeLookup = lookup;
+    currentConnectionPorts = buildConnectionPorts(state.connectionOverlays, currentNodeLookup);
+    currentSlotBounds = buildRepairSlotBounds(state.slotOverlays, currentNodeLookup);
+    clearLayer(edgeLayer);
+    clearLayer(connectionLayer);
+    clearLayer(overlayLayer);
+    visibleEdges.forEach((edge) => drawEdge(edgeLayer, overlayLayer, edge, state.mode, currentNodeLookup));
+    drawCanvasConnectionLines(connectionLayer, overlayLayer, state.connectionOverlays, currentConnectionPorts);
+    drawRepairSlots(
+      overlayLayer,
+      state.stageKnowledge?.visual === "tensor_objects" ? state.slotOverlays.filter((slot) => !slot.slotId.startsWith("object_")) : state.slotOverlays,
+      currentNodeLookup,
+      slotHints,
+      state.onSlotSelect,
+      (event, slotId) => openContextMenu(event, { kind: "slot", id: slotId }),
+      showTooltip,
+      hideTooltip
+    );
+    drawCanvasConnectionPorts(overlayLayer, state.connectionOverlays, currentConnectionPorts, connectionPortHandlers, showTooltip, hideTooltip);
+    if (state.mode === "train") {
+      drawTrainOverlay(overlayLayer);
+    }
+  };
+
+  renderDynamicLayers(currentNodeLookup);
 
   state.nodes.forEach((node) => {
     drawTensorNode(
@@ -382,7 +516,6 @@ function drawScene(
           moved: false
         };
         group.zIndex = 20;
-        state.onSelect(node.id);
       },
       (event) => openContextMenu(event, { kind: "node", id: node.id }),
       nodeHints.get(node.id),
@@ -392,55 +525,58 @@ function drawScene(
     );
   });
 
-  drawRepairSlots(
-    overlayLayer,
-    state.slotOverlays,
-    nodeLookup,
-    slotHints,
-    state.onSlotSelect,
-    (event, slotId) => openContextMenu(event, { kind: "slot", id: slotId }),
-    showTooltip,
-    hideTooltip
-  );
-  drawCanvasConnectionPorts(overlayLayer, state.connectionOverlays, connectionPorts, {
-    onStart: (connection, point, event) => {
-      event.stopPropagation();
-      if (!connection.enabled || connection.state === "connected") return;
-      connectionDrag = { connection, from: point };
-      drawConnectionPreview(point, point, connectionColor(connection), true);
-    },
-    onComplete: (connection, event) => {
-      event.stopPropagation();
-      if (connectionDrag?.connection.id === connection.id) {
-        state.onCanvasConnect?.(connection.slotId, connection.tagId);
+  if (state.stageKnowledge?.visual === "tensor_objects") {
+    drawTensorObjectDragChallenge(
+      objectLayer,
+      state.slotOverlays,
+      currentNodeLookup,
+      (event, group, item, position) => {
+        event.stopPropagation();
+        const pointer = event.getLocalPosition(scene);
+        tensorObjectDrag = {
+          group,
+          item,
+          startPointer: pointer,
+          startPosition: position,
+          moved: false
+        };
+        group.cursor = "grabbing";
+        group.zIndex = 50;
       }
-      connectionDrag = null;
-      clearConnectionPreview();
-    },
-    onQuickConnect: (connection, event) => {
-      event.stopPropagation();
-      if (connection.enabled && connection.state === "open") {
-        state.onCanvasConnect?.(connection.slotId, connection.tagId);
-      }
-    }
-  }, showTooltip, hideTooltip);
-  if (state.mode === "train") {
-    drawTrainOverlay(overlayLayer);
+    );
   }
 
   let elapsed = 0;
   const tick = (ticker: Ticker) => {
     elapsed += ticker.deltaMS;
-    drawPulses(pulseLayer, visibleEdges, elapsed, state.playing || state.mode === "train", nodeLookup);
+    drawPulses(pulseLayer, visibleEdges, elapsed, state.playing || state.mode === "train", currentNodeLookup);
   };
   app.ticker.add(tick);
 
   const handleGlobalMove = (event: FederatedPointerEvent) => {
     if (connectionDrag) {
       const pointer = event.getLocalPosition(scene);
-      const target = connectionPorts.get(connectionDrag.connection.id)?.target;
+      const target = currentConnectionPorts.get(connectionDrag.connection.id)?.target;
       const validTarget = Boolean(target && distance(pointer, target.point) <= connectionSnapRadius);
       drawConnectionPreview(connectionDrag.from, pointer, connectionColor(connectionDrag.connection), validTarget);
+    }
+
+    if (knowledgeDrag) {
+      const pointer = event.getLocalPosition(scene);
+      const dx = pointer.x - knowledgeDrag.startPointer.x;
+      const dy = pointer.y - knowledgeDrag.startPointer.y;
+      knowledgeDrag.group.x = knowledgeDrag.startPosition.x + dx;
+      knowledgeDrag.group.y = knowledgeDrag.startPosition.y + dy;
+      knowledgeDrag.moved = Math.abs(dx) > 2 || Math.abs(dy) > 2;
+    }
+
+    if (tensorObjectDrag) {
+      const pointer = event.getLocalPosition(scene);
+      const dx = pointer.x - tensorObjectDrag.startPointer.x;
+      const dy = pointer.y - tensorObjectDrag.startPointer.y;
+      tensorObjectDrag.group.x = tensorObjectDrag.startPosition.x + dx;
+      tensorObjectDrag.group.y = tensorObjectDrag.startPosition.y + dy;
+      tensorObjectDrag.moved = Math.abs(dx) > 2 || Math.abs(dy) > 2;
     }
 
     if (nodeDrag) {
@@ -450,23 +586,62 @@ function drawScene(
       nodeDrag.group.x = dx;
       nodeDrag.group.y = dy;
       nodeDrag.moved = Math.abs(dx) > 2 || Math.abs(dy) > 2;
+      renderDynamicLayers(draggedNodeLookup(nodeDrag.node.id, nodeDrag.node.x + dx, nodeDrag.node.y + dy));
     }
 
     if (canvasDrag) {
       const global = { x: event.global.x, y: event.global.y };
       const dx = global.x - canvasDrag.startGlobal.x;
       const dy = global.y - canvasDrag.startGlobal.y;
-      viewRef.current.x = canvasDrag.startView.x + dx;
-      viewRef.current.y = canvasDrag.startView.y + dy;
+      viewRef.current.x = snapCanvasPixel(canvasDrag.startView.x + dx);
+      viewRef.current.y = snapCanvasPixel(canvasDrag.startView.y + dy);
       canvasDrag.moved = Math.abs(dx) > 2 || Math.abs(dy) > 2;
       syncSceneView();
     }
   };
 
   const finishGestures = (event?: FederatedPointerEvent) => {
+    if (knowledgeDrag) {
+      const pointer = event?.getLocalPosition(scene);
+      const dx = pointer ? pointer.x - knowledgeDrag.startPointer.x : knowledgeDrag.group.x - knowledgeDrag.startPosition.x;
+      const dy = pointer ? pointer.y - knowledgeDrag.startPointer.y : knowledgeDrag.group.y - knowledgeDrag.startPosition.y;
+      const nextX = knowledgeDrag.startPosition.x + dx;
+      const nextY = knowledgeDrag.startPosition.y + dy;
+      knowledgeDrag.group.cursor = "grab";
+      if (knowledgeDrag.moved) {
+        state.onStageKnowledgeMove?.(snapCanvasPixel(nextX), snapCanvasPixel(nextY));
+      }
+      knowledgeDrag = null;
+    }
+
+    if (tensorObjectDrag) {
+      const pointer = event?.getLocalPosition(scene);
+      const dx = pointer ? pointer.x - tensorObjectDrag.startPointer.x : tensorObjectDrag.group.x - tensorObjectDrag.startPosition.x;
+      const dy = pointer ? pointer.y - tensorObjectDrag.startPointer.y : tensorObjectDrag.group.y - tensorObjectDrag.startPosition.y;
+      const nextPosition = {
+        x: tensorObjectDrag.startPosition.x + dx,
+        y: tensorObjectDrag.startPosition.y + dy
+      };
+      const dropPoint = {
+        x: nextPosition.x + tensorObjectDrag.item.width / 2,
+        y: nextPosition.y + tensorObjectDrag.item.height / 2
+      };
+      const inspector = currentNodeLookup.get("tensor_inspector");
+      const accepted = Boolean(inspector && tensorInspectorDropRect(inspector).contains(dropPoint.x, dropPoint.y));
+      tensorObjectDrag.group.cursor = "grab";
+
+      if (accepted) {
+        state.onCanvasDropTag?.(tensorObjectDrag.item.slotId, tensorObjectDrag.item.tagId);
+      } else {
+        tensorObjectDrag.group.x = tensorObjectDrag.startPosition.x;
+        tensorObjectDrag.group.y = tensorObjectDrag.startPosition.y;
+      }
+      tensorObjectDrag = null;
+    }
+
     if (connectionDrag) {
       const pointer = event?.getLocalPosition(scene);
-      const target = connectionPorts.get(connectionDrag.connection.id)?.target;
+      const target = currentConnectionPorts.get(connectionDrag.connection.id)?.target;
       if (pointer && target && distance(pointer, target.point) <= connectionSnapRadius) {
         state.onCanvasConnect?.(connectionDrag.connection.slotId, connectionDrag.connection.tagId);
       }
@@ -481,10 +656,15 @@ function drawScene(
       if (nodeDrag.moved) {
         const nextX = nodeDrag.node.x + dx;
         const nextY = nodeDrag.node.y + dy;
-        state.onNodeMove?.(nodeDrag.node.id, nextX, nextY);
+        const snappedX = snapCanvasPixel(nextX);
+        const snappedY = snapCanvasPixel(nextY);
+        renderDynamicLayers(draggedNodeLookup(nodeDrag.node.id, snappedX, snappedY));
+        state.onNodeMove?.(nodeDrag.node.id, snappedX, snappedY);
+      } else {
+        nodeDrag.group.x = 0;
+        nodeDrag.group.y = 0;
+        renderDynamicLayers(nodeLookup);
       }
-      nodeDrag.group.x = 0;
-      nodeDrag.group.y = 0;
       nodeDrag = null;
     }
 
@@ -496,6 +676,13 @@ function drawScene(
 
   const handleScenePointerDown = (event: FederatedPointerEvent) => {
     if (event.button === 2) return;
+    const pointer = event.getLocalPosition(scene);
+    const connectionStart = findNearestConnectableConnectionStart(pointer, state.connectionOverlays, currentConnectionPorts);
+    if (connectionStart) {
+      connectionDrag = connectionStart;
+      drawConnectionPreview(connectionStart.from, pointer, connectionColor(connectionStart.connection), true);
+      return;
+    }
     canvasDrag = {
       startGlobal: { x: event.global.x, y: event.global.y },
       startView: { x: viewRef.current.x, y: viewRef.current.y },
@@ -508,12 +695,8 @@ function drawScene(
       suppressNextTap = false;
       return;
     }
-    if (nodeDrag || connectionDrag) return;
-    const pointer = event.getLocalPosition(scene);
-    const connection = findNearestConnectableConnection(pointer, state.connectionOverlays, connectionPorts);
-    if (connection) {
-      state.onCanvasConnect?.(connection.slotId, connection.tagId);
-    }
+    if (nodeDrag || connectionDrag || knowledgeDrag || tensorObjectDrag) return;
+    event.stopPropagation();
   };
 
   const handleSceneRightClick = (event: FederatedPointerEvent) => {
@@ -523,16 +706,35 @@ function drawScene(
   const handleWheel = (event: WheelEvent) => {
     event.preventDefault();
     const rect = app.canvas.getBoundingClientRect();
-    const screenPoint = {
-      x: ((event.clientX - rect.left) / Math.max(rect.width, 1)) * app.screen.width,
-      y: ((event.clientY - rect.top) / Math.max(rect.height, 1)) * app.screen.height
-    };
+    const screenPoint = clientToScreenPoint(event.clientX, event.clientY, rect, app);
     const worldPoint = screenToWorld(screenPoint, viewRef.current);
     const nextScale = clamp(viewRef.current.scale * Math.exp(-event.deltaY * 0.0012), minCanvasScale, maxCanvasScale);
     viewRef.current.scale = nextScale;
-    viewRef.current.x = screenPoint.x - worldPoint.x * nextScale;
-    viewRef.current.y = screenPoint.y - worldPoint.y * nextScale;
+    viewRef.current.x = snapCanvasPixel(screenPoint.x - worldPoint.x * nextScale);
+    viewRef.current.y = snapCanvasPixel(screenPoint.y - worldPoint.y * nextScale);
     syncSceneView();
+  };
+
+  const draggedRepairTag = (event: DragEvent) => event.dataTransfer?.getData(repairTagDragMime) || event.dataTransfer?.getData("text/plain") || "";
+
+  const dropSlotForEvent = (event: DragEvent) => {
+    const rect = app.canvas.getBoundingClientRect();
+    const screenPoint = clientToScreenPoint(event.clientX, event.clientY, rect, app);
+    return findRepairSlotAtPoint(screenToWorld(screenPoint, viewRef.current), currentSlotBounds);
+  };
+
+  const handleCanvasDragOver = (event: DragEvent) => {
+    if (!dropSlotForEvent(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleCanvasDrop = (event: DragEvent) => {
+    const tagId = draggedRepairTag(event);
+    const slotId = dropSlotForEvent(event);
+    if (!tagId || !slotId) return;
+    event.preventDefault();
+    state.onCanvasDropTag?.(slotId, tagId);
   };
 
   const preventBrowserContextMenu = (event: MouseEvent) => {
@@ -546,6 +748,8 @@ function drawScene(
   scene.on("pointerup", finishGestures);
   scene.on("pointerupoutside", finishGestures);
   app.canvas.addEventListener("wheel", handleWheel, { passive: false });
+  app.canvas.addEventListener("dragover", handleCanvasDragOver);
+  app.canvas.addEventListener("drop", handleCanvasDrop);
   app.canvas.addEventListener("contextmenu", preventBrowserContextMenu);
 
   return () => {
@@ -557,6 +761,8 @@ function drawScene(
     scene.off("pointerup", finishGestures);
     scene.off("pointerupoutside", finishGestures);
     app.canvas.removeEventListener("wheel", handleWheel);
+    app.canvas.removeEventListener("dragover", handleCanvasDragOver);
+    app.canvas.removeEventListener("drop", handleCanvasDrop);
     app.canvas.removeEventListener("contextmenu", preventBrowserContextMenu);
   };
 }
@@ -570,6 +776,315 @@ function drawWorldGrid(graphics: Graphics, bounds: Rectangle) {
   for (let y = bounds.y; y <= maxY; y += 32) {
     graphics.moveTo(bounds.x, y).lineTo(maxX, y).stroke({ width: 1, color: 0x5f7aa0, alpha: y % 128 === 0 ? 0.22 : 0.08 });
   }
+}
+
+function drawStageKnowledge(
+  layer: Container,
+  knowledge: CanvasStageKnowledge,
+  position: Point | undefined,
+  onDragStart?: (event: FederatedPointerEvent, group: Container, position: Point) => void
+) {
+  const group = new Container({ label: `stage-knowledge-${knowledge.code}` });
+  group.x = position?.x ?? 420;
+  group.y = position?.y ?? 24;
+
+  const x = 0;
+  const y = 0;
+  const w = 560;
+  const h = knowledge.carryForward ? 126 : 110;
+  group.eventMode = "static";
+  group.cursor = "grab";
+  group.hitArea = new Rectangle(x, y, w, h);
+  group.on("pointerdown", (event) => {
+    if (event.button === 2) return;
+    onDragStart?.(event, group, { x: group.x, y: group.y });
+  });
+
+  const shell = new Graphics();
+  shell
+    .roundRect(x, y, w, h, 10)
+    .fill({ color: 0x081524, alpha: 0.9 })
+    .stroke({ width: 1.4, color: 0x315f94, alpha: 0.78 });
+  shell.rect(x + 1, y + 1, 7, h - 2).fill({ color: 0x38bdf8, alpha: 0.52 });
+  group.addChild(shell);
+
+  const code = new Graphics();
+  code.roundRect(x + 18, y + 15, 50, 25, 999).fill({ color: 0x0f2740, alpha: 0.95 }).stroke({ width: 1, color: 0x60a5fa, alpha: 0.72 });
+  group.addChild(code);
+  drawDragGrip(group, x + w - 34, y + 8);
+  addText(group, knowledge.code, x + 43, y + 28, 12, 0xbfe5ff, "900", 0.5);
+  addText(group, knowledge.title, x + 80, y + 28, 15, 0xe8f2ff, "900", 0);
+  addText(group, knowledge.concept, x + 20, y + 57, 12, 0xc8d8eb, "700", 0);
+
+  drawStageVisual(group, knowledge.visual, x + 324, y + 19, 214, h - 38);
+
+  const toolLabel = makeText(`Tool: ${knowledge.tool}`, 10, 0x93c5fd, "800");
+  toolLabel.x = x + 20;
+  toolLabel.y = y + 76;
+  group.addChild(toolLabel);
+  addText(group, knowledge.mission, x + 20, y + 96, 10, 0x9db2ca, "700", 0);
+
+  if (knowledge.carryForward) {
+    const carry = new Graphics();
+    carry.roundRect(x + 18, y + h - 24, 282, 18, 5).fill({ color: 0x08251f, alpha: 0.82 }).stroke({ width: 1, color: 0x22c55e, alpha: 0.38 });
+    group.addChild(carry);
+    addText(group, knowledge.carryForward, x + 28, y + h - 14, 9, 0xbbf7d0, "800", 0);
+  }
+
+  layer.addChild(group);
+}
+
+function drawDragGrip(layer: Container, x: number, y: number) {
+  const grip = new Graphics();
+  for (let row = 0; row < 2; row += 1) {
+    for (let col = 0; col < 3; col += 1) {
+      grip.circle(x + col * 7, y + row * 7, 2).fill({ color: 0x93c5fd, alpha: 0.76 });
+    }
+  }
+  layer.addChild(grip);
+}
+
+function drawStageVisual(layer: Container, visual: CanvasStageKnowledge["visual"], x: number, y: number, w: number, h: number) {
+  const panel = new Graphics();
+  panel.roundRect(x, y, w, h, 8).fill({ color: 0x06111f, alpha: 0.82 }).stroke({ width: 1, color: 0x263b55, alpha: 0.95 });
+  layer.addChild(panel);
+
+  switch (visual) {
+    case "tensor_objects":
+      drawTensorObjectSequence(layer, x + 12, y + 17);
+      break;
+    case "rank_axes":
+      drawRankAxisSequence(layer, x + 14, y + 17);
+      break;
+    case "shape_caliper":
+      drawShapeCaliperVisual(layer, x + 20, y + 12);
+      break;
+    case "semantic_gap":
+      drawSemanticGapVisual(layer, x + 16, y + 14);
+      break;
+    case "token_grid":
+      drawTokenGridVisual(layer, x + 20, y + 13);
+      break;
+    case "embedding_expansion":
+      drawEmbeddingExpansionVisual(layer, x + 14, y + 15);
+      break;
+    case "hidden_contract":
+      drawHiddenContractVisual(layer, x + 22, y + 11);
+      break;
+    case "consumer_contract":
+      drawConsumerContractVisual(layer, x + 18, y + 13);
+      break;
+    case "hidden_tests":
+      drawHiddenTestsVisual(layer, x + 14, y + 15);
+      break;
+  }
+}
+
+function drawTensorObjectSequence(layer: Container, x: number, y: number) {
+  const baseY = y + 20;
+  const labelY = y + 55;
+  drawScalarGlyph(layer, x, baseY, "3.14");
+  drawSmallArrow(layer, { x: x + 30, y: baseY }, { x: x + 42, y: baseY }, 0x60a5fa);
+  drawVectorGlyph(layer, x + 51, baseY - 11, 4, 0x7dd3fc);
+  drawSmallArrow(layer, { x: x + 98, y: baseY }, { x: x + 109, y: baseY }, 0x60a5fa);
+  drawMatrixGlyph(layer, x + 117, baseY - 15, 2, 3, 7, 0x38bdf8);
+  drawSmallArrow(layer, { x: x + 149, y: baseY }, { x: x + 158, y: baseY }, 0x60a5fa);
+  drawStackedMatrixGlyph(layer, x + 156, baseY - 12, 0x38bdf8);
+  drawAlignedStageLabel(layer, "number", x + 14, labelY);
+  drawAlignedStageLabel(layer, "vector", x + 73, labelY);
+  drawAlignedStageLabel(layer, "grid", x + 132, labelY);
+  drawAlignedStageLabel(layer, "stack", x + 174, labelY);
+}
+
+function drawAlignedStageLabel(layer: Container, label: string, x: number, y: number) {
+  const marker = new Graphics();
+  marker.circle(x, y - 10, 1.8).fill({ color: 0x60a5fa, alpha: 0.62 });
+  marker.moveTo(x, y - 7).lineTo(x, y - 2).stroke({ width: 1, color: 0x60a5fa, alpha: 0.34 });
+  layer.addChild(marker);
+  addText(layer, label, x, y + 4, 8, 0x9db2ca, "800", 0.5);
+}
+
+function drawRankAxisSequence(layer: Container, x: number, y: number) {
+  drawScalarGlyph(layer, x, y + 28, "r0");
+  drawAxisLineGlyph(layer, x + 52, y + 28, 36, "r1", 0x7dd3fc);
+  drawPlaneGlyph(layer, x + 105, y + 10, "r2", 0x38bdf8);
+  drawStackedMatrixGlyph(layer, x + 172, y + 10, 0xfbbf24);
+  addText(layer, "0 / 1 / 2 / 3 axes", x + 105, y + 62, 10, 0xdbeafe, "900", 0.5);
+}
+
+function drawShapeCaliperVisual(layer: Container, x: number, y: number) {
+  drawMiniCuboid(layer, x + 42, y + 14, 112, 50, 18, 0x24608a, 0.82);
+  drawDimensionLine(layer, { x: x + 42, y: y + 75 }, { x: x + 154, y: y + 75 }, "Axis 1 = 4", 0x7dd3fc);
+  drawDimensionLine(layer, { x: x + 27, y: y + 64 }, { x: x + 27, y: y + 22 }, "Axis 0 = 2", 0xfbbf24);
+  drawDimensionLine(layer, { x: x + 160, y: y + 12 }, { x: x + 179, y: y - 5 }, "Axis 2 = 8", 0x22c55e);
+  addText(layer, "shape = [2,4,8]", x + 100, y + 88, 10, 0xe8f2ff, "900", 0.5);
+}
+
+function drawSemanticGapVisual(layer: Container, x: number, y: number) {
+  drawMiniCuboid(layer, x + 7, y + 15, 92, 46, 16, 0x24608a, 0.78);
+  addText(layer, "float32[2,4,8]", x + 54, y + 75, 9, 0xe8f2ff, "900", 0.5);
+  addText(layer, "Axis 0 ?", x + 122, y + 17, 9, 0xfbbf24, "900", 0);
+  addText(layer, "Axis 1 ?", x + 122, y + 39, 9, 0x7dd3fc, "900", 0);
+  addText(layer, "Axis 2 ?", x + 122, y + 61, 9, 0x22c55e, "900", 0);
+  drawBlockedPlug(layer, x + 187, y + 17, "Batch");
+  drawBlockedPlug(layer, x + 187, y + 39, "Mask");
+  drawBlockedPlug(layer, x + 187, y + 61, "Linear");
+}
+
+function drawTokenGridVisual(layer: Container, x: number, y: number) {
+  const values = [
+    ["502", "2841", "9172", "0"],
+    ["1042", "7191", "3910", "0"]
+  ];
+  addText(layer, "T0     T1     T2     T3", x + 58, y + 6, 9, 0x7dd3fc, "900", 0);
+  for (let row = 0; row < 2; row += 1) {
+    addText(layer, `B${row}`, x, y + 26 + row * 24, 10, 0xfbbf24, "900", 0);
+    for (let col = 0; col < 4; col += 1) {
+      const cell = new Graphics();
+      cell.roundRect(x + 28 + col * 42, y + 15 + row * 24, 36, 18, 4).fill({ color: 0x0f2740, alpha: 0.92 }).stroke({ width: 1, color: 0x315f94, alpha: 0.8 });
+      layer.addChild(cell);
+      addText(layer, values[row][col], x + 46 + col * 42, y + 25 + row * 24, 8, 0xe8f2ff, "800", 0.5);
+    }
+  }
+  drawDimensionLine(layer, { x: x + 20, y: y + 11 }, { x: x + 20, y: y + 61 }, "B", 0xfbbf24);
+  drawDimensionLine(layer, { x: x + 28, y: y + 67 }, { x: x + 194, y: y + 67 }, "T", 0x7dd3fc);
+}
+
+function drawEmbeddingExpansionVisual(layer: Container, x: number, y: number) {
+  const token = new Graphics();
+  token.roundRect(x, y + 22, 45, 24, 5).fill({ color: 0x0f2740, alpha: 0.94 }).stroke({ width: 1, color: 0x7dd3fc, alpha: 0.9 });
+  layer.addChild(token);
+  addText(layer, "9172", x + 22, y + 35, 10, 0xe8f2ff, "900", 0.5);
+  drawSmallArrow(layer, { x: x + 52, y: y + 34 }, { x: x + 82, y: y + 34 }, 0x60a5fa);
+  drawMatrixGlyph(layer, x + 88, y + 12, 2, 6, 7, 0xa78bfa);
+  addText(layer, "row", x + 106, y + 64, 9, 0xc4b5fd, "900", 0.5);
+  drawSmallArrow(layer, { x: x + 139, y: y + 34 }, { x: x + 167, y: y + 34 }, 0x60a5fa);
+  drawVectorGlyph(layer, x + 174, y + 25, 5, 0x22c55e);
+  addText(layer, "C vector", x + 196, y + 58, 9, 0xbbf7d0, "900", 0.5);
+}
+
+function drawHiddenContractVisual(layer: Container, x: number, y: number) {
+  drawMiniCuboid(layer, x + 32, y + 12, 116, 54, 20, 0x24608a, 0.84);
+  drawDimensionLine(layer, { x: x + 25, y: y + 66 }, { x: x + 25, y: y + 26 }, "B?", 0xfbbf24);
+  drawDimensionLine(layer, { x: x + 36, y: y + 77 }, { x: x + 150, y: y + 77 }, "T?", 0x7dd3fc);
+  drawDimensionLine(layer, { x: x + 154, y: y + 13 }, { x: x + 175, y: y - 5 }, "C?", 0x22c55e);
+  addText(layer, "Probe -> evidence -> B/T/C", x + 104, y + 92, 9, 0xe8f2ff, "900", 0.5);
+}
+
+function drawConsumerContractVisual(layer: Container, x: number, y: number) {
+  drawMiniCuboid(layer, x, y + 18, 78, 42, 14, 0x24608a, 0.84);
+  addText(layer, "hidden", x + 38, y + 72, 9, 0xe8f2ff, "900", 0.5);
+  const consumers = [
+    { label: "B -> Batch", y: y + 8, color: 0xfbbf24 },
+    { label: "T -> Mask", y: y + 35, color: 0x7dd3fc },
+    { label: "C -> Linear", y: y + 62, color: 0x22c55e }
+  ];
+  consumers.forEach((item) => {
+    drawSmallArrow(layer, { x: x + 92, y: item.y + 9 }, { x: x + 125, y: item.y + 9 }, item.color);
+    const box = new Graphics();
+    box.roundRect(x + 130, item.y, 74, 18, 4).fill({ color: 0x081524, alpha: 0.96 }).stroke({ width: 1, color: item.color, alpha: 0.76 });
+    layer.addChild(box);
+    addText(layer, item.label, x + 167, item.y + 10, 8, 0xe8f2ff, "800", 0.5);
+  });
+}
+
+function drawHiddenTestsVisual(layer: Container, x: number, y: number) {
+  const cases = [
+    { label: "[2,4,8]", x },
+    { label: "[1,16,4]", x: x + 74 },
+    { label: "[4,3,32]", x: x + 152 }
+  ];
+  cases.forEach((item, index) => {
+    drawMiniCuboid(layer, item.x + 8, y + 16, 48, 28, 9, index === 1 ? 0x1f4b72 : 0x24608a, 0.82);
+    addText(layer, item.label, item.x + 32, y + 61, 8, 0xe8f2ff, "900", 0.5);
+  });
+  addText(layer, "same semantics, changing lengths", x + 105, y + 82, 8, 0x9db2ca, "800", 0.5);
+}
+
+function drawScalarGlyph(layer: Container, x: number, y: number, label: string) {
+  const dot = new Graphics();
+  dot.circle(x + 14, y, 12).fill({ color: 0x422b16, alpha: 0.96 }).stroke({ width: 1.4, color: 0xfbbf24, alpha: 0.9 });
+  layer.addChild(dot);
+  addText(layer, label, x + 14, y, 7, 0xffedd5, "900", 0.5);
+}
+
+function drawVectorGlyph(layer: Container, x: number, y: number, count: number, color: number) {
+  const cells = new Graphics();
+  for (let i = 0; i < count; i += 1) {
+    cells.roundRect(x + i * 12, y, 9, 22, 3).fill({ color, alpha: 0.34 + i * 0.08 }).stroke({ width: 1, color, alpha: 0.8 });
+  }
+  layer.addChild(cells);
+}
+
+function drawMatrixGlyph(layer: Container, x: number, y: number, rows: number, columns: number, size: number, color: number) {
+  const grid = new Graphics();
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < columns; col += 1) {
+      grid.roundRect(x + col * (size + 3), y + row * (size + 3), size, size, 2).fill({ color, alpha: 0.22 + ((row + col) % 3) * 0.14 });
+    }
+  }
+  grid.roundRect(x - 4, y - 4, columns * (size + 3) + 3, rows * (size + 3) + 3, 5).stroke({ width: 1, color, alpha: 0.68 });
+  layer.addChild(grid);
+}
+
+function drawStackedMatrixGlyph(layer: Container, x: number, y: number, color: number) {
+  for (let i = 2; i >= 0; i -= 1) {
+    drawMatrixGlyph(layer, x + i * 7, y - i * 5, 3, 3, 7, color);
+  }
+}
+
+function drawAxisLineGlyph(layer: Container, x: number, y: number, length: number, label: string, color: number) {
+  const axis = new Graphics();
+  axis.moveTo(x, y).lineTo(x + length, y).stroke({ width: 2.3, color, alpha: 0.9, cap: "round" });
+  axis.circle(x, y, 4).fill({ color, alpha: 0.86 });
+  axis.circle(x + length, y, 4).fill({ color, alpha: 0.86 });
+  layer.addChild(axis);
+  addText(layer, label, x + length / 2, y + 18, 8, 0xe8f2ff, "900", 0.5);
+}
+
+function drawPlaneGlyph(layer: Container, x: number, y: number, label: string, color: number) {
+  drawMatrixGlyph(layer, x, y, 3, 4, 8, color);
+  addText(layer, label, x + 20, y + 50, 8, 0xe8f2ff, "900", 0.5);
+}
+
+function drawMiniCuboid(layer: Container, x: number, y: number, w: number, h: number, depth: number, color: number, alpha: number) {
+  const top = new Graphics();
+  top
+    .poly([x, y, x + depth, y - depth, x + w + depth, y - depth, x + w, y], true)
+    .fill({ color: tint(color, 1.24), alpha })
+    .stroke({ width: 1, color: 0x7dd3fc, alpha: 0.78 });
+  const side = new Graphics();
+  side
+    .poly([x + w, y, x + w + depth, y - depth, x + w + depth, y + h - depth, x + w, y + h], true)
+    .fill({ color: tint(color, 0.56), alpha })
+    .stroke({ width: 1, color: 0x7dd3fc, alpha: 0.72 });
+  const front = new Graphics();
+  front.roundRect(x, y, w, h, 5).fill({ color, alpha }).stroke({ width: 1.2, color: 0x7dd3fc, alpha: 0.86 });
+  layer.addChild(top, side, front);
+}
+
+function drawSmallArrow(layer: Container, from: Point, to: Point, color: number) {
+  const line = new Graphics();
+  line.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({ width: 1.6, color, alpha: 0.82, cap: "round" });
+  layer.addChild(line);
+  drawArrow(layer, to, from, color);
+}
+
+function drawDimensionLine(layer: Container, from: Point, to: Point, label: string, color: number) {
+  const line = new Graphics();
+  line.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({ width: 1.2, color, alpha: 0.88, cap: "round" });
+  line.circle(from.x, from.y, 3).fill({ color, alpha: 0.9 });
+  line.circle(to.x, to.y, 3).fill({ color, alpha: 0.9 });
+  layer.addChild(line);
+  addText(layer, label, (from.x + to.x) / 2 + 3, (from.y + to.y) / 2 - 8, 8, color, "900", 0.5);
+}
+
+function drawBlockedPlug(layer: Container, x: number, y: number, label: string) {
+  const plug = new Graphics();
+  plug.roundRect(x, y - 8, 36, 16, 4).fill({ color: 0x1c1917, alpha: 0.88 }).stroke({ width: 1, color: 0xf59e0b, alpha: 0.7 });
+  plug.moveTo(x + 5, y - 4).lineTo(x + 13, y + 4).moveTo(x + 13, y - 4).lineTo(x + 5, y + 4).stroke({ width: 1.4, color: 0xef4444, alpha: 0.92 });
+  layer.addChild(plug);
+  addText(layer, label, x + 44, y + 1, 8, 0xfde68a, "800", 0);
 }
 
 function drawTensorNode(
@@ -618,14 +1133,19 @@ function drawTensorNode(
     group.addChild(shell);
   }
 
+  drawNodeBodyVisual(group, node);
+
   drawPort(group, node.x - 9, node.y + node.h / 2, selected, "in");
   drawPort(group, node.x + node.w + 9, node.y + node.h / 2, selected, "out");
   if (mode === "build") {
     drawPortLabels(group, node);
   }
 
-  addText(group, node.title, node.x + node.w / 2, node.y + 24, 15, 0xe8f2ff, "800", 0.5);
-  addText(group, `${node.dtype}${node.shape}`, node.x + node.w / 2, node.y + node.h - 18, 12, 0xb7c7dc, "700", 0.5);
+  const usesEmbeddedLabel = node.id === "tensor_inspector";
+  if (!usesEmbeddedLabel) {
+    addText(group, node.title, node.x + node.w / 2, node.y + 24, 15, 0xe8f2ff, "800", 0.5);
+    addText(group, `${node.dtype}${node.shape}`, node.x + node.w / 2, node.y + node.h - 18, 12, 0xb7c7dc, "700", 0.5);
+  }
 
   if (node.kind === "matrix") {
     drawMiniCells(group, node.x + 18, node.y + 38, 7, 3, 8, 0x7dd3fc);
@@ -656,6 +1176,45 @@ function drawTensorNode(
   }
 
   layer.addChild(group);
+}
+
+function drawNodeBodyVisual(layer: Container, node: TensorNode) {
+  if (node.id === "raw_objects") {
+    const y = node.y + 50;
+    drawScalarGlyph(layer, node.x + 17, y + 5, "3.14");
+    drawVectorGlyph(layer, node.x + 52, y - 6, 4, 0x7dd3fc);
+    drawMatrixGlyph(layer, node.x + 104, y - 12, 2, 3, 7, 0x38bdf8);
+    drawStackedMatrixGlyph(layer, node.x + 144, y - 11, 0x38bdf8);
+    return;
+  }
+
+  if (node.id === "rank_scanner") {
+    drawRankAxisSequence(layer, node.x + 20, node.y + 35);
+    return;
+  }
+
+  if (node.id === "shape_caliper") {
+    drawShapeCaliperVisual(layer, node.x + 20, node.y + 35);
+    return;
+  }
+
+  if (node.id === "token_grid") {
+    drawTokenGridVisual(layer, node.x + 14, node.y + 34);
+    return;
+  }
+
+  if (node.id === "embedding_lookup") {
+    drawEmbeddingExpansionVisual(layer, node.x + 17, node.y + 34);
+    return;
+  }
+
+  if (node.id === "hidden_tensor") {
+    const semanticKnown = node.shape.includes("B") || node.shape.includes("T") || node.shape.includes("C");
+    drawDimensionLine(layer, { x: node.x - 12, y: node.y + node.h + 8 }, { x: node.x - 12, y: node.y + 12 }, semanticKnown ? "B" : "A0", 0xfbbf24);
+    drawDimensionLine(layer, { x: node.x + 12, y: node.y + node.h + 16 }, { x: node.x + node.w - 6, y: node.y + node.h + 16 }, semanticKnown ? "T" : "A1", 0x7dd3fc);
+    drawDimensionLine(layer, { x: node.x + node.w + 8, y: node.y + 12 }, { x: node.x + node.w + 30, y: node.y - 8 }, semanticKnown ? "C" : "A2", 0x22c55e);
+    return;
+  }
 }
 
 type ConnectionPort = {
@@ -713,10 +1272,7 @@ function drawCanvasConnectionLines(
   edgeLayer: Container,
   labelLayer: Container,
   connections: CanvasConnectionOverlay[],
-  ports: ConnectionPortMap,
-  onQuickConnect?: (connection: CanvasConnectionOverlay) => void,
-  showTooltip?: (text: string, point: Point) => void,
-  hideTooltip?: () => void
+  ports: ConnectionPortMap
 ) {
   connections.forEach((connection) => {
     const endpoints = ports.get(connection.id);
@@ -729,55 +1285,8 @@ function drawCanvasConnectionLines(
     if (connection.state === "connected") {
       const midpoint = curvedMidpoint(endpoints.source.point, endpoints.target.point);
       drawDataLabel(labelLayer, connection.label, midpoint.x, midpoint.y - 18, color);
-    } else if (connection.enabled) {
-      const midpoint = curvedMidpoint(endpoints.source.point, endpoints.target.point);
-      const chipY = connection.kind === "data" ? Math.min(endpoints.source.point.y, endpoints.target.point.y) - 48 : midpoint.y - 22;
-      drawConnectionActionChip(labelLayer, connection, midpoint.x, chipY, onQuickConnect, showTooltip, hideTooltip);
     }
   });
-}
-
-function drawConnectionActionChip(
-  layer: Container,
-  connection: CanvasConnectionOverlay,
-  x: number,
-  y: number,
-  onQuickConnect?: (connection: CanvasConnectionOverlay) => void,
-  showTooltip?: (text: string, point: Point) => void,
-  hideTooltip?: () => void
-) {
-  const label = connection.kind === "contract" ? "WIRE" : "CONNECT";
-  const color = connectionColor(connection);
-  const width = label === "CONNECT" ? 86 : 58;
-  const chip = new Container({ label: `connection-action-${connection.id}` });
-  chip.eventMode = "static";
-  chip.cursor = "pointer";
-  chip.hitArea = new Rectangle(x - width / 2 - 8, y - 16, width + 16, 32);
-  chip.on("pointertap", (event) => {
-    event.stopPropagation();
-    onQuickConnect?.(connection);
-  });
-  chip.on("pointerover", () => showTooltip?.(`Click to repair ${connection.label}`, { x, y: y - 30 }));
-  chip.on("pointerout", () => hideTooltip?.());
-
-  const halo = new Graphics();
-  halo.roundRect(x - width / 2 - 6, y - 16, width + 12, 32, 999).stroke({ width: 2.4, color, alpha: 0.26 });
-  chip.addChild(halo);
-
-  const shell = new Graphics();
-  shell
-    .roundRect(x - width / 2, y - 13, width, 26, 999)
-    .fill({ color: connection.kind === "contract" ? 0x211705 : 0x061629, alpha: 0.96 })
-    .stroke({ width: 1.6, color, alpha: 0.95 });
-  chip.addChild(shell);
-
-  const text = makeText(label, 10, 0xe8f2ff, "900");
-  text.anchor.set(0.5, 0.5);
-  text.x = x;
-  text.y = y;
-  chip.addChild(text);
-
-  layer.addChild(chip);
 }
 
 function drawCanvasConnectionPorts(
@@ -787,7 +1296,6 @@ function drawCanvasConnectionPorts(
   handlers: {
     onStart: (connection: CanvasConnectionOverlay, point: Point, event: FederatedPointerEvent) => void;
     onComplete: (connection: CanvasConnectionOverlay, event: FederatedPointerEvent) => void;
-    onQuickConnect: (connection: CanvasConnectionOverlay, event: FederatedPointerEvent) => void;
   },
   showTooltip?: (text: string, point: Point) => void,
   hideTooltip?: () => void
@@ -807,7 +1315,6 @@ function drawConnectionPort(
   handlers: {
     onStart: (connection: CanvasConnectionOverlay, point: Point, event: FederatedPointerEvent) => void;
     onComplete: (connection: CanvasConnectionOverlay, event: FederatedPointerEvent) => void;
-    onQuickConnect: (connection: CanvasConnectionOverlay, event: FederatedPointerEvent) => void;
   },
   showTooltip?: (text: string, point: Point) => void,
   hideTooltip?: () => void
@@ -832,11 +1339,10 @@ function drawConnectionPort(
   } else {
     hitPad.on("pointerup", (event) => handlers.onComplete(connection, event));
   }
-  hitPad.on("pointertap", (event) => handlers.onQuickConnect(connection, event));
   if (active) {
     hitPad.on("pointerover", () => {
       showTooltip?.(
-        port.role === "source" ? `Drag or click ${port.label} output` : `Release or click ${port.label} input`,
+        port.role === "source" ? `Drag ${port.label} output` : `Release on ${port.label} input`,
         { x: port.point.x, y: port.point.y - 34 }
       );
     });
@@ -902,27 +1408,57 @@ function connectionColor(connection: CanvasConnectionOverlay) {
   return connection.kind === "contract" ? 0xfbbf24 : 0x38bdf8;
 }
 
-function findNearestConnectableConnection(
+function buildRepairSlotBounds(overlays: RepairSlotOverlay[], nodeLookup: Map<string, TensorNode>) {
+  const bounds = new Map<string, Rectangle>();
+  const grouped = new Map<string, RepairSlotOverlay[]>();
+  overlays.forEach((overlay) => {
+    grouped.set(overlay.nodeId, [...(grouped.get(overlay.nodeId) ?? []), overlay]);
+  });
+
+  grouped.forEach((slots, nodeId) => {
+    const node = nodeLookup.get(nodeId);
+    if (!node) return;
+    const slotWidth = Math.max(82, Math.min(118, (node.w + 54) / Math.max(slots.length, 1)));
+    const startX = node.x + node.w / 2 - (slots.length * slotWidth + (slots.length - 1) * 8) / 2;
+    const y = node.y + node.h + 18;
+    slots.forEach((slot, index) => {
+      bounds.set(slot.slotId, new Rectangle(startX + index * (slotWidth + 8), y, slotWidth, 45));
+    });
+  });
+
+  return bounds;
+}
+
+function findRepairSlotAtPoint(point: Point, bounds: Map<string, Rectangle>) {
+  for (const [slotId, rect] of bounds.entries()) {
+    if (rect.contains(point.x, point.y)) return slotId;
+  }
+  return undefined;
+}
+
+function findNearestConnectableConnectionStart(
   point: Point,
   connections: CanvasConnectionOverlay[],
   ports: ConnectionPortMap
-) {
-  let nearestConnection: CanvasConnectionOverlay | undefined;
-  let nearestDistance = Number.POSITIVE_INFINITY;
+): { connection: CanvasConnectionOverlay; from: Point } | null {
+  let nearest: { connection: CanvasConnectionOverlay; from: Point; distance: number } | null = null;
 
-  connections.forEach((connection) => {
-    if (!connection.enabled || connection.state !== "open") return;
+  for (const connection of connections) {
+    if (!connection.enabled || connection.state !== "open") continue;
     const endpoints = ports.get(connection.id);
-    if (!endpoints) return;
+    if (!endpoints) continue;
     const endpointDistance = Math.min(distance(point, endpoints.source.point), distance(point, endpoints.target.point));
-    if (endpointDistance > connectionSnapRadius) return;
-    if (endpointDistance < nearestDistance) {
-      nearestConnection = connection;
-      nearestDistance = endpointDistance;
+    if (endpointDistance > connectionSnapRadius + 18) continue;
+    if (!nearest || endpointDistance < nearest.distance) {
+      nearest = {
+        connection,
+        from: endpoints.source.point,
+        distance: endpointDistance
+      };
     }
-  });
+  }
 
-  return nearestConnection;
+  return nearest ? { connection: nearest.connection, from: nearest.from } : null;
 }
 
 function drawRepairSlots(
@@ -956,10 +1492,6 @@ function drawRepairSlots(
       group.hitArea = new Rectangle(x, y, slotWidth, 45);
       group.on("pointertap", (event) => {
         event.stopPropagation();
-        if (onSlotContextMenu) {
-          onSlotContextMenu(event, slot.slotId);
-          return;
-        }
         onSlotSelect?.(slot.slotId);
       });
       group.on("rightdown", (event) => {
@@ -986,7 +1518,7 @@ function drawRepairSlots(
           hint,
           (event) => {
             event.stopPropagation();
-            onSlotContextMenu?.(event, slot.slotId);
+            onSlotSelect?.(slot.slotId);
           },
           showTooltip,
           hideTooltip
@@ -1007,8 +1539,8 @@ function drawActionBadge(
   hideTooltip?: () => void
 ) {
   const badge = new Container({ label: `action-${hint.kind}-${hint.id}` });
-  const color = hint.icon === "run" ? 0x22c55e : hint.icon === "wire" ? 0xfbbf24 : hint.icon === "probe" ? 0x38bdf8 : 0x93c5fd;
-  const label = hint.icon === "run" ? "run" : hint.icon === "wire" ? "wire" : hint.icon === "probe" ? "probe" : "tag";
+  const color = hint.icon === "run" ? 0x22c55e : hint.icon === "probe" ? 0x38bdf8 : 0x93c5fd;
+  const label = hint.icon === "run" ? "run" : hint.icon === "probe" ? "probe" : "tag";
   const width = Math.max(34, label.length * 8 + 18);
 
   badge.eventMode = "static";
@@ -1061,6 +1593,177 @@ function clearLayer(layer: Container) {
   for (const child of layer.removeChildren()) {
     child.destroy({ children: true });
   }
+}
+
+type TensorObjectDragItem = {
+  slotId: string;
+  tagId: string;
+  title: string;
+  caption: string;
+  kind: "scalar" | "vector" | "matrix" | "block";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+const tensorObjectDragItems: TensorObjectDragItem[] = [
+  { slotId: "object_scalar", tagId: "object_scalar", title: "Scalar", caption: "one number", kind: "scalar", x: 82, y: 235, width: 130, height: 82 },
+  { slotId: "object_vector", tagId: "object_vector", title: "Vector", caption: "one row", kind: "vector", x: 226, y: 235, width: 130, height: 82 },
+  { slotId: "object_matrix", tagId: "object_matrix", title: "Matrix", caption: "number grid", kind: "matrix", x: 82, y: 334, width: 130, height: 82 },
+  { slotId: "object_block", tagId: "object_block", title: "3D Block", caption: "stacked grids", kind: "block", x: 226, y: 334, width: 130, height: 82 }
+];
+
+function drawTensorObjectDragChallenge(
+  layer: Container,
+  slots: RepairSlotOverlay[],
+  nodeLookup: Map<string, TensorNode>,
+  onDragStart: (event: FederatedPointerEvent, group: Container, item: TensorObjectDragItem, position: Point) => void
+) {
+  const inspector = nodeLookup.get("tensor_inspector");
+  if (!inspector) return;
+
+  const slotById = new Map(slots.map((slot) => [slot.slotId, slot]));
+  const acceptedItems = tensorObjectDragItems.filter((item) => isTensorObjectAccepted(slotById.get(item.slotId)));
+  const activeItem = [...tensorObjectDragItems].reverse().find((item) => isTensorObjectAccepted(slotById.get(item.slotId)));
+  const dropRect = tensorInspectorDropRect(inspector);
+  const target = new Graphics();
+  target
+    .roundRect(dropRect.x, dropRect.y, dropRect.width, dropRect.height, 12)
+    .fill({ color: 0x0f2740, alpha: 0.14 })
+    .stroke({ width: 2, color: 0x7dd3fc, alpha: 0.45 });
+  target.roundRect(inspector.x + 16, inspector.y + 16, inspector.w - 32, 30, 8).fill({ color: 0x07111f, alpha: 0.78 }).stroke({ width: 1, color: 0x315f94, alpha: 0.7 });
+  layer.addChild(target);
+  addText(layer, "Single Tensor Inspector", inspector.x + inspector.w / 2, inspector.y + 31, 11, 0xbfdbfe, "900", 0.5);
+
+  drawObjectBench(layer);
+  drawTensorObjectInspectorNote(layer, inspector, activeItem, acceptedItems.length);
+  drawRecognitionLog(layer, inspector, acceptedItems);
+
+  tensorObjectDragItems.forEach((item) => {
+    if (isTensorObjectAccepted(slotById.get(item.slotId))) return;
+    const card = drawTensorObjectCard(item, false);
+    card.eventMode = "static";
+    card.cursor = "grab";
+    card.hitArea = new Rectangle(0, 0, item.width, item.height);
+    card.on("pointerdown", (event) => {
+      if (event.button === 2) return;
+      onDragStart(event, card, item, { x: card.x, y: card.y });
+    });
+    layer.addChild(card);
+  });
+}
+
+function tensorInspectorDropRect(node: TensorNode) {
+  return new Rectangle(node.x - 26, node.y - 26, node.w + 52, node.h + 174);
+}
+
+function isTensorObjectAccepted(slot?: RepairSlotOverlay) {
+  return Boolean(slot && slot.value !== "open" && (slot.state === "filled" || slot.state === "active"));
+}
+
+function drawObjectBench(layer: Container) {
+  const x = 60;
+  const y = 194;
+  const width = 326;
+  const height = 248;
+  const shell = new Graphics();
+  shell
+    .roundRect(x, y, width, height, 10)
+    .fill({ color: 0x06111f, alpha: 0.58 })
+    .stroke({ width: 1.2, color: 0x315f94, alpha: 0.42 });
+  layer.addChild(shell);
+  addText(layer, "Object Bench", x + 18, y + 18, 13, 0xe8f2ff, "900", 0);
+  addText(layer, "candidates", x + 18, y + 38, 10, 0x9db2ca, "800", 0);
+}
+
+function drawTensorObjectInspectorNote(layer: Container, inspector: TensorNode, activeItem: TensorObjectDragItem | undefined, acceptedCount: number) {
+  const x = inspector.x + 18;
+  const y = inspector.y + 58;
+  const width = inspector.w - 36;
+  const height = 94;
+  const rows = activeItem ? tensorObjectStatusRows(activeItem) : ["port=idle", "input=none", "status=waiting"];
+
+  const shell = new Graphics();
+  shell
+    .roundRect(x, y, width, height, 9)
+    .fill({ color: 0x06111f, alpha: 0.92 })
+    .stroke({ width: 1.1, color: activeItem ? 0x22c55e : 0x315f94, alpha: activeItem ? 0.68 : 0.58 });
+  layer.addChild(shell);
+  addText(layer, "Port State", x + 12, y + 16, 10, 0x93c5fd, "900", 0);
+  rows.forEach((row, index) => {
+    addText(layer, row, x + 12, y + 38 + index * 16, 11, index === 2 && activeItem ? 0xbbf7d0 : 0xdbeafe, "800", 0);
+  });
+  addText(layer, `checked ${acceptedCount}/4`, x + 12, y + height - 13, 10, acceptedCount === 4 ? 0xbbf7d0 : 0x9db2ca, "900", 0);
+}
+
+function drawRecognitionLog(layer: Container, inspector: TensorNode, acceptedItems: TensorObjectDragItem[]) {
+  const x = inspector.x + 12;
+  const y = inspector.y + inspector.h + 24;
+  const width = inspector.w - 24;
+  const height = 98;
+  const shell = new Graphics();
+  shell
+    .roundRect(x, y, width, height, 8)
+    .fill({ color: 0x07111f, alpha: 0.9 })
+    .stroke({ width: 1.2, color: acceptedItems.length ? 0x22c55e : 0x315f94, alpha: acceptedItems.length ? 0.7 : 0.5 });
+  layer.addChild(shell);
+  addText(layer, "Recognition Log", x + 12, y + 15, 9, 0x93c5fd, "900", 0);
+  addText(layer, `${acceptedItems.length}/4`, x + width - 12, y + 15, 8, 0x8aa6bf, "800", 1);
+
+  if (!acceptedItems.length) {
+    addText(layer, "empty", x + 12, y + 42, 10, 0x8aa6bf, "800", 0);
+    return;
+  }
+
+  acceptedItems.forEach((item, index) => {
+    const rowY = y + 38 + index * 14;
+    addText(layer, "✓", x + 13, rowY, 10, 0x22c55e, "900", 0);
+    addText(layer, item.title, x + 32, rowY, 9, 0xe8f2ff, "900", 0);
+    addText(layer, "accepted", x + 122, rowY, 8, 0x9db2ca, "800", 0);
+  });
+}
+
+function tensorObjectStatusRows(item: TensorObjectDragItem) {
+  return [`input=${item.title.toLowerCase()}`, "object=tensor", "status=accepted"];
+}
+
+function drawTensorObjectCard(item: TensorObjectDragItem, accepted: boolean) {
+  const group = new Container({ label: `tensor-object-${item.slotId}` });
+  group.x = item.x;
+  group.y = item.y;
+  const shell = new Graphics();
+  shell
+    .roundRect(0, 0, item.width, item.height, 9)
+    .fill({ color: accepted ? 0x08251f : 0x0a1524, alpha: 0.96 })
+    .stroke({ width: accepted ? 1.6 : 1.3, color: accepted ? 0x22c55e : 0x60a5fa, alpha: accepted ? 0.88 : 0.68 });
+  group.addChild(shell);
+  addText(group, item.title, 12, 16, 12, 0xe8f2ff, "900", 0);
+  addText(group, item.caption, 12, 34, 9, 0x9db2ca, "800", 0);
+  drawTensorObjectCardGlyph(group, item.kind, 72, 52);
+  if (accepted) {
+    const stamp = new Graphics();
+    stamp.circle(item.width - 18, 18, 10).fill({ color: 0x08251f, alpha: 0.96 }).stroke({ width: 1.4, color: 0x22c55e, alpha: 1 });
+    stamp.moveTo(item.width - 23, 18).lineTo(item.width - 19, 22).lineTo(item.width - 13, 14).stroke({ width: 1.8, color: 0x22c55e, alpha: 1, cap: "round", join: "round" });
+    group.addChild(stamp);
+  }
+  return group;
+}
+
+function drawTensorObjectCardGlyph(layer: Container, kind: TensorObjectDragItem["kind"], x: number, y: number) {
+  if (kind === "scalar") {
+    drawScalarGlyph(layer, x - 10, y, "3.14");
+    return;
+  }
+  if (kind === "vector") {
+    drawVectorGlyph(layer, x - 28, y - 10, 5, 0x7dd3fc);
+    return;
+  }
+  if (kind === "matrix") {
+    drawMatrixGlyph(layer, x - 23, y - 21, 3, 4, 8, 0x38bdf8);
+    return;
+  }
+  drawStackedMatrixGlyph(layer, x - 27, y - 17, 0x38bdf8);
 }
 
 function drawCuboid(layer: Container, node: TensorNode, selected: boolean) {
@@ -1318,6 +2021,9 @@ function addText(layer: Container, text: string, x: number, y: number, fontSize:
 function makeText(text: string, fontSize: number, fill: number, fontWeight: FontWeight) {
   return new Text({
     text,
+    resolution: textTextureResolution(),
+    roundPixels: true,
+    autoGenerateMipmaps: true,
     style: {
       fill,
       fontFamily: "Fira Code, Consolas, ui-monospace, monospace",
@@ -1326,6 +2032,15 @@ function makeText(text: string, fontSize: number, fill: number, fontWeight: Font
       letterSpacing: 0
     }
   });
+}
+
+function textTextureResolution() {
+  if (typeof window === "undefined") return 2;
+  return Math.min(Math.max(window.devicePixelRatio || 1, 2.5), 4);
+}
+
+function snapCanvasPixel(value: number) {
+  return Math.round(value);
 }
 
 function tint(color: number, factor: number) {
@@ -1347,6 +2062,13 @@ function getClientPoint(event: FederatedPointerEvent, app: Application): Point {
   return {
     x: rect.left + event.global.x,
     y: rect.top + event.global.y
+  };
+}
+
+function clientToScreenPoint(clientX: number, clientY: number, rect: DOMRect, app: Application): Point {
+  return {
+    x: ((clientX - rect.left) / Math.max(rect.width, 1)) * app.screen.width,
+    y: ((clientY - rect.top) / Math.max(rect.height, 1)) * app.screen.height
   };
 }
 

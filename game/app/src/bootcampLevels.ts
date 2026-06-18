@@ -31,79 +31,37 @@ export const bootcampLevels: BootcampLevel[] = [
     id: "0-1",
     title: "Shape Reader",
     subtitle: "Repair the Hidden Tensor contract",
-    objective: "恢复数据流，观察 Hidden Tensor 的三个轴，标注 B/T/C，并把合同线接入 Axis Decoder。",
+    objective: "按 0-1A 到 0-1X 的阶梯挑战，完成 tensor 对象识别、rank/shape 读取、token grid、embedding 展开、hidden[B,T,C] 修复和下游验证。",
     sceneTitle: "Chapter 0-1 - Shape Reader",
-    sceneSubtitle: "Broken board: data flow is open, hidden tensor semantics are missing, and the Axis Decoder contract is disconnected.",
+    sceneSubtitle: "Challenge ladder: build tensor intuition first, then repair hidden[B,T,C] and prove it with consumers plus hidden shape tests.",
     defaultSelectedNodeId: "hidden_tensor",
     briefing: [
-      "LLM 不直接读取文字；文字先变成 token，再查表得到 hidden tensor。",
-      "shape 只说明大小，[2,4,8] 本身不说明哪个轴是样本、位置或特征。",
-      "hidden[B,T,C] 中，B 是样本批次，T 是 token 位置，C 是每个 token 的特征通道。"
+      "你即将修复一条 LLM 内部数据链路。",
+      "知识会按 0-1A 到 0-1X 逐步解锁，每一步都必须通过画布上的工程验证。",
+      "先从 tensor 对象开始，不提前背答案。"
     ],
     knowledgeCards: [
       {
-        title: "LLM 不直接读取文字",
-        body: "你输入的是文字，\n但模型内部处理的是数字。\n\n文字会先被切成 token，\n每个 token 再被转换成整数 ID。",
-        visual: ["we train llm", "[we] [train] [llm]", "[we: 502] [train: 2841] [llm: 9172]", "token_ids = [502, 2841, 9172]"]
-      },
-      {
-        title: "Tensor 是模型里的数字容器",
-        body: "Tensor 可以理解为一组排列整齐的数字。\n\n一个数字是一种 tensor。\n一排数字是一种 tensor。\n一张数字表也是 tensor。\n一叠数字表仍然是 tensor。",
-        visual: ["Scalar: 3.14", "Vector: [0.2, -0.7, 1.4, 0.5]", "Matrix: [[0.1,0.2,0.3],[0.4,0.5,0.6]]", "3D Tensor: 一叠矩阵"]
-      },
-      {
-        title: "Rank 表示有几个轴",
-        body: "一个数字没有轴，rank = 0。\n一排数字有 1 个轴，rank = 1。\n一张表有 2 个轴，rank = 2。\n一叠表有 3 个轴，rank = 3。",
-        visual: ["rank 0: scalar / shape []", "rank 1: vector / shape [4]", "rank 2: matrix / shape [3,4]", "rank 3: tensor / shape [2,3,4]"]
-      },
-      {
-        title: "Shape 表示每个轴的长度",
-        body: "shape = [2,4,8]\n\n这表示：\n第 0 轴长度是 2，\n第 1 轴长度是 4，\n第 2 轴长度是 8。\n\nshape 说明 tensor 的结构大小。",
-        visual: ["float32[2,4,8]", "Axis 0 length = 2", "Axis 1 length = 4", "Axis 2 length = 8"]
-      },
-      {
-        title: "Shape 不等于语义",
-        body: "[2,4,8] 只告诉你每个轴有多长，\n但没有告诉你每个轴代表什么。\n\n在模型里，轴的语义非常重要。\n下游模块必须知道哪个轴是 batch，\n哪个轴是 token position，\n哪个轴是 channel。",
-        visual: ["float32[2,4,8]", "Axis 0: ?", "Axis 1: ?", "Axis 2: ?", "possible: [B,T,C] / [T,B,C] / [B,C,T]"]
-      },
-      {
-        title: "Token IDs 通常是 [B,T]",
-        body: "B 是 batch，表示一次送进模型的多条样本。\nT 是 token position，表示每条样本里的 token 位置。\n\n例如：\n2 条样本，每条 4 个 token，\ntoken_ids.shape = [2,4]\n也可以写成 token_ids[B,T]。",
-        visual: ["          T0    T1    T2    T3", "B0       502  2841  9172     0", "B1      1042  7191  3910     0", "B = 2, T = 4"]
-      },
-      {
-        title: "Embedding 把 token ID 变成向量",
-        body: "token id 只是一个整数。\n\nEmbedding Lookup 会用 token id 查表，\n把每个 token 变成一条 C 维向量。\n\nC 是 channel，\n也可以理解为每个 token 的特征维度。",
-        visual: ["token_id = 502", "embedding_table row 502", "embedding[502] = [0.12, -0.08, 0.31, 0.44, ...]", "C = channel / embedding dimension"]
-      },
-      {
-        title: "Hidden Tensor 通常是 [B,T,C]",
-        body: "当 B 条样本中的每个 token，\n都被转换成 C 维向量后，\n我们就得到了 hidden tensor。\n\nhidden[B,T,C] 表示：\n\nB：有几条样本\nT：每条样本有几个 token 位置\nC：每个 token 有多少个特征值",
-        visual: ["B = 2, T = 4, C = 8", "hidden.shape = [2,4,8]", "hidden[0,2,:] = sample 0 / token 2 / full C vector", "hidden[0,2,5] = channel 5 value"]
-      },
-      {
-        title: "为什么叫 Hidden Tensor？",
-        body: "Hidden 指模型内部的中间表示。\n\n它不是原始文字，\n也不是最后输出的答案，\n而是模型在每一层中持续更新的工作状态。\n\nTransformer Block 会不断读取和改写 hidden tensor，\n但它通常仍然保持 [B,T,C] 的形状。",
-        visual: ["token_ids[B,T]", "↓ Embedding", "hidden[B,T,C]", "↓ Transformer Block", "hidden[B,T,C]", "↓ LM Head", "logits[B,T,V]"]
+        title: "0-1 Shape Reader",
+        body: "LLM 的内部不是直接流动文字，而是流动一组组 tensor。\n\n在这个训练关里，你会从最基础的数据对象开始，一步步修复一条模型数据链路。\n\n每个概念只会在需要操作它时解锁。",
+        visual: ["Text", "Token IDs", "Embedding", "Hidden Tensor", "Shape Contract", "Downstream Tests"]
       }
     ],
     knowledgeTransition: {
-      title: "Briefing Complete",
-      body: "你已经知道：\n\nTensor 是模型内部流动的数字结构。\nShape 描述 tensor 的轴长度。\nHidden Tensor 是 Transformer 中常见的中间表示。\n\n现在，一台训练板上的 Hidden Tensor 丢失了轴标签。\n进入 Workbench，恢复它的 shape contract。\n\n目标合同：\nhidden[B,T,C]",
-      buttonLabel: "Enter Tensor Workbench"
+      title: "Tensor Debugger Bootcamp",
+      body: "进入画布后，从 0-1A 开始修机器。\n\n不要先背最终合同；先观察对象、操作工具，再让测试告诉你哪里还缺信息。",
+      buttonLabel: "Start Bootcamp"
     },
     mission: {
-      title: "Repair Mission: Hidden Tensor Contract",
-      body: "当前模型板已经生成了一个 Hidden Tensor：\n\nfloat32[2,4,8]\n\n但它的三个轴标签丢失了。\n\n你需要通过探针观察它的结构，判断哪个轴是 B、哪个轴是 T、哪个轴是 C，并将它修复为：\n\nhidden[B,T,C]",
+      title: "Repair Mission: Shape Reader Ladder",
+      body: "当前训练板会按阶段打开。每个阶段都会在画布上给出一个新工具、一个新对象和一个可验证目标。\n\n先完成 0-1A：把不同数字对象送进 Tensor Inspector。",
       success: [
-        "连接 Text Batch -> Tokenizer -> Embedding Lookup -> Hidden Tensor。",
-        "使用 Probe 观察 Hidden Tensor 的三个轴。",
-        "将 B / T / C 标签拖到正确轴槽。",
-        "将 Hidden Tensor 连接到 Axis Decoder。",
-        "运行 Shape Tests，并通过 hidden tests。"
+        "所有操作都在画布上完成：拖组件、连端口、填槽位、运行验证。",
+        "每一小阶段只解锁一个新概念。",
+        "最终让数据链路和下游测试一起证明合同正确。"
       ]
     },
-    unlocks: ["Shape Inspector", "Axis Tags", "Tensor Probe", "Axis Decoder"],
+    unlocks: ["Shape Inspector", "Axis Tags", "Tensor Probe", "Consumer Validation"],
     contracts: [
       "target: hidden[B,T,C]",
       "visible: hidden[2,4,8]",
@@ -111,6 +69,150 @@ export const bootcampLevels: BootcampLevel[] = [
       "hidden: [1,8,16], [4,3,32], [2,12,6]"
     ],
     nodes: [
+      makeNode({
+        id: "raw_objects",
+        title: "Raw Number Objects",
+        subtitle: "tensor candidates",
+        kind: "source",
+        semanticName: "objects",
+        dtype: "float32",
+        shape: "0D / 1D / 2D / 3D",
+        source: "challenge tray",
+        consumer: "tensor inspector",
+        sample: ["Scalar: 3.14", "Vector: [0.2,-0.7,1.4]", "Matrix: [[1,2,3],[4,5,6]]", "Tensor Block: stack of matrices"],
+        checks: [check("objects", "warn", "inspect all four tensor-like objects")],
+        x: 70,
+        y: 152,
+        w: 174,
+        h: 98,
+        color: 0x1a4164
+      }),
+      makeNode({
+        id: "tensor_inspector",
+        title: "Tensor Inspector",
+        subtitle: "accepts tensor-like objects",
+        kind: "operation",
+        semanticName: "inspector",
+        dtype: "tool",
+        shape: "dtype/value",
+        source: "raw objects",
+        consumer: "type check",
+        sample: ["dtype: float32", "sample values visible", "rank/shape locked"],
+        checks: [check("dtype", "warn", "send scalar, vector, matrix, and 3D tensor into the inspector")],
+        x: 306,
+        y: 152,
+        w: 190,
+        h: 98,
+        color: 0x304b6a
+      }),
+      makeNode({
+        id: "type_check",
+        title: "Type Check",
+        subtitle: "waiting for objects",
+        kind: "scalar",
+        semanticName: "tensor_object_gate",
+        dtype: "bool",
+        shape: "4 objects",
+        source: "tensor inspector",
+        consumer: "rank scanner",
+        sample: ["scalar accepted", "vector accepted", "matrix accepted", "3D tensor accepted"],
+        checks: [check("accepted", "warn", "all four objects must be inspected")],
+        x: 560,
+        y: 164,
+        w: 156,
+        h: 78,
+        color: 0x74491a
+      }),
+      makeNode({
+        id: "rank_scanner",
+        title: "Rank Scanner",
+        subtitle: "axis detector",
+        kind: "operation",
+        semanticName: "rank_scanner",
+        dtype: "tool",
+        shape: "rank stamps",
+        source: "tensor objects",
+        consumer: "rank gate",
+        sample: ["rank 0: scalar", "rank 1: vector", "rank 2: matrix", "rank 3: tensor block"],
+        checks: [check("rank", "warn", "stamp each object with detected rank")],
+        x: 292,
+        y: 150,
+        w: 210,
+        h: 100,
+        color: 0x304b6a
+      }),
+      makeNode({
+        id: "rank_gate",
+        title: "Rank Gate",
+        subtitle: "axis count check",
+        kind: "scalar",
+        semanticName: "rank_gate",
+        dtype: "bool",
+        shape: "rank == stamp",
+        source: "rank scanner",
+        consumer: "shape caliper",
+        sample: ["vector: one independent axis", "matrix: two independent axes"],
+        checks: [check("rank stamps", "warn", "rank stamps must match detected axes")],
+        x: 560,
+        y: 162,
+        w: 156,
+        h: 78,
+        color: 0x74491a
+      }),
+      makeNode({
+        id: "shape_caliper",
+        title: "Shape Caliper",
+        subtitle: "measure axis lengths",
+        kind: "operation",
+        semanticName: "caliper",
+        dtype: "tool",
+        shape: "axis lengths",
+        source: "unknown tensor",
+        consumer: "shape gate",
+        sample: ["Axis 0 length = 2", "Axis 1 length = 4", "Axis 2 length = 8"],
+        checks: [check("measure", "warn", "place measured lengths into shape slots")],
+        x: 374,
+        y: 156,
+        w: 196,
+        h: 92,
+        color: 0x304b6a
+      }),
+      makeNode({
+        id: "shape_gate",
+        title: "Shape Gate",
+        subtitle: "needs [2,4,8]",
+        kind: "scalar",
+        semanticName: "shape_gate",
+        dtype: "bool",
+        shape: "[?,?,?]",
+        source: "shape caliper",
+        consumer: "semantic inspector",
+        sample: ["shape order follows axis order", "rank 3 implies three slots"],
+        checks: [check("shape tag", "warn", "slots must read [2,4,8]")],
+        x: 634,
+        y: 164,
+        w: 156,
+        h: 78,
+        color: 0x74491a
+      }),
+      makeNode({
+        id: "semantic_inspector",
+        title: "Semantic Inspector",
+        subtitle: "shape known / semantics missing",
+        kind: "operation",
+        semanticName: "semantic_contract",
+        dtype: "rule",
+        shape: "axis[?,?,?]",
+        source: "float32[2,4,8]",
+        consumer: "axis tags",
+        sample: ["Axis 0: unknown", "Axis 1: unknown", "Axis 2: unknown", "downstream modules reject unresolved axes"],
+        checks: [check("semantics", "warn", "mark unresolved semantic contract")],
+        x: 474,
+        y: 158,
+        w: 214,
+        h: 96,
+        color: 0x304b6a
+      }),
       makeNode({
         id: "text_batch",
         title: "Text Batch",
@@ -149,6 +251,44 @@ export const bootcampLevels: BootcampLevel[] = [
         color: 0x304b6a
       }),
       makeNode({
+        id: "token_grid",
+        title: "Token Grid",
+        subtitle: "empty table",
+        kind: "tensor",
+        semanticName: "token_ids",
+        dtype: "int32",
+        shape: "[?,?]",
+        source: "tokenizer",
+        consumer: "embedding lookup",
+        stats: { min: "0", max: "9172", mean: "3102" },
+        sample: ["          T0    T1    T2    T3", "B0       502  2841  9172     0", "B1      1042  7191  3910     0"],
+        checks: [check("grid axes", "warn", "mark rows as B and columns as T")],
+        x: 456,
+        y: 142,
+        w: 214,
+        h: 132,
+        color: 0x24608a
+      }),
+      makeNode({
+        id: "embedding_table",
+        title: "Embedding Table",
+        subtitle: "lookup rows",
+        kind: "parameter",
+        semanticName: "embedding_table",
+        dtype: "float32",
+        shape: "[V,C]",
+        source: "trainable table",
+        consumer: "embedding lookup",
+        stats: { min: "-0.13", max: "0.14", mean: "0.001" },
+        sample: ["row 9172 -> C-wide vector", "V indexes vocabulary rows", "C is vector width"],
+        checks: [check("table", "pass", "embedding table provides C-dimensional rows")],
+        x: 392,
+        y: 332,
+        w: 190,
+        h: 86,
+        color: 0x5a4c8f
+      }),
+      makeNode({
         id: "embedding_lookup",
         title: "Embedding Lookup",
         subtitle: "table output open",
@@ -176,7 +316,7 @@ export const bootcampLevels: BootcampLevel[] = [
         dtype: "float32",
         shape: "[?,?,?]",
         source: "embedding_table[token_ids]",
-        consumer: "Axis Decoder / Linear / Attention",
+        consumer: "Batch Viewer / Causal Mask / Linear Probe",
         stats: { min: "-0.41", max: "0.38", mean: "0.006" },
         sample: ["hidden[0,2,:] = [0.04, -0.11, ...]", "visible case: [2,4,8]"],
         checks: [
@@ -190,24 +330,6 @@ export const bootcampLevels: BootcampLevel[] = [
         color: 0x24608a
       }),
       makeNode({
-        id: "axis_decoder",
-        title: "Axis Decoder",
-        subtitle: "contract ports open",
-        kind: "operation",
-        semanticName: "axis_decoder",
-        dtype: "rule",
-        shape: "requires [B,T,C]",
-        source: "player axis tags",
-        consumer: "shape tests",
-        sample: ["blocked: hidden axis semantics unknown", "required: hidden[B,T,C]"],
-        checks: [check("repairable", "warn", "run probes, assign tags, then test")],
-        x: 870,
-        y: 164,
-        w: 188,
-        h: 94,
-        color: 0x304b6a
-      }),
-      makeNode({
         id: "shape_tests",
         title: "Shape Tests",
         subtitle: "autograder",
@@ -215,7 +337,7 @@ export const bootcampLevels: BootcampLevel[] = [
         semanticName: "axis_tests",
         dtype: "bool",
         shape: "visible + hidden",
-        source: "axis_decoder",
+        source: "consumer validation",
         consumer: "chapter unlock",
         sample: ["visible: hidden[2,4,8]", "hidden: [1,8,16], [4,3,32]"],
         checks: [check("ready", "warn", "contract tests are blocked until slots are filled")],
@@ -224,32 +346,249 @@ export const bootcampLevels: BootcampLevel[] = [
         w: 156,
         h: 76,
         color: 0x74491a
+      }),
+      makeNode({
+        id: "batch_viewer",
+        title: "Batch Viewer",
+        subtitle: "needs B",
+        kind: "operation",
+        semanticName: "batch_viewer",
+        dtype: "consumer",
+        shape: "input: B",
+        source: "hidden.B",
+        consumer: "sample display",
+        sample: ["sample 0", "sample 1"],
+        checks: [check("B consumer", "warn", "connect Hidden.B to Batch Viewer")],
+        x: 876,
+        y: 88,
+        w: 174,
+        h: 78,
+        color: 0x304b6a
+      }),
+      makeNode({
+        id: "causal_mask",
+        title: "Causal Mask",
+        subtitle: "needs T",
+        kind: "mask",
+        semanticName: "causal_mask",
+        dtype: "bool",
+        shape: "[T,T]",
+        source: "hidden.T",
+        consumer: "attention",
+        sample: ["lower triangular", "future tokens blocked"],
+        checks: [check("T consumer", "warn", "connect Hidden.T to Causal Mask")],
+        x: 876,
+        y: 220,
+        w: 174,
+        h: 78,
+        color: 0x304b6a
+      }),
+      makeNode({
+        id: "linear_probe",
+        title: "Linear Probe",
+        subtitle: "needs C",
+        kind: "operation",
+        semanticName: "linear_probe",
+        dtype: "consumer",
+        shape: "[C,O]",
+        source: "hidden.C",
+        consumer: "projection",
+        sample: ["input feature dimension = C", "output hidden[B,T,O]"],
+        checks: [check("C consumer", "warn", "connect Hidden.C to Linear Probe")],
+        x: 876,
+        y: 352,
+        w: 174,
+        h: 78,
+        color: 0x304b6a
       })
     ],
     edges: [
+      { id: "e_01_objects_inspector", from: "raw_objects", to: "tensor_inspector", label: "inspect", color: 0x7dd3fc, flow: "forward" },
+      { id: "e_01_inspector_type", from: "tensor_inspector", to: "type_check", label: "dtype/value", color: 0xfbbf24, flow: "check" },
+      { id: "e_01_objects_rank", from: "raw_objects", to: "rank_scanner", label: "scan axes", color: 0x7dd3fc, flow: "forward" },
+      { id: "e_01_rank_gate", from: "rank_scanner", to: "rank_gate", label: "rank stamps", color: 0xfbbf24, flow: "check" },
+      { id: "e_01_hidden_caliper", from: "hidden_tensor", to: "shape_caliper", label: "measure axes", color: 0x7dd3fc, flow: "forward" },
+      { id: "e_01_caliper_shape", from: "shape_caliper", to: "shape_gate", label: "shape slots", color: 0xfbbf24, flow: "check" },
+      { id: "e_01_shape_semantic", from: "shape_gate", to: "semantic_inspector", label: "shape != semantics", color: 0xfbbf24, flow: "check" },
       { id: "e_01_text_tokenizer", from: "text_batch", to: "tokenizer", label: "repair data line", color: 0x7dd3fc, flow: "forward" },
-      { id: "e_01_tokenizer_embedding", from: "tokenizer", to: "embedding_lookup", label: "repair token line", color: 0x7dd3fc, flow: "forward" },
+      { id: "e_01_tokenizer_grid", from: "tokenizer", to: "token_grid", label: "token ids", color: 0x7dd3fc, flow: "forward" },
+      { id: "e_01_grid_embedding", from: "token_grid", to: "embedding_lookup", label: "ids[B,T]", color: 0x7dd3fc, flow: "forward" },
+      { id: "e_01_table_embedding", from: "embedding_table", to: "embedding_lookup", label: "table[V,C]", color: 0x9f7aea, flow: "parameter" },
       { id: "e_01_embedding_hidden", from: "embedding_lookup", to: "hidden_tensor", label: "repair hidden line", color: 0x7dd3fc, flow: "forward" },
-      { id: "e_01_hidden_axes", from: "hidden_tensor", to: "axis_decoder", label: "contract ports", color: 0xfbbf24, flow: "check" },
-      { id: "e_01_axes_tests", from: "axis_decoder", to: "shape_tests", label: "visible / behavior / hidden", color: 0xfbbf24, flow: "check", route: "down" }
+      { id: "e_01_hidden_batch", from: "hidden_tensor", to: "batch_viewer", label: "B axis", color: 0xfbbf24, flow: "check" },
+      { id: "e_01_hidden_mask", from: "hidden_tensor", to: "causal_mask", label: "T axis", color: 0xfbbf24, flow: "check" },
+      { id: "e_01_hidden_linear", from: "hidden_tensor", to: "linear_probe", label: "C axis", color: 0xfbbf24, flow: "check" },
+      { id: "e_01_consumers_tests", from: "causal_mask", to: "shape_tests", label: "hidden tests", color: 0xfbbf24, flow: "check", route: "down" }
     ],
     repair: {
       kind: "axis_labels",
       targetContract: "hidden[B,T,C]",
-      brokenMessage: "Shape contract incomplete: data flow is disconnected, hidden tensor axes are unlabeled, and Axis Decoder cannot verify B/T/C.",
+      brokenMessage: "Shape Reader ladder incomplete: tensor object, rank, shape, token grid, embedding expansion, hidden contract, and consumer validation must all pass.",
       budget: { probes: 5, referenceRuns: 3 },
       tags: [
+        { id: "object_scalar", label: "Inspect Scalar", shortLabel: "scalar", detail: "send scalar 3.14 into Tensor Inspector", category: "object" },
+        { id: "object_vector", label: "Inspect Vector", shortLabel: "vector", detail: "send a 1D vector into Tensor Inspector", category: "object" },
+        { id: "object_matrix", label: "Inspect Matrix", shortLabel: "matrix", detail: "send a 2D matrix into Tensor Inspector", category: "object" },
+        { id: "object_block", label: "Inspect Tensor Block", shortLabel: "3D", detail: "send a stack of matrices into Tensor Inspector", category: "object" },
+        { id: "rank_0", label: "Rank 0", shortLabel: "0", detail: "no independent axes", category: "rank" },
+        { id: "rank_1", label: "Rank 1", shortLabel: "1", detail: "one independent axis", category: "rank" },
+        { id: "rank_2", label: "Rank 2", shortLabel: "2", detail: "two independent axes", category: "rank" },
+        { id: "rank_3", label: "Rank 3", shortLabel: "3", detail: "three independent axes", category: "rank" },
+        { id: "len_2", label: "Length 2", shortLabel: "2", detail: "axis length measured as 2", category: "shape" },
+        { id: "len_4", label: "Length 4", shortLabel: "4", detail: "axis length measured as 4", category: "shape" },
+        { id: "len_8", label: "Length 8", shortLabel: "8", detail: "axis length measured as 8", category: "shape" },
+        { id: "semantic_unresolved", label: "Mark Unresolved", shortLabel: "?,?,?", detail: "shape is known, but axis semantics are still missing", category: "semantic" },
         { id: "wire_text_tokenizer", label: "Text -> Tokenizer", shortLabel: "utf8", detail: "connect raw examples into the tokenizer", category: "data" },
-        { id: "wire_tokenizer_embedding", label: "Tokenizer -> Embedding", shortLabel: "ids", detail: "connect token ids into embedding lookup", category: "data" },
+        { id: "wire_tokenizer_grid", label: "Tokenizer -> Token Grid", shortLabel: "ids", detail: "connect token ids into the 2D token table", category: "data" },
+        { id: "wire_grid_embedding", label: "Token Grid -> Embedding", shortLabel: "ids[B,T]", detail: "connect token_ids[B,T] into embedding lookup", category: "data" },
+        { id: "wire_table_embedding", label: "Embedding Table -> Lookup", shortLabel: "V,C", detail: "connect embedding table rows into lookup", category: "data" },
         { id: "wire_embedding_hidden", label: "Embedding -> Hidden", shortLabel: "vec", detail: "connect embedding vectors into hidden tensor", category: "data" },
+        { id: "token_axis_b", label: "Token Grid Rows = B", shortLabel: "B", detail: "rows separate independent samples", category: "token" },
+        { id: "token_axis_t", label: "Token Grid Columns = T", shortLabel: "T", detail: "columns preserve token positions", category: "token" },
+        { id: "token_sample_1", label: "Select Sample 1", shortLabel: "B1", detail: "select the second independent sample row", category: "token" },
+        { id: "token_t2", label: "Select T2 Column", shortLabel: "T2", detail: "select token position 2 across all samples", category: "token" },
+        { id: "embedding_one", label: "Inspect token_ids[0,2]", shortLabel: "9172", detail: "highlight embedding table row 9172", category: "embedding" },
+        { id: "embedding_autofill", label: "Auto Fill Embeddings", shortLabel: "fill", detail: "fill every token cell with its C-wide embedding vector", category: "embedding" },
         { id: "tag_b", label: "[B] Batch", shortLabel: "B", detail: "independent samples", category: "axis" },
         { id: "tag_t", label: "[T] Token Position", shortLabel: "T", detail: "ordered token positions", category: "axis" },
         { id: "tag_c", label: "[C] Channel", shortLabel: "C", detail: "per-token feature channels", category: "axis" },
-        { id: "contract_b", label: "Decoder Port B", shortLabel: "B ->", detail: "wire batch semantic into Axis Decoder port B", category: "contract" },
-        { id: "contract_t", label: "Decoder Port T", shortLabel: "T ->", detail: "wire token-position semantic into Axis Decoder port T", category: "contract" },
-        { id: "contract_c", label: "Decoder Port C", shortLabel: "C ->", detail: "wire channel semantic into Axis Decoder port C", category: "contract" }
+        { id: "consumer_b", label: "Hidden.B -> Batch Viewer", shortLabel: "B", detail: "Batch Viewer consumes the sample axis", category: "consumer" },
+        { id: "consumer_t", label: "Hidden.T -> Causal Mask", shortLabel: "T", detail: "Causal Mask consumes token position axis", category: "consumer" },
+        { id: "consumer_c", label: "Hidden.C -> Linear Probe", shortLabel: "C", detail: "Linear Probe consumes feature channel axis", category: "consumer" }
       ],
       slots: [
+        {
+          id: "object_scalar",
+          label: "Scalar",
+          nodeId: "tensor_inspector",
+          focusNodeId: "tensor_inspector",
+          emptyLabel: "open",
+          correctTagIds: ["object_scalar"],
+          expected: "Scalar object is accepted by Tensor Inspector",
+          successDetail: "Scalar is accepted as a tensor-like object.",
+          failureDetail: "Tensor Inspector still has not inspected the scalar object."
+        },
+        {
+          id: "object_vector",
+          label: "Vector",
+          nodeId: "tensor_inspector",
+          focusNodeId: "tensor_inspector",
+          emptyLabel: "open",
+          correctTagIds: ["object_vector"],
+          expected: "Vector object is accepted by Tensor Inspector",
+          successDetail: "Vector is accepted as a tensor-like object.",
+          failureDetail: "Tensor Inspector still has not inspected the vector object."
+        },
+        {
+          id: "object_matrix",
+          label: "Matrix",
+          nodeId: "tensor_inspector",
+          focusNodeId: "tensor_inspector",
+          emptyLabel: "open",
+          correctTagIds: ["object_matrix"],
+          expected: "Matrix object is accepted by Tensor Inspector",
+          successDetail: "Matrix is accepted as a tensor-like object.",
+          failureDetail: "Tensor Inspector still has not inspected the matrix object."
+        },
+        {
+          id: "object_block",
+          label: "3D Tensor",
+          nodeId: "tensor_inspector",
+          focusNodeId: "tensor_inspector",
+          emptyLabel: "open",
+          correctTagIds: ["object_block"],
+          expected: "3D tensor block is accepted by Tensor Inspector",
+          successDetail: "Tensor block is accepted as a tensor-like object.",
+          failureDetail: "Tensor Inspector still has not inspected the 3D tensor block."
+        },
+        {
+          id: "rank_scalar",
+          label: "Scalar Rank",
+          nodeId: "rank_scanner",
+          focusNodeId: "rank_scanner",
+          emptyLabel: "?",
+          correctTagIds: ["rank_0"],
+          expected: "Scalar rank = 0",
+          successDetail: "Scalar has no independent axes.",
+          failureDetail: "Rank mismatch: scalar should be rank 0."
+        },
+        {
+          id: "rank_vector",
+          label: "Vector Rank",
+          nodeId: "rank_scanner",
+          focusNodeId: "rank_scanner",
+          emptyLabel: "?",
+          correctTagIds: ["rank_1"],
+          expected: "Vector rank = 1",
+          successDetail: "Vector has one independent axis.",
+          failureDetail: "Rank mismatch: vector should be rank 1."
+        },
+        {
+          id: "rank_matrix",
+          label: "Matrix Rank",
+          nodeId: "rank_scanner",
+          focusNodeId: "rank_scanner",
+          emptyLabel: "?",
+          correctTagIds: ["rank_2"],
+          expected: "Matrix rank = 2",
+          successDetail: "Matrix has two independent axes.",
+          failureDetail: "Rank mismatch: matrix should be rank 2."
+        },
+        {
+          id: "rank_block",
+          label: "Tensor Rank",
+          nodeId: "rank_scanner",
+          focusNodeId: "rank_scanner",
+          emptyLabel: "?",
+          correctTagIds: ["rank_3"],
+          expected: "3D tensor block rank = 3",
+          successDetail: "Tensor block has three independent axes.",
+          failureDetail: "Rank mismatch: tensor block should be rank 3."
+        },
+        {
+          id: "shape_axis_0",
+          label: "Shape Slot 0",
+          nodeId: "shape_gate",
+          focusNodeId: "shape_gate",
+          emptyLabel: "?",
+          correctTagIds: ["len_2"],
+          expected: "Axis 0 length = 2",
+          successDetail: "Axis 0 length is placed in slot 0.",
+          failureDetail: "Shape order mismatch: slot 0 should receive length 2."
+        },
+        {
+          id: "shape_axis_1",
+          label: "Shape Slot 1",
+          nodeId: "shape_gate",
+          focusNodeId: "shape_gate",
+          emptyLabel: "?",
+          correctTagIds: ["len_4"],
+          expected: "Axis 1 length = 4",
+          successDetail: "Axis 1 length is placed in slot 1.",
+          failureDetail: "Shape order mismatch: slot 1 should receive length 4."
+        },
+        {
+          id: "shape_axis_2",
+          label: "Shape Slot 2",
+          nodeId: "shape_gate",
+          focusNodeId: "shape_gate",
+          emptyLabel: "?",
+          correctTagIds: ["len_8"],
+          expected: "Axis 2 length = 8",
+          successDetail: "Axis 2 length is placed in slot 2.",
+          failureDetail: "Shape order mismatch: slot 2 should receive length 8."
+        },
+        {
+          id: "semantic_unresolved",
+          label: "Semantic Contract",
+          nodeId: "semantic_inspector",
+          focusNodeId: "semantic_inspector",
+          emptyLabel: "missing",
+          correctTagIds: ["semantic_unresolved"],
+          expected: "Shape known, axis semantics unresolved",
+          successDetail: "Semantic Inspector now records unresolved axis contract.",
+          failureDetail: "Mark the tensor as shape-known but semantics-unresolved before assigning B/T/C."
+        },
         {
           id: "flow_text_tokenizer",
           label: "Text -> Tokenizer",
@@ -262,15 +601,103 @@ export const bootcampLevels: BootcampLevel[] = [
           failureDetail: "Tokenizer input still does not receive raw text examples."
         },
         {
-          id: "flow_tokenizer_embedding",
-          label: "Tokenizer -> Embedding",
+          id: "flow_tokenizer_grid",
+          label: "Tokenizer -> Grid",
+          nodeId: "token_grid",
+          focusNodeId: "token_grid",
+          emptyLabel: "open",
+          correctTagIds: ["wire_tokenizer_grid"],
+          expected: "Tokenizer token ids fill Token Grid",
+          successDetail: "Token Grid now receives token_ids[B,T].",
+          failureDetail: "Token Grid needs integer token ids from the Tokenizer."
+        },
+        {
+          id: "token_grid_b",
+          label: "Rows",
+          nodeId: "token_grid",
+          focusNodeId: "token_grid",
+          emptyLabel: "?",
+          correctTagIds: ["token_axis_b"],
+          expected: "Token Grid rows = B",
+          successDetail: "Rows now separate independent samples.",
+          failureDetail: "Rows should be B because each row is an independent sample."
+        },
+        {
+          id: "token_grid_t",
+          label: "Columns",
+          nodeId: "token_grid",
+          focusNodeId: "token_grid",
+          emptyLabel: "?",
+          correctTagIds: ["token_axis_t"],
+          expected: "Token Grid columns = T",
+          successDetail: "Columns now preserve token positions.",
+          failureDetail: "Columns should be T because they preserve token order."
+        },
+        {
+          id: "token_task_sample1",
+          label: "Select B1",
+          nodeId: "token_grid",
+          focusNodeId: "token_grid",
+          emptyLabel: "todo",
+          correctTagIds: ["token_sample_1"],
+          expected: "Select sample 1 row",
+          successDetail: "You selected one independent sample row.",
+          failureDetail: "Select the B1 row, not a token-position column."
+        },
+        {
+          id: "token_task_t2",
+          label: "Select T2",
+          nodeId: "token_grid",
+          focusNodeId: "token_grid",
+          emptyLabel: "todo",
+          correctTagIds: ["token_t2"],
+          expected: "Select token position 2 across batch",
+          successDetail: "You selected T2 across all samples.",
+          failureDetail: "Select the T2 column, not a sample row."
+        },
+        {
+          id: "flow_grid_embedding",
+          label: "Grid -> Lookup",
           nodeId: "embedding_lookup",
           focusNodeId: "embedding_lookup",
           emptyLabel: "open",
-          correctTagIds: ["wire_tokenizer_embedding"],
-          expected: "Tokenizer token ids feed Embedding Lookup",
-          successDetail: "Token ids now index the embedding table.",
-          failureDetail: "Embedding Lookup requires integer token ids, not raw text or hidden vectors."
+          correctTagIds: ["wire_grid_embedding"],
+          expected: "Token Grid token_ids[B,T] feed Embedding Lookup",
+          successDetail: "Embedding Lookup now receives token_ids[B,T].",
+          failureDetail: "Embedding Lookup requires token_ids[B,T]."
+        },
+        {
+          id: "flow_table_embedding",
+          label: "Table -> Lookup",
+          nodeId: "embedding_lookup",
+          focusNodeId: "embedding_lookup",
+          emptyLabel: "open",
+          correctTagIds: ["wire_table_embedding"],
+          expected: "Embedding Table[V,C] feeds Embedding Lookup",
+          successDetail: "Embedding Lookup can now read C-wide rows from the table.",
+          failureDetail: "Embedding Lookup needs the embedding table before it can expand tokens."
+        },
+        {
+          id: "embedding_probe",
+          label: "Row 9172",
+          nodeId: "embedding_lookup",
+          focusNodeId: "embedding_lookup",
+          emptyLabel: "todo",
+          correctTagIds: ["embedding_one"],
+          expected: "Inspect token_ids[0,2] through table row 9172",
+          successDetail: "The selected token id maps to one C-wide embedding vector.",
+          failureDetail: "Inspect token_ids[0,2] before auto filling all embeddings."
+        },
+        {
+          id: "embedding_autofill",
+          label: "Auto Fill",
+          nodeId: "hidden_tensor",
+          focusNodeId: "hidden_tensor",
+          emptyLabel: "todo",
+          correctTagIds: ["embedding_autofill"],
+          expected: "All token cells expand into C-wide vectors",
+          successDetail: "Every token cell is expanded into feature channels.",
+          failureDetail: "Auto Fill must complete before Hidden Tensor can be trusted."
         },
         {
           id: "flow_embedding_hidden",
@@ -317,37 +744,37 @@ export const bootcampLevels: BootcampLevel[] = [
           failureDetail: "Linear expected feature axis C, but received a non-channel semantic."
         },
         {
-          id: "contract_b",
-          label: "Decoder B",
-          nodeId: "axis_decoder",
-          focusNodeId: "axis_decoder",
+          id: "consumer_b",
+          label: "Batch Viewer",
+          nodeId: "batch_viewer",
+          focusNodeId: "batch_viewer",
           emptyLabel: "open",
-          correctTagIds: ["contract_b"],
-          expected: "Axis Decoder port B receives batch semantic",
-          successDetail: "Axis Decoder B port is wired.",
-          failureDetail: "Axis Decoder B port is still missing the batch semantic."
+          correctTagIds: ["consumer_b"],
+          expected: "Hidden.B feeds Batch Viewer",
+          successDetail: "Batch Viewer shows independent samples.",
+          failureDetail: "Batch Viewer must receive B, not T or C."
         },
         {
-          id: "contract_t",
-          label: "Decoder T",
-          nodeId: "axis_decoder",
-          focusNodeId: "axis_decoder",
+          id: "consumer_t",
+          label: "Causal Mask",
+          nodeId: "causal_mask",
+          focusNodeId: "causal_mask",
           emptyLabel: "open",
-          correctTagIds: ["contract_t"],
-          expected: "Axis Decoder port T receives token-position semantic",
-          successDetail: "Axis Decoder T port is wired.",
-          failureDetail: "Axis Decoder T port is still missing the token-position semantic."
+          correctTagIds: ["consumer_t"],
+          expected: "Hidden.T feeds Causal Mask",
+          successDetail: "Causal Mask builds a [T,T] lower-triangular board.",
+          failureDetail: "Causal Mask must receive T. Attention should not connect samples as time."
         },
         {
-          id: "contract_c",
-          label: "Decoder C",
-          nodeId: "axis_decoder",
-          focusNodeId: "axis_decoder",
+          id: "consumer_c",
+          label: "Linear Probe",
+          nodeId: "linear_probe",
+          focusNodeId: "linear_probe",
           emptyLabel: "open",
-          correctTagIds: ["contract_c"],
-          expected: "Axis Decoder port C receives channel semantic",
-          successDetail: "Axis Decoder C port is wired.",
-          failureDetail: "Axis Decoder C port is still missing the channel semantic."
+          correctTagIds: ["consumer_c"],
+          expected: "Hidden.C feeds Linear Probe",
+          successDetail: "Linear Probe consumes the feature channel dimension.",
+          failureDetail: "Linear Probe must receive C as its input feature width."
         }
       ],
       probes: [
@@ -450,109 +877,138 @@ export const bootcampLevels: BootcampLevel[] = [
       ],
       checks: [
         {
-          id: "data_flow_connected",
-          title: "data flow is restored",
+          id: "tensor_objects",
+          title: "0-1A tensor objects are accepted",
           group: "visible",
-          slotIds: ["flow_text_tokenizer", "flow_tokenizer_embedding", "flow_embedding_hidden"],
-          expected: "Text Batch -> Tokenizer -> Embedding Lookup -> Hidden Tensor",
-          passDetail: "The forward data path can now generate hidden activations.",
-          failDetail: "Data flow repair is incomplete; the hidden tensor cannot be trusted yet.",
-          focusNodeId: "hidden_tensor"
+          slotIds: ["object_scalar", "object_vector", "object_matrix", "object_block"],
+          expected: "scalar, vector, matrix, and 3D block are tensor-like objects",
+          passDetail: "Tensor Inspector accepts all four numeric containers.",
+          failDetail: "Tensor Object challenge is incomplete.",
+          focusNodeId: "tensor_inspector"
         },
         {
-          id: "rank_check",
-          title: "hidden rank is 3",
+          id: "rank_scanner",
+          title: "0-1B rank stamps are correct",
           group: "visible",
-          slotIds: [],
-          expected: "rank(hidden) == 3",
-          passDetail: "Visible tensor has three axes.",
-          failDetail: "Hidden tensor rank mismatch.",
-          focusNodeId: "hidden_tensor"
+          slotIds: ["rank_scalar", "rank_vector", "rank_matrix", "rank_block"],
+          expected: "rank == 0, 1, 2, 3",
+          passDetail: "Rank Scanner reads the number of axes for each object.",
+          failDetail: "Rank Scanner has at least one incorrect stamp.",
+          focusNodeId: "rank_scanner"
         },
         {
-          id: "axis_contract",
-          title: "axis labels match [B,T,C]",
+          id: "shape_caliper",
+          title: "0-1C shape lengths are ordered",
           group: "visible",
+          slotIds: ["shape_axis_0", "shape_axis_1", "shape_axis_2"],
+          expected: "shape == [2,4,8]",
+          passDetail: "Shape Caliper records [2,4,8] in axis order.",
+          failDetail: "Shape Caliper has a length in the wrong slot.",
+          focusNodeId: "shape_gate"
+        },
+        {
+          id: "semantic_gap",
+          title: "0-1D shape is not semantics",
+          group: "visible",
+          slotIds: ["semantic_unresolved"],
+          expected: "shape is known while B/T/C semantics are unresolved",
+          passDetail: "Semantic Inspector marks the shape-known tensor as unresolved.",
+          failDetail: "Shape [2,4,8] was treated as if it already meant [B,T,C].",
+          focusNodeId: "semantic_inspector"
+        },
+        {
+          id: "token_grid_builder",
+          title: "0-1E token_ids[B,T] is built",
+          group: "visible",
+          slotIds: ["flow_text_tokenizer", "flow_tokenizer_grid", "token_grid_b", "token_grid_t", "token_task_sample1", "token_task_t2"],
+          expected: "Text Batch -> Tokenizer -> token_ids[B,T]",
+          passDetail: "Token Grid separates samples by rows and token positions by columns.",
+          failDetail: "Token Grid is not a valid token_ids[B,T] board yet.",
+          focusNodeId: "token_grid"
+        },
+        {
+          id: "embedding_expansion",
+          title: "0-1F token ids expand into embeddings",
+          group: "visible",
+          slotIds: ["flow_grid_embedding", "flow_table_embedding", "embedding_probe", "embedding_autofill", "flow_embedding_hidden"],
+          expected: "token_ids[B,T] + embedding_table[V,C] -> hidden[B,T,C]",
+          passDetail: "Every token id expands into one C-wide vector.",
+          failDetail: "Embedding expansion is incomplete.",
+          focusNodeId: "embedding_lookup"
+        },
+        {
+          id: "hidden_contract",
+          title: "0-1G hidden axes are labeled [B,T,C]",
+          group: "behavior",
           slotIds: ["axis_0", "axis_1", "axis_2"],
           expected: "axis labels == [B,T,C]",
-          passDetail: "All axis labels satisfy hidden[B,T,C].",
-          failDetail: "Axis semantics do not satisfy hidden[B,T,C].",
-          focusNodeId: "axis_decoder"
-        },
-        {
-          id: "decoder_contract",
-          title: "Axis Decoder ports are connected",
-          group: "visible",
-          slotIds: ["contract_b", "contract_t", "contract_c"],
-          expected: "Decoder receives B, T, and C semantic lines",
-          passDetail: "Axis Decoder can read the repaired shape contract.",
-          failDetail: "Axis Decoder still has at least one open contract port.",
-          focusNodeId: "axis_decoder"
-        },
-        {
-          id: "behavior_b",
-          title: "B separates independent samples",
-          group: "behavior",
-          slotIds: ["axis_0", "contract_b"],
-          expected: "axis 0 changes sample identity",
-          passDetail: "Changing B switches to a different text sample.",
-          failDetail: "Batch behavior failed: the marked B axis does not separate samples.",
-          blockedDetail: "Behavior checks are blocked until visible data and contract repairs pass.",
+          passDetail: "Hidden Tensor contract is repaired as hidden[B,T,C].",
+          failDetail: "Hidden Tensor axis labels do not match [B,T,C].",
+          blockedDetail: "Hidden contract repair is blocked until the tensor object, rank, shape, token grid, and embedding expansion checks pass.",
           focusNodeId: "hidden_tensor"
         },
         {
-          id: "behavior_t",
-          title: "T preserves token order",
+          id: "consumer_validation",
+          title: "0-1H downstream consumers accept B/T/C",
           group: "behavior",
-          slotIds: ["axis_1", "contract_t"],
-          expected: "axis 1 walks token position 0 -> 1 -> 2",
-          passDetail: "Changing T moves through token positions in order.",
-          failDetail: "Time behavior failed: the marked T axis does not preserve token order.",
-          blockedDetail: "Behavior checks are blocked until visible data and contract repairs pass.",
-          focusNodeId: "hidden_tensor"
-        },
-        {
-          id: "behavior_c",
-          title: "C exposes feature channels",
-          group: "behavior",
-          slotIds: ["axis_2", "contract_c"],
-          expected: "axis 2 is a dense feature vector consumed by Linear",
-          passDetail: "Changing C selects feature channels for the current token.",
-          failDetail: "Channel behavior failed: the marked C axis is not a feature channel.",
-          blockedDetail: "Behavior checks are blocked until visible data and contract repairs pass.",
-          focusNodeId: "hidden_tensor"
+          slotIds: ["consumer_b", "consumer_t", "consumer_c"],
+          expected: "B feeds Batch Viewer, T feeds Causal Mask, C feeds Linear Probe",
+          passDetail: "Downstream modules consume the repaired contract correctly.",
+          failDetail: "At least one downstream consumer receives the wrong semantic axis.",
+          blockedDetail: "Consumer validation is blocked until hidden[B,T,C] is repaired.",
+          focusNodeId: "shape_tests"
         },
         {
           id: "hidden_cases",
-          title: "hidden shape generalizes",
+          title: "0-1X hidden shape gauntlet passes",
           group: "hidden",
           slotIds: [
+            "object_scalar",
+            "object_vector",
+            "object_matrix",
+            "object_block",
+            "rank_scalar",
+            "rank_vector",
+            "rank_matrix",
+            "rank_block",
+            "shape_axis_0",
+            "shape_axis_1",
+            "shape_axis_2",
+            "semantic_unresolved",
             "flow_text_tokenizer",
-            "flow_tokenizer_embedding",
+            "flow_tokenizer_grid",
+            "token_grid_b",
+            "token_grid_t",
+            "token_task_sample1",
+            "token_task_t2",
+            "flow_grid_embedding",
+            "flow_table_embedding",
+            "embedding_probe",
+            "embedding_autofill",
             "flow_embedding_hidden",
             "axis_0",
             "axis_1",
             "axis_2",
-            "contract_b",
-            "contract_t",
-            "contract_c"
+            "consumer_b",
+            "consumer_t",
+            "consumer_c"
           ],
           expected: "hidden[1,8,16], hidden[4,3,32], hidden[2,12,6]",
-          passDetail: "Axis semantics generalize across hidden shapes.",
-          failDetail: "Hidden tests failed because the contract is semantic, not numeric.",
-          blockedDetail: "Hidden tests are blocked until visible and behavior checks pass.",
+          passDetail: "The semantic contract generalizes to hidden test shapes.",
+          failDetail: "Hidden tests failed because the repair learned numeric positions without preserving semantics.",
+          blockedDetail: "Hidden tests are blocked until all visible and behavior challenges pass.",
           focusNodeId: "shape_tests"
         }
       ],
       hiddenCases: ["hidden[1,8,16]", "hidden[4,3,32]", "hidden[2,12,6]"],
-      successSummary: "Contract restored: Hidden Tensor is now float32[B,T,C], data flow is live, and Axis Decoder accepts the shape contract."
+      successSummary: "Contract restored: the full 0-1 challenge ladder builds token_ids[B,T], expands hidden[B,T,C], validates consumers, and passes hidden shape cases."
     },
     traceSteps: [
-      { id: "01_step_flow", title: "Data Flow", state: "warn", detail: "connect the open forward lines", selectNodeId: "tokenizer" },
-      { id: "01_step_probe", title: "Probe", state: "warn", detail: "inspect axis patterns", selectNodeId: "hidden_tensor" },
-      { id: "01_step_axis", title: "Axis Tags", state: "warn", detail: "assign B/T/C to Axis 0/1/2", selectNodeId: "hidden_tensor" },
-      { id: "01_step_contract", title: "Contract", state: "warn", detail: "wire B/T/C into Axis Decoder", selectNodeId: "axis_decoder" },
-      { id: "01_step_tests", title: "Tests", state: "warn", detail: "visible + behavior + hidden", selectNodeId: "shape_tests" }
+      { id: "01_step_objects", title: "Objects", state: "warn", detail: "inspect tensor-like number containers", selectNodeId: "tensor_inspector" },
+      { id: "01_step_shape", title: "Rank / Shape", state: "warn", detail: "read axes and lengths before semantics", selectNodeId: "shape_gate" },
+      { id: "01_step_tokens", title: "Token Grid", state: "warn", detail: "build token_ids[B,T]", selectNodeId: "token_grid" },
+      { id: "01_step_hidden", title: "Hidden", state: "warn", detail: "expand embeddings and label B/T/C", selectNodeId: "hidden_tensor" },
+      { id: "01_step_tests", title: "Gauntlet", state: "warn", detail: "consumer validation + hidden tests", selectNodeId: "shape_tests" }
     ]
   },
   {
@@ -1383,16 +1839,20 @@ function explainRepairFailure(
     return firstFailedSlot?.failureDetail ?? definition.failDetail;
   }
 
-  if (definition.id === "data_flow_connected") {
-    return firstFailedSlot?.failureDetail ?? "Forward data flow still has an open port.";
-  }
-
-  if (definition.id === "decoder_contract") {
-    return firstFailedSlot?.failureDetail ?? "Axis Decoder still has an open B/T/C contract port.";
+  if (
+    definition.id === "tensor_objects" ||
+    definition.id === "rank_scanner" ||
+    definition.id === "shape_caliper" ||
+    definition.id === "semantic_gap" ||
+    definition.id === "token_grid_builder" ||
+    definition.id === "embedding_expansion" ||
+    definition.id === "consumer_validation"
+  ) {
+    return firstFailedSlot?.failureDetail ?? definition.failDetail;
   }
 
   const axisPattern = [assignments.axis_0, assignments.axis_1, assignments.axis_2].join(",");
-  if (definition.id === "axis_contract" || definition.id.startsWith("behavior_")) {
+  if (definition.id === "hidden_contract" || definition.id === "hidden_cases") {
     if (axisPattern === "tag_t,tag_b,tag_c") {
       return "B 和 T 标反：批次探针看到 Axis 0 在沿 token 顺序前进，而 Time Probe 看到 Axis 1 在切换样本。Causal Mask 会把样本当成时间轴。";
     }

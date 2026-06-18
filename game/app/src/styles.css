@@ -258,9 +258,198 @@ h3 {
   gap: 8px;
 }
 
+.blueprintPalette {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 10px;
+  border: 1px solid #315f94;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(15, 35, 60, 0.92), rgba(7, 17, 31, 0.98)),
+    #07111f;
+}
+
+.paletteHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.paletteHeader b {
+  color: #e8f2ff;
+  font-size: 0.88rem;
+}
+
+.paletteHeader small {
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.paletteItems {
+  display: grid;
+  gap: 7px;
+}
+
+.paletteItem {
+  display: grid;
+  grid-template-columns: 72px 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 8px;
+  border: 1px solid #254763;
+  border-radius: 7px;
+  background: #081524;
+  color: #d7e8fb;
+  text-align: left;
+  cursor: grab;
+}
+
+.paletteItem:active {
+  cursor: grabbing;
+}
+
+.paletteItem:hover,
+.paletteItem.active {
+  border-color: #60a5fa;
+  background: #10233a;
+}
+
+.paletteItem.used {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.paletteItem > span {
+  padding: 4px 6px;
+  border: 1px solid #315f94;
+  border-radius: 999px;
+  color: #93c5fd;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.paletteItem b {
+  color: #e8f2ff;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+
+.paletteItem small {
+  overflow: hidden;
+  color: #9db2ca;
+  font-size: 0.74rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paletteItem.object b,
+.paletteItem.rank b,
+.paletteItem.shape b {
+  color: #fef08a;
+}
+
+.paletteItem.token b,
+.paletteItem.embedding b {
+  color: #7dd3fc;
+}
+
+.paletteItem.axis b {
+  color: #fde68a;
+}
+
+.paletteEmpty {
+  margin: 0;
+  color: #99aec5;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.wireHintBox {
+  display: grid;
+  gap: 5px;
+  padding-top: 9px;
+  border-top: 1px solid #263b55;
+}
+
+.wireHintBox b {
+  color: #fbbf24;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.wireHintBox small {
+  color: #c7d2fe;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
 .levelList {
   display: grid;
   gap: 9px;
+}
+
+.levelGroup {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.levelGroup.expanded {
+  padding-bottom: 3px;
+}
+
+.challengeRail {
+  display: grid;
+  gap: 7px;
+  margin: -1px 0 5px 18px;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid rgba(38, 59, 85, 0.82);
+  border-left-color: rgba(96, 165, 250, 0.66);
+  border-radius: 0 8px 8px 0;
+  background: rgba(7, 17, 31, 0.66);
+}
+
+.challengeStep {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.challengeStep.active {
+  border-color: rgba(96, 165, 250, 0.58);
+  background: rgba(18, 48, 82, 0.72);
+}
+
+.challengeStep.done {
+  border-color: rgba(34, 197, 94, 0.38);
+  background: rgba(8, 37, 31, 0.62);
+}
+
+.challengeStep b,
+.challengeStep small {
+  display: block;
+}
+
+.challengeStep b {
+  color: #e8f2ff;
+  font-size: 0.78rem;
+}
+
+.challengeStep small {
+  margin-top: 2px;
+  color: #8aa6bf;
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 
 .levelItem {
@@ -418,6 +607,166 @@ h3 {
   overflow: hidden;
 }
 
+.stageDebriefOverlay {
+  position: absolute;
+  z-index: 35;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(34, 197, 94, 0.16), transparent 34%),
+    rgba(3, 8, 16, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.stageDebriefPromptLayer {
+  position: absolute;
+  z-index: 18;
+  right: 22px;
+  bottom: 22px;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.stageDebriefPrompt {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: min(380px, calc(100vw - 56px));
+  min-height: 68px;
+  padding: 12px 13px;
+  border: 1px solid rgba(34, 197, 94, 0.7);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(34, 197, 94, 0.2), transparent 42%),
+    rgba(7, 17, 31, 0.94);
+  color: #dbeafe;
+  text-align: left;
+  pointer-events: auto;
+  box-shadow:
+    0 18px 52px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(34, 197, 94, 0.15),
+    0 0 26px rgba(34, 197, 94, 0.16);
+  animation: stagePromptIn 260ms cubic-bezier(0.18, 0.9, 0.24, 1) both, stagePromptPulse 1.9s ease-in-out 320ms infinite;
+}
+
+.stageDebriefPrompt:hover {
+  border-color: #86efac;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(34, 197, 94, 0.25), transparent 42%),
+    rgba(8, 37, 31, 0.96);
+}
+
+.stageDebriefPrompt > svg {
+  color: #22c55e;
+}
+
+.stageDebriefPrompt b,
+.stageDebriefPrompt small {
+  display: block;
+}
+
+.stageDebriefPrompt b {
+  color: #e8f2ff;
+  font-size: 0.92rem;
+}
+
+.stageDebriefPrompt small {
+  margin-top: 3px;
+  color: #a8bed4;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.stageDebriefPrompt code {
+  padding: 5px 8px;
+  border: 1px solid rgba(34, 197, 94, 0.46);
+  border-radius: 999px;
+  background: rgba(8, 37, 31, 0.8);
+  color: #bbf7d0;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.stageDebriefCard {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(34, 197, 94, 0.55);
+  border-radius: 10px;
+  background: rgba(7, 17, 31, 0.96);
+  box-shadow:
+    0 22px 62px rgba(0, 0, 0, 0.5),
+    0 0 28px rgba(34, 197, 94, 0.13);
+}
+
+.stageDebriefCard > svg {
+  color: #22c55e;
+}
+
+.stageDebriefCard h2 {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 1.18rem;
+}
+
+.stageDebriefCard p:not(.eyebrow) {
+  margin: 0;
+  color: #dbeafe;
+  line-height: 1.45;
+}
+
+.stageDebriefCard small {
+  color: #9db2ca;
+}
+
+.stageDebriefActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.stageDebriefActions .ghostButton {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.stageDebriefActions .ghostButton small {
+  padding: 2px 6px;
+  border: 1px solid #2b4564;
+  border-radius: 999px;
+  color: #93c5fd;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.68rem;
+}
+
+.canvasPaletteLayer {
+  position: absolute;
+  z-index: 12;
+  top: 14px;
+  left: 14px;
+  width: min(252px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  pointer-events: none;
+}
+
+.canvasPaletteLayer .blueprintPalette {
+  margin: 0;
+  max-height: calc(100vh - 210px);
+  overflow: auto;
+  pointer-events: auto;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(125, 211, 252, 0.08);
+}
+
 .pixiHost {
   min-width: 0;
   min-height: 520px;
@@ -540,6 +889,632 @@ h3 {
   color: #93a8be;
 }
 
+.taskChecklist {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 11px;
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  border-radius: 8px;
+  background: rgba(7, 17, 31, 0.62);
+}
+
+.taskChecklistHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.taskChecklistHeader h3 {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 0.92rem;
+}
+
+.taskChecklistHeader code {
+  padding: 3px 7px;
+  border: 1px solid #315f94;
+  border-radius: 999px;
+  background: #07111f;
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.taskRows {
+  display: grid;
+  gap: 7px;
+}
+
+.taskRow {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 9px;
+  border: 1px solid #263b55;
+  border-radius: 7px;
+  background: rgba(10, 21, 36, 0.86);
+}
+
+.taskRow.active {
+  border-color: rgba(251, 191, 36, 0.62);
+}
+
+.taskRow.pass {
+  border-color: rgba(34, 197, 94, 0.42);
+  background: rgba(8, 37, 31, 0.58);
+}
+
+.taskRow.fail {
+  border-color: rgba(239, 68, 68, 0.48);
+  background: rgba(69, 10, 10, 0.32);
+}
+
+.taskRow input {
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  accent-color: #22c55e;
+}
+
+.taskRow b,
+.taskRow small {
+  display: block;
+}
+
+.taskRow b {
+  overflow: hidden;
+  color: #e8f2ff;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskRow small {
+  margin-top: 2px;
+  color: #8aa6bf;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.taskRow.pass small {
+  color: #bbf7d0;
+}
+
+.taskRow.fail small {
+  color: #fecaca;
+}
+
+.tensorObjectShowcase {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 11px;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(34, 197, 94, 0.13), transparent 36%),
+    rgba(7, 17, 31, 0.72);
+}
+
+.tensorObjectShowcase.modal {
+  gap: 12px;
+  margin-bottom: 0;
+  padding: 14px;
+  border-color: rgba(34, 197, 94, 0.62);
+  background:
+    radial-gradient(circle at 16% 18%, rgba(34, 197, 94, 0.15), transparent 36%),
+    #07111f;
+}
+
+.tensorObjectShowcase.sidebar {
+  transform-origin: top right;
+  animation: tensorSidebarDockIn 260ms cubic-bezier(0.2, 0.85, 0.22, 1) both;
+}
+
+.tensorObjectShowcaseHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tensorObjectShowcaseHeader > div:first-child {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.tensorObjectShowcaseHeader h3 {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 0.92rem;
+}
+
+.tensorObjectShowcase.modal .tensorObjectShowcaseHeader h3 {
+  font-size: 1.18rem;
+}
+
+.tensorObjectShowcaseHeader code,
+.tensorObjectMeta code {
+  justify-self: start;
+  padding: 3px 7px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 999px;
+  background: rgba(8, 37, 31, 0.74);
+  color: #bbf7d0;
+  font-size: 0.69rem;
+  font-weight: 900;
+}
+
+.tensorObjectShowcaseActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.showcaseRunButton,
+.showcaseIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.showcaseRunButton {
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  background: rgba(8, 37, 31, 0.92);
+  color: #bbf7d0;
+}
+
+.showcaseIconButton {
+  width: 30px;
+  padding: 0;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  background: rgba(7, 17, 31, 0.88);
+  color: #bfdbfe;
+}
+
+.showcaseRunButton:hover,
+.showcaseIconButton:hover {
+  border-color: #7dd3fc;
+  color: #e0f2fe;
+}
+
+.tensorObjectVisual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 104px;
+  overflow: hidden;
+  border: 1px solid rgba(38, 59, 85, 0.9);
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(49, 95, 148, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 95, 148, 0.16) 1px, transparent 1px),
+    #06111f;
+  background-size: 22px 22px;
+}
+
+.tensorObjectShowcase.modal .tensorObjectVisual {
+  min-height: 150px;
+}
+
+.tensorScalarOrb {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border: 1px solid #fbbf24;
+  border-radius: 999px;
+  background: radial-gradient(circle at 34% 28%, #fef3c7, #f59e0b 42%, #422b16 100%);
+  color: #1f1307;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 900;
+  animation: scalarPulse 1.4s ease-in-out infinite;
+  box-shadow: 0 0 24px rgba(251, 191, 36, 0.28);
+}
+
+.tensorObjectVisual.vector {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 26px;
+}
+
+.tensorObjectVisual.vector span {
+  display: grid;
+  place-items: center;
+  min-height: 50px;
+  border: 1px solid rgba(125, 211, 252, 0.72);
+  border-radius: 7px;
+  background: rgba(14, 116, 144, 0.3);
+  color: #dbeafe;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 900;
+  animation: vectorSweep 1.6s ease-in-out infinite;
+}
+
+.tensorObjectVisual.vector span:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.tensorObjectVisual.vector span:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.tensorObjectVisual.vector span:nth-child(4) {
+  animation-delay: 0.36s;
+}
+
+.tensorObjectVisual.matrix {
+  grid-template-columns: repeat(3, 42px);
+  grid-auto-rows: 34px;
+  gap: 6px;
+  padding: 24px;
+}
+
+.tensorObjectVisual.matrix span {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(56, 189, 248, 0.78);
+  border-radius: 6px;
+  background: rgba(12, 74, 110, 0.34);
+  color: #dbeafe;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 900;
+  animation: matrixScan 1.8s ease-in-out infinite;
+}
+
+.tensorObjectVisual.matrix span:nth-child(2),
+.tensorObjectVisual.matrix span:nth-child(5) {
+  animation-delay: 0.18s;
+}
+
+.tensorObjectVisual.matrix span:nth-child(3),
+.tensorObjectVisual.matrix span:nth-child(6) {
+  animation-delay: 0.36s;
+}
+
+.tensorObjectVisual.block {
+  min-height: 128px;
+}
+
+.tensorBlockPlane {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(2, 28px);
+  grid-auto-rows: 24px;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid rgba(56, 189, 248, 0.82);
+  border-radius: 7px;
+  background: rgba(12, 74, 110, 0.52);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.24);
+  animation: blockFloat 2s ease-in-out infinite;
+}
+
+.tensorBlockPlane:nth-child(1) {
+  transform: translate(-26px, 18px);
+  opacity: 0.52;
+}
+
+.tensorBlockPlane:nth-child(2) {
+  transform: translate(-8px, 2px);
+  opacity: 0.75;
+  animation-delay: 0.16s;
+}
+
+.tensorBlockPlane:nth-child(3) {
+  transform: translate(12px, -16px);
+  opacity: 0.96;
+  animation-delay: 0.32s;
+}
+
+.tensorBlockPlane span {
+  border-radius: 4px;
+  background: rgba(125, 211, 252, 0.42);
+}
+
+.tensorObjectMeta {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.tensorCodePanel {
+  display: grid;
+  gap: 8px;
+}
+
+.tensorCodeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.tensorCodeHeader b {
+  color: #e8f2ff;
+  font-size: 0.82rem;
+}
+
+.tensorCodeBlock {
+  max-width: 100%;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #050c16;
+  color: #dbeafe;
+  font-size: 0.72rem;
+  line-height: 1.42;
+  white-space: pre-wrap;
+}
+
+.tensorObjectShowcase.sidebar .tensorCodePanel {
+  order: 5;
+}
+
+.tensorObjectShowcase.sidebar .tensorCodeBlock {
+  max-height: 116px;
+}
+
+.tensorCodeBlock code {
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+.tensorOutputPanel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 8px;
+  background: rgba(5, 12, 22, 0.88);
+}
+
+.tensorObjectShowcase.sidebar .tensorOutputPanel {
+  order: 4;
+}
+
+.tensorOutputPanel.ready {
+  border-color: rgba(34, 197, 94, 0.42);
+}
+
+.tensorOutputPanel > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tensorOutputPanel b {
+  color: #e8f2ff;
+  font-size: 0.82rem;
+}
+
+.tensorOutputPanel small {
+  color: #8aa6bf;
+  font-size: 0.72rem;
+}
+
+.tensorOutputPanel pre {
+  max-width: 100%;
+  margin: 0;
+  overflow: auto;
+  color: #bbf7d0;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.tensorRuntimeBackdrop {
+  z-index: 28;
+  animation: tensorRuntimeBackdropIn 180ms ease-out both;
+}
+
+.tensorRuntimeBackdrop.closing {
+  pointer-events: none;
+  animation: tensorRuntimeBackdropOut 220ms ease-in both;
+}
+
+.tensorRuntimeModal {
+  width: min(720px, 100%);
+  max-height: min(820px, calc(100vh - 36px));
+  overflow: auto;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  border-radius: 8px;
+  background: #07111f;
+  box-shadow:
+    0 26px 90px rgba(0, 0, 0, 0.5),
+    0 0 32px rgba(34, 197, 94, 0.12);
+  transform-origin: 88% 8%;
+  animation: tensorRuntimePopIn 240ms cubic-bezier(0.18, 0.9, 0.24, 1) both;
+  will-change: opacity, transform;
+}
+
+.tensorRuntimeBackdrop.closing .tensorRuntimeModal {
+  animation: tensorRuntimeMinimizeOut 220ms cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+
+@keyframes scalarPulse {
+  0%,
+  100% {
+    transform: scale(0.96);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes vectorSweep {
+  0%,
+  100% {
+    transform: translateY(0);
+    background: rgba(14, 116, 144, 0.3);
+  }
+
+  50% {
+    transform: translateY(-5px);
+    background: rgba(56, 189, 248, 0.38);
+  }
+}
+
+@keyframes matrixScan {
+  0%,
+  100% {
+    background: rgba(12, 74, 110, 0.34);
+  }
+
+  50% {
+    background: rgba(56, 189, 248, 0.4);
+  }
+}
+
+@keyframes blockFloat {
+  0%,
+  100% {
+    filter: brightness(0.92);
+  }
+
+  50% {
+    filter: brightness(1.28);
+  }
+}
+
+@keyframes tensorRuntimeBackdropIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+
+  to {
+    opacity: 1;
+    backdrop-filter: blur(6px);
+  }
+}
+
+@keyframes tensorRuntimeBackdropOut {
+  from {
+    opacity: 1;
+    backdrop-filter: blur(6px);
+  }
+
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes tensorRuntimePopIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.965);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.006);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tensorRuntimeMinimizeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(34%, -14%) scale(0.72);
+    filter: brightness(1.18);
+  }
+}
+
+@keyframes tensorSidebarDockIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+    box-shadow:
+      0 0 0 rgba(34, 197, 94, 0),
+      inset 0 0 0 1px rgba(34, 197, 94, 0.72);
+  }
+
+  52% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow:
+      0 0 24px rgba(34, 197, 94, 0.18),
+      inset 0 0 0 1px rgba(34, 197, 94, 0.5);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow:
+      0 0 0 rgba(34, 197, 94, 0),
+      inset 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+@keyframes stagePromptIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes stagePromptPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 18px 52px rgba(0, 0, 0, 0.42),
+      0 0 0 1px rgba(34, 197, 94, 0.15),
+      0 0 20px rgba(34, 197, 94, 0.12);
+  }
+
+  50% {
+    box-shadow:
+      0 18px 52px rgba(0, 0, 0, 0.42),
+      0 0 0 1px rgba(34, 197, 94, 0.28),
+      0 0 34px rgba(34, 197, 94, 0.24);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stageDebriefPrompt,
+  .tensorObjectShowcase.sidebar,
+  .tensorRuntimeBackdrop,
+  .tensorRuntimeBackdrop.closing,
+  .tensorRuntimeModal,
+  .tensorRuntimeBackdrop.closing .tensorRuntimeModal {
+    animation: none;
+  }
+}
+
 .kindBadge {
   justify-self: start;
   min-height: 24px;
@@ -613,6 +1588,65 @@ h3 {
 
 .sampleBox {
   margin-bottom: 16px;
+}
+
+.inspectorNote,
+.failureLesson {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 16px;
+  padding: 11px;
+  border-radius: 8px;
+}
+
+.inspectorNote {
+  border: 1px solid rgba(96, 165, 250, 0.36);
+  background: rgba(15, 39, 64, 0.46);
+}
+
+.failureLesson {
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  background: rgba(69, 10, 10, 0.34);
+}
+
+.inspectorNote h3,
+.failureLesson h3 {
+  margin-bottom: 0;
+  color: #e8f2ff;
+}
+
+.inspectorNote b {
+  color: #bfdbfe;
+}
+
+.failureLesson b {
+  color: #fecaca;
+}
+
+.failureLesson p {
+  margin-bottom: 0;
+  color: #fecaca;
+  font-size: 0.8rem;
+  line-height: 1.38;
+}
+
+.inspectorNote p {
+  margin-bottom: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  border-radius: 6px;
+  background: rgba(7, 17, 31, 0.72);
+  color: #dbeafe;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.inspectorNote small,
+.failureLesson small {
+  display: block;
+  color: #a8bed4;
+  font-size: 0.77rem;
+  line-height: 1.35;
 }
 
 .sampleBox code {

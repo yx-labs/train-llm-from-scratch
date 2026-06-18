@@ -56,7 +56,19 @@ export type RepairTag = {
   label: string;
   shortLabel: string;
   detail: string;
-  category?: "data" | "axis" | "contract" | "operation" | "rail";
+  category?:
+    | "data"
+    | "axis"
+    | "contract"
+    | "operation"
+    | "rail"
+    | "object"
+    | "rank"
+    | "shape"
+    | "semantic"
+    | "token"
+    | "embedding"
+    | "consumer";
 };
 
 export type ProbeObservation = {
