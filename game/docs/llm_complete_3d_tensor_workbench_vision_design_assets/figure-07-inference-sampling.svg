@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="520" viewBox="0 0 1180 520">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#08111f"/>
+    <stop offset="0.55" stop-color="#0b1d33"/>
+    <stop offset="1" stop-color="#101827"/>
+  </linearGradient>
+  <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#15273c"/>
+    <stop offset="1" stop-color="#0d1928"/>
+  </linearGradient>
+  <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#4fc3ff"/>
+    <stop offset="1" stop-color="#3568ff"/>
+  </linearGradient>
+  <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffd166"/>
+    <stop offset="1" stop-color="#ff7a45"/>
+  </linearGradient>
+  <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#4ade80"/>
+    <stop offset="1" stop-color="#14b8a6"/>
+  </linearGradient>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+    <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
+  </filter>
+  <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+    <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#7dd3fc"/></marker>
+  <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#fbbf24"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="url(#bg)"/>
+<g opacity="0.19" stroke="#8bb8ff" stroke-width="1">
+  <line x1="0" y1="0" x2="0" y2="520"/><line x1="40" y1="0" x2="40" y2="520"/><line x1="80" y1="0" x2="80" y2="520"/><line x1="120" y1="0" x2="120" y2="520"/><line x1="160" y1="0" x2="160" y2="520"/><line x1="200" y1="0" x2="200" y2="520"/><line x1="240" y1="0" x2="240" y2="520"/><line x1="280" y1="0" x2="280" y2="520"/><line x1="320" y1="0" x2="320" y2="520"/><line x1="360" y1="0" x2="360" y2="520"/><line x1="400" y1="0" x2="400" y2="520"/><line x1="440" y1="0" x2="440" y2="520"/><line x1="480" y1="0" x2="480" y2="520"/><line x1="520" y1="0" x2="520" y2="520"/><line x1="560" y1="0" x2="560" y2="520"/><line x1="600" y1="0" x2="600" y2="520"/><line x1="640" y1="0" x2="640" y2="520"/><line x1="680" y1="0" x2="680" y2="520"/><line x1="720" y1="0" x2="720" y2="520"/><line x1="760" y1="0" x2="760" y2="520"/><line x1="800" y1="0" x2="800" y2="520"/><line x1="840" y1="0" x2="840" y2="520"/><line x1="880" y1="0" x2="880" y2="520"/><line x1="920" y1="0" x2="920" y2="520"/><line x1="960" y1="0" x2="960" y2="520"/><line x1="1000" y1="0" x2="1000" y2="520"/><line x1="1040" y1="0" x2="1040" y2="520"/><line x1="1080" y1="0" x2="1080" y2="520"/><line x1="1120" y1="0" x2="1120" y2="520"/><line x1="1160" y1="0" x2="1160" y2="520"/>
+  <line x1="0" y1="0" x2="1180" y2="0"/><line x1="0" y1="40" x2="1180" y2="40"/><line x1="0" y1="80" x2="1180" y2="80"/><line x1="0" y1="120" x2="1180" y2="120"/><line x1="0" y1="160" x2="1180" y2="160"/><line x1="0" y1="200" x2="1180" y2="200"/><line x1="0" y1="240" x2="1180" y2="240"/><line x1="0" y1="280" x2="1180" y2="280"/><line x1="0" y1="320" x2="1180" y2="320"/><line x1="0" y1="360" x2="1180" y2="360"/><line x1="0" y1="400" x2="1180" y2="400"/><line x1="0" y1="440" x2="1180" y2="440"/><line x1="0" y1="480" x2="1180" y2="480"/>
+</g>
+<style>
+  text { font-family: Inter, 'Noto Sans SC', 'Microsoft YaHei', Arial, sans-serif; fill: #e8f2ff; }
+  .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; }
+  .small { font-size: 14px; fill: #b6c7dc; }
+  .tiny { font-size: 11px; fill: #9fb4ce; }
+  .title { font-size: 28px; font-weight: 700; }
+  .sub { font-size: 16px; fill: #a8c7e8; }
+  .label { font-size: 13px; fill: #d9ecff; font-weight: 600; }
+  .port { fill: #061629; stroke: #60a5fa; stroke-width: 1.5; }
+</style>
+<text x="55" y="56" class="title" text-anchor="start">推理采样台：Logits 到 Token 的每一步都可调试</text><text x="55" y="86" class="sub" text-anchor="start">Temperature、top-k、top-p 不做成“创意魔法”，而是概率分布的可视化处理链。</text><rect x="70" y="180" width="130" height="58" rx="8" fill="rgba(23,58,87,.95)" stroke="#7dd3fc" stroke-width="1.5" /><text x="135" y="205" class="label" text-anchor="middle">Logits</text><text x="135" y="225" class="tiny mono" text-anchor="middle">raw scores</text><rect x="230" y="180" width="130" height="58" rx="8" fill="rgba(23,58,87,.95)" stroke="#7dd3fc" stroke-width="1.5" /><text x="295" y="205" class="label" text-anchor="middle">/ Temperature</text><text x="295" y="225" class="tiny mono" text-anchor="middle">T=0.8</text><rect x="410" y="180" width="130" height="58" rx="8" fill="rgba(23,58,87,.95)" stroke="#7dd3fc" stroke-width="1.5" /><text x="475" y="205" class="label" text-anchor="middle">Softmax</text><text x="475" y="225" class="tiny mono" text-anchor="middle">prob sum=1</text><rect x="570" y="180" width="130" height="58" rx="8" fill="rgba(23,58,87,.95)" stroke="#7dd3fc" stroke-width="1.5" /><text x="635" y="205" class="label" text-anchor="middle">Top-k</text><text x="635" y="225" class="tiny mono" text-anchor="middle">k=5</text><rect x="730" y="180" width="130" height="58" rx="8" fill="rgba(23,58,87,.95)" stroke="#7dd3fc" stroke-width="1.5" /><text x="795" y="205" class="label" text-anchor="middle">Top-p</text><text x="795" y="225" class="tiny mono" text-anchor="middle">p=0.9</text><rect x="890" y="180" width="130" height="58" rx="8" fill="rgba(23,58,87,.95)" stroke="#7dd3fc" stroke-width="1.5" /><text x="955" y="205" class="label" text-anchor="middle">Sample</text><text x="955" y="225" class="tiny mono" text-anchor="middle">multinomial</text><line x1="208" y1="209" x2="222" y2="209" stroke="#7dd3fc" stroke-width="2" marker-end="url(#arrow)" /><line x1="368" y1="209" x2="402" y2="209" stroke="#7dd3fc" stroke-width="2" marker-end="url(#arrow)" /><line x1="548" y1="209" x2="562" y2="209" stroke="#7dd3fc" stroke-width="2" marker-end="url(#arrow)" /><line x1="708" y1="209" x2="722" y2="209" stroke="#7dd3fc" stroke-width="2" marker-end="url(#arrow)" /><line x1="868" y1="209" x2="882" y2="209" stroke="#7dd3fc" stroke-width="2" marker-end="url(#arrow)" /><rect x="150" y="297" width="62" height="93" fill="#38bdf8" rx="5" opacity="0.9"/><text x="181" y="416" class="tiny mono" text-anchor="middle">the</text><text x="181" y="287" class="tiny mono" text-anchor="middle">0.31</text><rect x="255" y="324" width="62" height="66" fill="#38bdf8" rx="5" opacity="0.9"/><text x="286" y="416" class="tiny mono" text-anchor="middle">a</text><text x="286" y="314" class="tiny mono" text-anchor="middle">0.22</text><rect x="360" y="342" width="62" height="48" fill="#38bdf8" rx="5" opacity="0.9"/><text x="391" y="416" class="tiny mono" text-anchor="middle">cat</text><text x="391" y="332" class="tiny mono" text-anchor="middle">0.16</text><rect x="465" y="360" width="62" height="30" fill="#38bdf8" rx="5" opacity="0.9"/><text x="496" y="416" class="tiny mono" text-anchor="middle">dog</text><text x="496" y="350" class="tiny mono" text-anchor="middle">0.10</text><rect x="570" y="366" width="62" height="24" fill="#38bdf8" rx="5" opacity="0.9"/><text x="601" y="416" class="tiny mono" text-anchor="middle">mat</text><text x="601" y="356" class="tiny mono" text-anchor="middle">0.08</text><rect x="675" y="381" width="62" height="9" fill="#475569" rx="5" opacity="0.9"/><text x="706" y="416" class="tiny mono" text-anchor="middle">river</text><text x="706" y="371" class="tiny mono" text-anchor="middle">0.03</text><rect x="780" y="384" width="62" height="6" fill="#475569" rx="5" opacity="0.9"/><text x="811" y="416" class="tiny mono" text-anchor="middle">blue</text><text x="811" y="374" class="tiny mono" text-anchor="middle">0.02</text><rect x="885" y="387" width="62" height="3" fill="#475569" rx="5" opacity="0.9"/><text x="916" y="416" class="tiny mono" text-anchor="middle">?</text><text x="916" y="377" class="tiny mono" text-anchor="middle">0.01</text><line x1="110" y1="390" x2="1030" y2="390" stroke="#64748b" stroke-width="1.5" /><rect x="900" y="310" width="190" height="105" rx="12" fill="rgba(111,78,24,.82)" stroke="#fbbf24" stroke-width="1.5" /><text x="925" y="342" class="label" text-anchor="start">采样命中</text><text x="925" y="378" class="small" text-anchor="start">token = &quot;the&quot;</text><text x="925" y="402" class="tiny mono" text-anchor="start">rank = 1 / kept</text>
+</svg>
