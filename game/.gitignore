@@ -13,6 +13,7 @@ app/.env.local
 app/*.tsbuildinfo
 app/vite.config.js
 app/vite.config.d.ts
+app/vite-dev*.log
 
 progress/
 artifacts/checkpoints/

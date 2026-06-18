@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Boxes, CheckCircle2, Circle, Cpu, Eye, Pause, Play, RotateCcw, Search, Wrench } from "lucide-react";
 import { bootcampLevels, evaluateBootcampLevel } from "./bootcampLevels";
-import { PixiWorkbenchCanvas, type RepairSlotOverlay } from "./PixiWorkbenchCanvas";
+import { PixiWorkbenchCanvas, type CanvasActionHint, type CanvasConnectionOverlay, type CanvasContextTarget, type RepairSlotOverlay } from "./PixiWorkbenchCanvas";
 import { modeLabels } from "./sceneData";
 import type {
   BootcampAnswerMap,
@@ -32,6 +32,16 @@ type LevelRepairState = {
   observations: ObservationLogItem[];
 };
 
+type NodePositionMap = Record<string, { x: number; y: number }>;
+
+type CanvasMenuAction = {
+  id: string;
+  label: string;
+  detail: string;
+  disabled?: boolean;
+  onSelect: () => void;
+};
+
 type LevelPhase =
   | "knowledge_intro"
   | "mission_modal"
@@ -60,13 +70,17 @@ export function App() {
   const [introSeen, setIntroSeen] = useState<Record<string, boolean>>({});
   const [missionStarted, setMissionStarted] = useState<Record<string, boolean>>({});
   const [completionDismissed, setCompletionDismissed] = useState<Record<string, boolean>>({});
+  const [nodePositions, setNodePositions] = useState<Record<string, NodePositionMap>>({});
+  const [canvasMenu, setCanvasMenu] = useState<CanvasContextTarget | null>(null);
 
   const activeLevel = useMemo(
     () => bootcampLevels.find((level) => level.id === selectedLevelId) ?? bootcampLevels[0],
     [selectedLevelId]
   );
   const activeRepairState = repairStates[activeLevel.id] ?? createInitialRepairState();
-  const displayNodes = useMemo(() => buildDisplayNodes(activeLevel, activeRepairState.assignments), [activeLevel, activeRepairState.assignments]);
+  const baseDisplayNodes = useMemo(() => buildDisplayNodes(activeLevel, activeRepairState.assignments), [activeLevel, activeRepairState.assignments]);
+  const displayNodes = useMemo(() => applyNodePositions(baseDisplayNodes, nodePositions[activeLevel.id]), [activeLevel.id, baseDisplayNodes, nodePositions]);
+  const displayEdges = useMemo(() => buildDisplayEdges(activeLevel, activeRepairState.assignments), [activeLevel, activeRepairState.assignments]);
   const selectedNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedId) ?? displayNodes[0],
     [displayNodes, selectedId]
@@ -83,12 +97,24 @@ export function App() {
     () => buildSlotOverlays(activeLevel, activeRepairState, levelPhase),
     [activeLevel, activeRepairState.assignments, activeRepairState.selectedSlotId, levelPhase]
   );
+  const connectionOverlays = useMemo(
+    () => buildCanvasConnections(activeLevel, activeRepairState, levelPhase),
+    [activeLevel, activeRepairState.assignments, levelPhase]
+  );
+  const actionHints = useMemo(
+    () => buildCanvasActionHints(activeLevel, activeRepairState, levelPhase),
+    [activeLevel, activeRepairState.assignments, activeRepairState.observations.length, levelPhase]
+  );
 
   useEffect(() => {
     if (!displayNodes.some((node) => node.id === selectedId)) {
       setSelectedId(activeLevel.defaultSelectedNodeId);
     }
   }, [activeLevel.defaultSelectedNodeId, displayNodes, selectedId]);
+
+  useEffect(() => {
+    setCanvasMenu(null);
+  }, [activeLevel.id, levelPhase]);
 
   function selectLevel(level: BootcampLevel) {
     setSelectedLevelId(level.id);
@@ -140,6 +166,42 @@ export function App() {
     clearActiveResult();
     setSelectedId(slot.focusNodeId);
     setPlaying(true);
+  }
+
+  function connectCanvasSlot(slotId: string, tagId: string) {
+    const slot = activeLevel.repair.slots.find((item) => item.id === slotId);
+    if (!slot) return;
+    assignTagToSlot(slot, tagId);
+  }
+
+  function assignCanvasSlot(slotId: string, tagId: string) {
+    const slot = activeLevel.repair.slots.find((item) => item.id === slotId);
+    if (!slot) return;
+    assignTagToSlot(slot, tagId);
+    setCanvasMenu(null);
+  }
+
+  function probeCanvasSlot(slotId: string, probeId: string) {
+    const slot = activeLevel.repair.slots.find((item) => item.id === slotId);
+    if (!slot) return;
+    runProbeOnSlot(slot, probeId);
+    setCanvasMenu(null);
+  }
+
+  function runCanvasTests() {
+    runTests();
+    setCanvasMenu(null);
+  }
+
+  function moveCanvasNode(nodeId: string, x: number, y: number) {
+    setNodePositions((current) => ({
+      ...current,
+      [activeLevel.id]: {
+        ...(current[activeLevel.id] ?? {}),
+        [nodeId]: { x, y }
+      }
+    }));
+    setSelectedId(nodeId);
   }
 
   function runProbeOnSlot(slot: RepairSlot, probeId: string) {
@@ -205,6 +267,66 @@ export function App() {
     setPlaying(true);
   }
 
+  function getCanvasMenuActions(target: CanvasContextTarget | null): CanvasMenuAction[] {
+    if (!target || activeLevel.id !== "0-1") return [];
+
+    const actions: CanvasMenuAction[] = [];
+    const targetSlot = target.kind === "slot" ? activeLevel.repair.slots.find((slot) => slot.id === target.id) : undefined;
+    const axisTags = activeLevel.repair.tags.filter((tag) => tag.category === "axis");
+    const axisSlotIds = new Set(["axis_0", "axis_1", "axis_2"]);
+
+    if (targetSlot && axisSlotIds.has(targetSlot.id) && (levelPhase === "axis_probe" || levelPhase === "axis_tagging")) {
+      visibleProbesForPhase(activeLevel, levelPhase).forEach((probe) => {
+        actions.push({
+          id: `probe_${probe.id}`,
+          label: probe.label,
+          detail: probe.detail,
+          onSelect: () => probeCanvasSlot(targetSlot.id, probe.id)
+        });
+      });
+
+      axisTags.forEach((tag) => {
+        actions.push({
+          id: `tag_${tag.id}`,
+          label: `Assign ${tag.shortLabel}`,
+          detail: tag.detail,
+          disabled: levelPhase === "axis_probe" && activeRepairState.observations.length === 0,
+          onSelect: () => assignCanvasSlot(targetSlot.id, tag.id)
+        });
+      });
+    }
+
+    if (target.kind === "node" && target.id === "axis_decoder" && levelPhase === "contract_wiring") {
+      [
+        { slotId: "contract_b", tagId: "contract_b", label: "Wire Decoder B", detail: "Axis Decoder B port receives batch semantic." },
+        { slotId: "contract_t", tagId: "contract_t", label: "Wire Decoder T", detail: "Axis Decoder T port receives token-position semantic." },
+        { slotId: "contract_c", tagId: "contract_c", label: "Wire Decoder C", detail: "Axis Decoder C port receives channel semantic." }
+      ].forEach((item) => {
+        const alreadyConnected = activeRepairState.assignments[item.slotId] === item.tagId;
+        actions.push({
+          id: item.slotId,
+          label: item.label,
+          detail: item.detail,
+          disabled: alreadyConnected,
+          onSelect: () => assignCanvasSlot(item.slotId, item.tagId)
+        });
+      });
+    }
+
+    if ((target.kind === "node" && target.id === "shape_tests") || target.kind === "canvas") {
+      if (levelPhase === "visible_testing" || levelPhase === "hidden_testing") {
+        actions.push({
+          id: "run_tests",
+          label: "Run Contract Tests",
+          detail: "Execute visible, behavior, reference, and hidden checks.",
+          onSelect: runCanvasTests
+        });
+      }
+    }
+
+    return actions;
+  }
+
   function resetCurrentLevel() {
     setRepairStates((current) => {
       const next = { ...current };
@@ -212,6 +334,12 @@ export function App() {
       return next;
     });
     setResults((current) => {
+      const next = { ...current };
+      delete next[activeLevel.id];
+      return next;
+    });
+    setNodePositions((current) => {
+      if (!current[activeLevel.id]) return current;
       const next = { ...current };
       delete next[activeLevel.id];
       return next;
@@ -228,7 +356,7 @@ export function App() {
             <Boxes size={28} />
           </div>
           <div>
-            <p className="eyebrow">LLM Complete / MVP 0.02</p>
+            <p className="eyebrow">LLM Complete / MVP 0.0.2</p>
             <h1>Tensor Bootcamp</h1>
           </div>
         </div>
@@ -316,77 +444,25 @@ export function App() {
         </aside>
 
         <section className="stagePanel panel">
-          <div className="stageHeader">
-            <div>
-              <p className="eyebrow">Canvas / Broken Board</p>
-              <h2>
-                {activeLevel.id} {activeLevel.title}
-              </h2>
-            </div>
-            <p>{activeLevel.objective}</p>
-          </div>
           <PixiWorkbenchCanvas
             selectedId={selectedId}
             mode={mode}
             playing={playing}
             nodes={displayNodes}
-            edges={activeLevel.edges}
-            sceneTitle={activeLevel.sceneTitle}
-            sceneSubtitle={activeLevel.sceneSubtitle}
+            edges={displayEdges}
             slotOverlays={slotOverlays}
+            connectionOverlays={connectionOverlays}
+            actionHints={actionHints}
             onSlotSelect={activateSlot}
+            onCanvasConnect={connectCanvasSlot}
+            onCanvasContextMenu={setCanvasMenu}
+            onNodeMove={moveCanvasNode}
             onSelect={setSelectedId}
           />
+          <CanvasContextMenu target={canvasMenu} actions={getCanvasMenuActions(canvasMenu)} onClose={() => setCanvasMenu(null)} />
         </section>
 
         <TensorInspector node={selectedNode} observation={latestObservation} />
-
-        <section className="testBench panel">
-          <div className="testHeader">
-            <div>
-              <p className="eyebrow">Repair Console / Contract Tests</p>
-              <h2>
-                {activeLevel.id} {activeLevel.title}
-              </h2>
-            </div>
-            <div className="testActions">
-              <button className="ghostButton" onClick={resetCurrentLevel}>
-                <RotateCcw size={16} />
-                Reset
-              </button>
-              <button className="runButton" onClick={runTests}>
-                <Play size={16} />
-                Run Tests
-              </button>
-            </div>
-          </div>
-
-          <div className="challengeLayout repairLayout">
-            <ConceptBrief level={activeLevel} repairState={activeRepairState} phase={levelPhase} result={levelResult} />
-            <RepairConsole
-              level={activeLevel}
-              repairState={activeRepairState}
-              phase={levelPhase}
-              onSelectTag={selectTag}
-              onSelectProbe={selectProbe}
-              onActivateSlot={activateSlot}
-              onAssignTag={assignTagToSlot}
-            />
-            <ResultPanel result={levelResult} activeLevel={activeLevel} />
-          </div>
-
-          <div className="traceSteps">
-            {activeLevel.traceSteps.map((step) => (
-              <button key={step.id} className={`traceStep ${step.state}`} onClick={() => setSelectedId(step.selectNodeId)}>
-                <StateIcon state={step.state} />
-                <span>
-                  <b>{step.title}</b>
-                  <small>{step.detail}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
       </section>
 
       {showKnowledgeIntro ? (
@@ -523,6 +599,156 @@ function visibleProbesForPhase(level: BootcampLevel, phase: LevelPhase) {
   return level.repair.probes;
 }
 
+function visibleCanvasSlotsForPhase(level: BootcampLevel, phase: LevelPhase): RepairSlot[] {
+  if (level.id !== "0-1") return visibleSlotsForPhase(level, phase);
+  const axisSlots = new Set(["axis_0", "axis_1", "axis_2"]);
+  if (phase === "axis_probe" || phase === "axis_tagging" || phase === "contract_wiring" || phase === "visible_testing" || phase === "hidden_testing" || phase === "completed") {
+    return level.repair.slots.filter((slot) => axisSlots.has(slot.id));
+  }
+  return [];
+}
+
+function applyNodePositions(nodes: TensorNode[], positions?: NodePositionMap): TensorNode[] {
+  if (!positions) return nodes;
+  return nodes.map((node) => {
+    const position = positions[node.id];
+    return position ? { ...node, x: position.x, y: position.y } : node;
+  });
+}
+
+function buildDisplayEdges(level: BootcampLevel, assignments: BootcampAnswerMap) {
+  if (level.id !== "0-1") return level.edges;
+
+  const slotDone = (slotId: string) => {
+    const slot = level.repair.slots.find((item) => item.id === slotId);
+    return slot ? slot.correctTagIds.includes(assignments[slotId]) : false;
+  };
+
+  const dataEdgeSlots: Record<string, string> = {
+    e_01_text_tokenizer: "flow_text_tokenizer",
+    e_01_tokenizer_embedding: "flow_tokenizer_embedding",
+    e_01_embedding_hidden: "flow_embedding_hidden"
+  };
+  const contractReady = ["contract_b", "contract_t", "contract_c"].every(slotDone);
+
+  return level.edges.map((edge) => {
+    const dataSlotId = dataEdgeSlots[edge.id];
+    if (dataSlotId) {
+      const done = slotDone(dataSlotId);
+      return {
+        ...edge,
+        label: done ? "connected" : "open port",
+        color: done ? 0x22c55e : 0x38bdf8
+      };
+    }
+    if (edge.id === "e_01_hidden_axes") {
+      return {
+        ...edge,
+        label: contractReady ? "contract connected" : "contract ports open",
+        color: contractReady ? 0x22c55e : 0xfbbf24
+      };
+    }
+    return edge;
+  });
+}
+
+function buildCanvasConnections(level: BootcampLevel, repairState: LevelRepairState, phase: LevelPhase): CanvasConnectionOverlay[] {
+  if (level.id !== "0-1") return [];
+  const assignment = (slotId: string) => repairState.assignments[slotId];
+  const connection = (
+    id: string,
+    slotId: string,
+    tagId: string,
+    fromNodeId: string,
+    toNodeId: string,
+    fromLabel: string,
+    toLabel: string,
+    label: string,
+    kind: CanvasConnectionOverlay["kind"],
+    enabled: boolean
+  ): CanvasConnectionOverlay => ({
+    id,
+    slotId,
+    tagId,
+    fromNodeId,
+    toNodeId,
+    fromLabel,
+    toLabel,
+    label,
+    kind,
+    state: assignment(slotId) === tagId ? "connected" : "open",
+    enabled
+  });
+
+  const dataEnabled = phase === "data_flow_repair";
+  const contractEnabled = phase === "contract_wiring";
+  const dataConnections = [
+    connection("canvas_flow_text_tokenizer", "flow_text_tokenizer", "wire_text_tokenizer", "text_batch", "tokenizer", "utf8", "in", "utf8[B]", "data", dataEnabled),
+    connection("canvas_flow_tokenizer_embedding", "flow_tokenizer_embedding", "wire_tokenizer_embedding", "tokenizer", "embedding_lookup", "ids", "in", "int[B,T]", "data", dataEnabled),
+    connection("canvas_flow_embedding_hidden", "flow_embedding_hidden", "wire_embedding_hidden", "embedding_lookup", "hidden_tensor", "vec", "in", "float[B,T,C]", "data", dataEnabled)
+  ];
+  const showData = dataEnabled || dataConnections.some((item) => item.state === "connected");
+
+  const contractConnections = [
+    connection("canvas_contract_b", "contract_b", "contract_b", "hidden_tensor", "axis_decoder", "B", "B", "B axis", "contract", contractEnabled),
+    connection("canvas_contract_t", "contract_t", "contract_t", "hidden_tensor", "axis_decoder", "T", "T", "T axis", "contract", contractEnabled),
+    connection("canvas_contract_c", "contract_c", "contract_c", "hidden_tensor", "axis_decoder", "C", "C", "C axis", "contract", contractEnabled)
+  ];
+  const showContract = contractEnabled || ["visible_testing", "hidden_testing", "completed"].includes(phase) || contractConnections.some((item) => item.state === "connected");
+
+  return [...(showData ? dataConnections : []), ...(showContract ? contractConnections : [])];
+}
+
+function buildCanvasActionHints(level: BootcampLevel, repairState: LevelRepairState, phase: LevelPhase): CanvasActionHint[] {
+  if (level.id !== "0-1") return [];
+
+  if (phase === "axis_probe") {
+    return ["axis_0", "axis_1", "axis_2"].map((slotId) => ({
+      kind: "slot",
+      id: slotId,
+      icon: "probe",
+      tooltip: "Click or right-click: probe this axis",
+      pulse: true
+    }));
+  }
+
+  if (phase === "axis_tagging") {
+    return ["axis_0", "axis_1", "axis_2"].map((slotId) => ({
+      kind: "slot",
+      id: slotId,
+      icon: repairState.assignments[slotId] ? "menu" : "probe",
+      tooltip: repairState.assignments[slotId] ? "Click or right-click: change axis tag" : "Click or right-click: assign B/T/C",
+      pulse: !repairState.assignments[slotId]
+    }));
+  }
+
+  if (phase === "contract_wiring") {
+    return [
+      {
+        kind: "node",
+        id: "axis_decoder",
+        icon: "wire",
+        tooltip: "Click or right-click: wire Decoder B/T/C",
+        pulse: true
+      }
+    ];
+  }
+
+  if (phase === "visible_testing" || phase === "hidden_testing") {
+    return [
+      {
+        kind: "node",
+        id: "shape_tests",
+        icon: "run",
+        tooltip: "Click or right-click: run contract tests",
+        pulse: true
+      }
+    ];
+  }
+
+  return [];
+}
+
 function check(label: string, state: CheckState, detail: string) {
   return { label, state, detail };
 }
@@ -636,7 +862,7 @@ function buildDisplayNodes(level: BootcampLevel, assignments: BootcampAnswerMap)
 }
 
 function buildSlotOverlays(level: BootcampLevel, state: LevelRepairState, phase: LevelPhase): RepairSlotOverlay[] {
-  return visibleSlotsForPhase(level, phase).map((slot) => {
+  return visibleCanvasSlotsForPhase(level, phase).map((slot) => {
     const tag = level.repair.tags.find((item) => item.id === state.assignments[slot.id]);
     return {
       slotId: slot.id,
@@ -653,7 +879,7 @@ function activeToolLabel(level: BootcampLevel, state: LevelRepairState) {
   if (tag) return `tag ${tag.shortLabel}`;
   const probe = level.repair.probes.find((item) => item.id === state.activeProbeId);
   if (probe) return probe.label;
-  return "select tag or probe";
+  return "canvas context";
 }
 
 function repairKindLabel(kind: BootcampLevel["repair"]["kind"]) {
@@ -757,6 +983,141 @@ function ObjectiveTracker({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function CanvasContextMenu({
+  target,
+  actions,
+  onClose
+}: {
+  target: CanvasContextTarget | null;
+  actions: CanvasMenuAction[];
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState({ left: 12, top: 12, maxHeight: 360 });
+  const actionKey = actions.map((action) => action.id).join("|");
+
+  useLayoutEffect(() => {
+    if (!target) return;
+
+    const margin = 12;
+    const offset = 8;
+    const menu = menuRef.current;
+    const menuWidth = menu?.offsetWidth ?? Math.min(280, window.innerWidth - margin * 2);
+    const menuHeight = menu?.offsetHeight ?? 360;
+    let left = target.clientX + offset;
+    let top = target.clientY + offset;
+
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = Math.max(margin, target.clientX - menuWidth - offset);
+    }
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = Math.max(margin, target.clientY - menuHeight - offset);
+    }
+
+    setPosition({
+      left,
+      top,
+      maxHeight: Math.max(180, window.innerHeight - top - margin)
+    });
+  }, [target?.clientX, target?.clientY, target?.kind, target?.id, actionKey]);
+
+  if (!target) return null;
+
+  const title = target.kind === "slot" ? "Axis Slot" : target.kind === "node" ? "Node" : "Canvas";
+  return (
+    <div ref={menuRef} className="canvasContextMenu" style={position} onContextMenu={(event) => event.preventDefault()}>
+      <div className="canvasContextHeader">
+        <b>{title}</b>
+        <button type="button" aria-label="Close context menu" onClick={onClose}>
+          x
+        </button>
+      </div>
+      <div className="canvasContextActions">
+        {actions.length ? (
+          actions.map((action) => (
+            <button key={action.id} type="button" disabled={action.disabled} onClick={action.onSelect}>
+              <b>{action.label}</b>
+              <span>{action.detail}</span>
+            </button>
+          ))
+        ) : (
+          <p>No canvas action available here.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CanvasStatePanel({
+  level,
+  repairState,
+  phase
+}: {
+  level: BootcampLevel;
+  repairState: LevelRepairState;
+  phase: LevelPhase;
+}) {
+  const slots = visibleSlotsForPhase(level, phase);
+  return (
+    <section className="canvasStatePanel">
+      <div className="canvasStateSection">
+        <b>Canvas Repairs</b>
+        <div className="readonlySlotGrid">
+          {slots.map((slot) => {
+            const tag = level.repair.tags.find((item) => item.id === repairState.assignments[slot.id]);
+            return (
+              <div key={slot.id} className={tag ? "readonlySlot filled" : "readonlySlot"}>
+                <span>
+                  <b>{slot.label}</b>
+                  <small>{slot.nodeId}</small>
+                </span>
+                <code>{tag?.shortLabel ?? slot.emptyLabel}</code>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="canvasStateSection">
+        <b>Probe Evidence</b>
+        {repairState.observations.length ? (
+          <div className="probeLog readonlyProbeLog">
+            {repairState.observations.slice(0, 4).map((observation) => (
+              <div key={`${observation.id}_${observation.slotId}_${observation.probeId}`} className="probeLogItem">
+                <span>
+                  {observation.probeLabel} / {observation.slotLabel}
+                </span>
+                <b>{observation.title}</b>
+                <small>
+                  possible: <code>{observation.possibleSemantic}</code> confidence: {observation.confidence}
+                </small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="canvasStateEmpty">No probe evidence recorded.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TraceOverview({ steps }: { steps: BootcampLevel["traceSteps"] }) {
+  return (
+    <div className="traceSteps traceOverview">
+      {steps.map((step) => (
+        <div key={step.id} className={`traceStep ${step.state}`}>
+          <StateIcon state={step.state} />
+          <span>
+            <b>{step.title}</b>
+            <small>{step.detail}</small>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
