@@ -1,12 +1,26 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Rectangle, Text, type Ticker } from "pixi.js";
-import { nodeById, sceneSize, tensorEdges, tensorNodes } from "./sceneData";
+import { sceneSize } from "./sceneData";
 import type { TensorEdge, TensorNode, WorkbenchMode } from "./workbenchTypes";
+
+export type RepairSlotOverlay = {
+  slotId: string;
+  nodeId: string;
+  label: string;
+  value: string;
+  state: "empty" | "filled" | "active";
+};
 
 type PixiWorkbenchCanvasProps = {
   selectedId: string;
   mode: WorkbenchMode;
   playing: boolean;
+  nodes: TensorNode[];
+  edges: TensorEdge[];
+  sceneTitle: string;
+  sceneSubtitle: string;
+  slotOverlays?: RepairSlotOverlay[];
+  onSlotSelect?: (slotId: string) => void;
   onSelect: (id: string) => void;
 };
 
@@ -17,19 +31,30 @@ type Point = {
 
 type FontWeight = "400" | "500" | "600" | "700" | "800" | "900" | "bold";
 
-export function PixiWorkbenchCanvas({ selectedId, mode, playing, onSelect }: PixiWorkbenchCanvasProps) {
+export function PixiWorkbenchCanvas({
+  selectedId,
+  mode,
+  playing,
+  nodes,
+  edges,
+  sceneTitle,
+  sceneSubtitle,
+  slotOverlays = [],
+  onSlotSelect,
+  onSelect
+}: PixiWorkbenchCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
-  const latestRef = useRef({ selectedId, mode, playing, onSelect });
+  const latestRef = useRef({ selectedId, mode, playing, nodes, edges, sceneTitle, sceneSubtitle, slotOverlays, onSlotSelect, onSelect });
 
   useEffect(() => {
-    latestRef.current = { selectedId, mode, playing, onSelect };
+    latestRef.current = { selectedId, mode, playing, nodes, edges, sceneTitle, sceneSubtitle, slotOverlays, onSlotSelect, onSelect };
     if (!appRef.current) return;
 
     cleanupRef.current?.();
     cleanupRef.current = drawScene(appRef.current, latestRef.current);
-  }, [selectedId, mode, playing, onSelect]);
+  }, [selectedId, mode, playing, nodes, edges, sceneTitle, sceneSubtitle, slotOverlays, onSlotSelect, onSelect]);
 
   useEffect(() => {
     let disposed = false;
@@ -64,8 +89,8 @@ export function PixiWorkbenchCanvas({ selectedId, mode, playing, onSelect }: Pix
 
       observer = new ResizeObserver((entries) => {
         const entry = entries[0];
-        const width = Math.max(760, Math.floor(entry.contentRect.width));
-        const height = Math.max(520, Math.floor(entry.contentRect.height));
+        const width = Math.max(320, Math.floor(entry.contentRect.width));
+        const height = Math.max(420, Math.floor(entry.contentRect.height));
         app.renderer.resize(width, height);
         cleanupRef.current?.();
         cleanupRef.current = drawScene(app, latestRef.current);
@@ -91,15 +116,28 @@ export function PixiWorkbenchCanvas({ selectedId, mode, playing, onSelect }: Pix
 }
 
 function measureHost(host: HTMLElement) {
+  const width = Math.floor(host.clientWidth || host.getBoundingClientRect().width || 760);
+  const height = Math.floor(host.clientHeight || host.getBoundingClientRect().height || 560);
   return {
-    width: Math.max(760, Math.floor(host.clientWidth || 960)),
-    height: Math.max(520, Math.floor(host.clientHeight || 560))
+    width: Math.max(320, width),
+    height: Math.max(420, height)
   };
 }
 
 function drawScene(
   app: Application,
-  state: { selectedId: string; mode: WorkbenchMode; playing: boolean; onSelect: (id: string) => void }
+  state: {
+    selectedId: string;
+    mode: WorkbenchMode;
+    playing: boolean;
+    nodes: TensorNode[];
+    edges: TensorEdge[];
+    sceneTitle: string;
+    sceneSubtitle: string;
+    slotOverlays: RepairSlotOverlay[];
+    onSlotSelect?: (slotId: string) => void;
+    onSelect: (id: string) => void;
+  }
 ) {
   for (const child of app.stage.removeChildren()) {
     child.destroy({ children: true });
@@ -125,16 +163,18 @@ function drawScene(
   const pulseLayer = new Graphics({ label: "flow-pulses" });
   scene.addChild(edgeLayer, nodeLayer, overlayLayer, pulseLayer);
 
-  drawSceneHeader(overlayLayer, state.mode);
+  drawSceneHeader(overlayLayer, state.mode, state.sceneTitle, state.sceneSubtitle);
 
-  const visibleEdges = tensorEdges.filter((edge) => edge.flow !== "gradient" || state.mode === "train");
-  visibleEdges.forEach((edge) => drawEdge(edgeLayer, overlayLayer, edge, state.mode));
+  const nodeLookup = new Map(state.nodes.map((node) => [node.id, node]));
+  const visibleEdges = state.edges.filter((edge) => edge.flow !== "gradient" || state.mode === "train");
+  visibleEdges.forEach((edge) => drawEdge(edgeLayer, overlayLayer, edge, state.mode, nodeLookup));
 
-  tensorNodes.forEach((node) => {
+  state.nodes.forEach((node) => {
     drawTensorNode(nodeLayer, node, state.selectedId === node.id, state.onSelect, state.mode);
   });
 
-  drawAttentionLegend(overlayLayer);
+  drawRepairSlots(overlayLayer, state.slotOverlays, nodeLookup, state.onSlotSelect);
+  drawLegend(overlayLayer);
   if (state.mode === "train") {
     drawTrainOverlay(overlayLayer);
   }
@@ -142,7 +182,7 @@ function drawScene(
   let elapsed = 0;
   const tick = (ticker: Ticker) => {
     elapsed += ticker.deltaMS;
-    drawPulses(pulseLayer, visibleEdges, elapsed, state.playing || state.mode === "train");
+    drawPulses(pulseLayer, visibleEdges, elapsed, state.playing || state.mode === "train", nodeLookup);
   };
   app.ticker.add(tick);
   return () => {
@@ -159,21 +199,21 @@ function drawGrid(graphics: Graphics, width: number, height: number) {
   }
 }
 
-function drawSceneHeader(layer: Container, mode: WorkbenchMode) {
+function drawSceneHeader(layer: Container, mode: WorkbenchMode, title: string, subtitle: string) {
   const panel = new Graphics();
   panel
     .roundRect(44, 34, 1150, 74, 10)
     .fill({ color: 0x0b1728, alpha: 0.82 })
     .stroke({ width: 1.2, color: 0x315f94, alpha: 0.95 });
   layer.addChild(panel);
-  addText(layer, "LLM Complete v0.02 - 3D Tensor Workbench", 70, 62, 21, 0xe8f2ff, "800", 0);
+  addText(layer, title, 70, 62, 21, 0xe8f2ff, "800", 0);
   addText(
     layer,
     mode === "build"
-      ? "Build focus: module shells, typed ports, and shape labels."
+      ? `Build focus: module shells, typed ports, and shape labels. ${subtitle}`
       : mode === "trace"
-        ? "Trace focus: forward activation, attention mask, softmax row checks, and repairable diagnostics."
-        : "Train focus: backward gradient path and optimizer update are visible instead of hidden behind a training spinner.",
+        ? `Trace focus: forward dataflow, shape checks, and repairable diagnostics. ${subtitle}`
+        : `Train focus: gradients stay visible when training later unlocks. ${subtitle}`,
     70,
     91,
     13,
@@ -226,6 +266,49 @@ function drawTensorNode(layer: Container, node: TensorNode, selected: boolean, o
   layer.addChild(group);
 }
 
+function drawRepairSlots(
+  layer: Container,
+  overlays: RepairSlotOverlay[],
+  nodeLookup: Map<string, TensorNode>,
+  onSlotSelect?: (slotId: string) => void
+) {
+  const grouped = new Map<string, RepairSlotOverlay[]>();
+  overlays.forEach((overlay) => {
+    grouped.set(overlay.nodeId, [...(grouped.get(overlay.nodeId) ?? []), overlay]);
+  });
+
+  grouped.forEach((slots, nodeId) => {
+    const node = nodeLookup.get(nodeId);
+    if (!node) return;
+
+    const slotWidth = Math.max(82, Math.min(118, (node.w + 54) / Math.max(slots.length, 1)));
+    const startX = node.x + node.w / 2 - (slots.length * slotWidth + (slots.length - 1) * 8) / 2;
+    const y = node.y + node.h + 18;
+
+    slots.forEach((slot, index) => {
+      const x = startX + index * (slotWidth + 8);
+      const group = new Container({ label: `repair-slot-${slot.slotId}` });
+      group.eventMode = "static";
+      group.cursor = "pointer";
+      group.hitArea = new Rectangle(x, y, slotWidth, 45);
+      group.on("pointertap", () => onSlotSelect?.(slot.slotId));
+
+      const active = slot.state === "active";
+      const filled = slot.state === "filled";
+      const shell = new Graphics();
+      shell
+        .roundRect(x, y, slotWidth, 45, 7)
+        .fill({ color: active ? 0x123052 : filled ? 0x0f2f2d : 0x07111f, alpha: 0.96 })
+        .stroke({ width: active ? 2 : 1.2, color: active ? 0xfbbf24 : filled ? 0x22c55e : 0x60a5fa, alpha: active ? 1 : 0.82 });
+      group.addChild(shell);
+
+      addText(group, slot.label, x + slotWidth / 2, y + 14, 10, 0xa8c7e8, "800", 0.5);
+      addText(group, slot.value, x + slotWidth / 2, y + 32, 13, filled || active ? 0xe8f2ff : 0x94a3b8, "900", 0.5);
+      layer.addChild(group);
+    });
+  });
+}
+
 function drawCuboid(layer: Container, node: TensorNode, selected: boolean) {
   const depth = node.kind === "attention" ? 30 : 24;
   const top = new Graphics();
@@ -275,8 +358,8 @@ function drawPortLabels(layer: Container, node: TensorNode) {
   addText(layer, "out", node.x + node.w + 10, node.y + node.h / 2 - 18, 10, 0x86efac, "700", 0.5);
 }
 
-function drawEdge(edgeLayer: Container, labelLayer: Container, edge: TensorEdge, mode: WorkbenchMode) {
-  const points = getEdgePoints(edge);
+function drawEdge(edgeLayer: Container, labelLayer: Container, edge: TensorEdge, mode: WorkbenchMode, nodeLookup: Map<string, TensorNode>) {
+  const points = getEdgePoints(edge, nodeLookup);
   if (points.length < 2) return;
 
   const path = new Graphics();
@@ -303,9 +386,9 @@ function drawEdge(edgeLayer: Container, labelLayer: Container, edge: TensorEdge,
   }
 }
 
-function getEdgePoints(edge: TensorEdge): Point[] {
-  const from = nodeById.get(edge.from);
-  const to = nodeById.get(edge.to);
+function getEdgePoints(edge: TensorEdge, nodeLookup: Map<string, TensorNode>): Point[] {
+  const from = nodeLookup.get(edge.from);
+  const to = nodeLookup.get(edge.to);
   if (!from || !to) return [];
 
   const start = { x: from.x + from.w + 9, y: from.y + from.h / 2 };
@@ -415,7 +498,7 @@ function drawGauge(layer: Container, x: number, y: number) {
   layer.addChild(gauge);
 }
 
-function drawAttentionLegend(layer: Container) {
+function drawLegend(layer: Container) {
   const panel = new Graphics();
   panel
     .roundRect(44, 585, 1150, 38, 8)
@@ -424,7 +507,7 @@ function drawAttentionLegend(layer: Container) {
   layer.addChild(panel);
   addText(
     layer,
-    "Legend: cyan = forward activation, gray = mask/frozen path, orange = backward gradient. Shape tags are gameplay information, not decoration.",
+    "Legend: cyan = forward activation, violet = parameter, orange = repair/check path. Click a repair tag, then click a canvas slot to patch the board.",
     68,
     609,
     13,
@@ -445,12 +528,12 @@ function drawTrainOverlay(layer: Container) {
   addText(layer, "grad_norm=0.82  lr=3e-4  tokens/sec=18.4k", 82, 539, 12, 0xfbbf24, "700", 0);
 }
 
-function drawPulses(layer: Graphics, edges: TensorEdge[], elapsedMS: number, active: boolean) {
+function drawPulses(layer: Graphics, edges: TensorEdge[], elapsedMS: number, active: boolean, nodeLookup: Map<string, TensorNode>) {
   layer.clear();
   if (!active) return;
 
   edges.forEach((edge, index) => {
-    const points = getEdgePoints(edge);
+    const points = getEdgePoints(edge, nodeLookup);
     if (points.length < 2) return;
     const speed = edge.flow === "gradient" ? 0.00034 : 0.00048;
     const phase = (elapsedMS * speed + index * 0.16) % 1;

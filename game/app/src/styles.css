@@ -131,7 +131,11 @@ h3 {
 
 .modeButton,
 .iconButton,
-.runButton {
+.runButton,
+.ghostButton,
+.repairTag,
+.probeButton,
+.repairSlot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -166,8 +170,13 @@ h3 {
 .modeButton:hover,
 .iconButton:hover,
 .runButton:hover,
+.ghostButton:hover,
 .traceStep:hover,
-.moduleItem:hover {
+.moduleItem:hover,
+.levelItem:hover,
+.repairTag:hover,
+.probeButton:hover,
+.repairSlot:hover {
   transform: translateY(-1px);
 }
 
@@ -199,7 +208,7 @@ h3 {
 
 .workbenchGrid {
   display: grid;
-  grid-template-columns: 250px minmax(760px, 1fr) 340px;
+  grid-template-columns: 280px minmax(760px, 1fr) 340px;
   grid-template-rows: minmax(590px, calc(100vh - 248px)) auto;
   gap: 14px;
 }
@@ -237,6 +246,84 @@ h3 {
 .moduleList {
   display: grid;
   gap: 8px;
+}
+
+.levelList {
+  display: grid;
+  gap: 9px;
+}
+
+.levelItem {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid #254763;
+  border-radius: 8px;
+  background: #0a1524;
+  color: #d7e8fb;
+  text-align: left;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.levelItem.active {
+  border-color: #60a5fa;
+  background: #10233a;
+}
+
+.levelItem.pass {
+  border-color: rgba(34, 197, 94, 0.46);
+}
+
+.levelItem.fail {
+  border-color: rgba(239, 68, 68, 0.58);
+}
+
+.levelItem svg {
+  justify-self: end;
+}
+
+.levelItem.pass svg {
+  color: #22c55e;
+}
+
+.levelItem.fail svg {
+  color: #ef4444;
+}
+
+.levelItem.pending svg {
+  color: #f59e0b;
+}
+
+.levelId {
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  border: 1px solid #315f94;
+  border-radius: 6px;
+  background: #07111f;
+  color: #93c5fd;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.levelItem b,
+.levelItem small {
+  display: block;
+}
+
+.levelItem b {
+  margin-bottom: 3px;
+  color: #e8f2ff;
+}
+
+.levelItem small {
+  margin-top: 2px;
+  color: #99aec5;
 }
 
 .moduleItem {
@@ -282,6 +369,34 @@ h3 {
   background: #07111f;
   color: #93c5fd;
   font-size: 0.78rem;
+}
+
+.unlockBox {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #263b55;
+}
+
+.unlockBox b {
+  color: #e8f2ff;
+}
+
+.unlockBox div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.unlockBox span {
+  padding: 5px 8px;
+  border: 1px solid #2b4564;
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .stagePanel {
@@ -368,6 +483,11 @@ h3 {
 .kindBadge.scalar {
   background: #422b16;
   color: #fbbf24;
+}
+
+.kindBadge.operation {
+  background: #263b55;
+  color: #dbeafe;
 }
 
 .statGrid {
@@ -496,9 +616,446 @@ h3 {
   font-weight: 900;
 }
 
+.testActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ghostButton {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #2b4564;
+  background: #0a1524;
+  color: #d7e8fb;
+  font-weight: 900;
+}
+
+.challengeLayout {
+  display: grid;
+  grid-template-columns: 280px minmax(460px, 1fr) 360px;
+  gap: 12px;
+  align-items: start;
+}
+
+.repairLayout {
+  grid-template-columns: 300px minmax(520px, 1fr) 380px;
+}
+
+.briefingBox,
+.resultPanel {
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #0a1524;
+}
+
+.briefingBox b {
+  display: block;
+  margin-bottom: 8px;
+  color: #e8f2ff;
+}
+
+.briefingBox p {
+  margin-bottom: 8px;
+  color: #9db2ca;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.briefingBox p:last-child {
+  margin-bottom: 0;
+}
+
+.conceptBrief {
+  display: grid;
+  gap: 10px;
+}
+
+.faultBox {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: 7px;
+  background: rgba(67, 39, 11, 0.42);
+  color: #f8d8a8;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.faultBox svg {
+  color: #f59e0b;
+}
+
+.budgetGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  padding-top: 10px;
+  border-top: 1px solid #263b55;
+}
+
+.budgetGrid span {
+  color: #8aa6bf;
+  font-size: 0.82rem;
+}
+
+.budgetGrid b {
+  color: #bfdbfe;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+
+.repairConsole {
+  display: grid;
+  gap: 10px;
+}
+
+.consoleSection,
+.probeLog {
+  padding: 12px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #0a1524;
+}
+
+.consoleTitle {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.consoleTitle b,
+.probeLog > b {
+  color: #e8f2ff;
+}
+
+.consoleTitle small {
+  color: #99aec5;
+  line-height: 1.35;
+}
+
+.tagTray,
+.probeTray,
+.slotGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.tagTray {
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+}
+
+.repairTag {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid #254763;
+  background: #07111f;
+  color: #d7e8fb;
+  text-align: left;
+}
+
+.repairTag.active {
+  border-color: #60a5fa;
+  background: #123052;
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.28);
+}
+
+.repairTag.used {
+  border-color: rgba(34, 197, 94, 0.48);
+}
+
+.repairTag.data b {
+  color: #7dd3fc;
+}
+
+.repairTag.axis b {
+  color: #fef08a;
+}
+
+.repairTag.contract b {
+  color: #c4b5fd;
+}
+
+.repairTag b {
+  margin-bottom: 4px;
+  color: #e8f2ff;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.88rem;
+}
+
+.repairTag span {
+  color: #9db2ca;
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.probeTray {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.probeButton {
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 62px;
+  padding: 10px;
+  border: 1px solid #254763;
+  background: #07111f;
+  color: #d7e8fb;
+  text-align: left;
+}
+
+.probeButton.active {
+  border-color: #fbbf24;
+  background: rgba(67, 39, 11, 0.42);
+}
+
+.probeButton svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #93c5fd;
+}
+
+.probeButton b,
+.probeButton small {
+  display: block;
+}
+
+.probeButton b {
+  color: #e8f2ff;
+  font-size: 0.84rem;
+}
+
+.probeButton small {
+  margin-top: 3px;
+  color: #99aec5;
+  line-height: 1.3;
+}
+
+.slotGrid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.repairSlot {
+  justify-content: space-between;
+  min-height: 60px;
+  padding: 10px;
+  border: 1px solid #254763;
+  background: #07111f;
+  color: #d7e8fb;
+  text-align: left;
+}
+
+.repairSlot.active {
+  border-color: #fbbf24;
+  background: rgba(67, 39, 11, 0.42);
+}
+
+.repairSlot.filled {
+  border-color: rgba(34, 197, 94, 0.48);
+}
+
+.repairSlot b,
+.repairSlot small {
+  display: block;
+}
+
+.repairSlot b {
+  color: #e8f2ff;
+  font-size: 0.86rem;
+}
+
+.repairSlot small {
+  margin-top: 3px;
+  color: #99aec5;
+}
+
+.repairSlot code {
+  min-width: 54px;
+  padding: 7px 8px;
+  border: 1px solid #315f94;
+  border-radius: 6px;
+  background: #0b1728;
+  color: #bfdbfe;
+  text-align: center;
+}
+
+.probeLog {
+  display: grid;
+  gap: 8px;
+}
+
+.probeLog p {
+  margin-bottom: 0;
+  color: #99aec5;
+  font-size: 0.84rem;
+}
+
+.consoleEmpty {
+  min-height: 44px;
+  padding: 10px;
+  border: 1px dashed #315f94;
+  border-radius: 7px;
+  background: rgba(7, 17, 31, 0.58);
+  color: #9db2ca;
+  line-height: 1.4;
+}
+
+.probeLogItem {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 7px;
+  background: #07111f;
+}
+
+.probeLogItem span,
+.probeLogItem small {
+  color: #99aec5;
+  font-size: 0.78rem;
+}
+
+.probeLogItem b {
+  color: #e8f2ff;
+  font-size: 0.84rem;
+}
+
+.resultPanel {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.resultPanel.pass {
+  border-color: rgba(34, 197, 94, 0.48);
+  background: rgba(20, 83, 45, 0.32);
+}
+
+.resultPanel.fail {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(69, 10, 10, 0.42);
+}
+
+.resultPanel.pending {
+  border-color: rgba(245, 158, 11, 0.46);
+  background: rgba(67, 39, 11, 0.45);
+}
+
+.resultPanel.pass > svg,
+.resultCheck.pass svg {
+  color: #22c55e;
+}
+
+.resultPanel.fail > svg,
+.resultCheck.fail svg {
+  color: #ef4444;
+}
+
+.resultPanel.pending > svg {
+  color: #f59e0b;
+}
+
+.resultPanel b {
+  color: #e8f2ff;
+}
+
+.resultPanel p {
+  margin: 5px 0 10px;
+  color: #bfd3e8;
+  line-height: 1.42;
+}
+
+.resultPanel code {
+  color: #fff7ed;
+  overflow-wrap: anywhere;
+}
+
+.scoreStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.scoreStrip code {
+  padding: 5px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.62);
+  color: #bfdbfe;
+  font-size: 0.74rem;
+}
+
+.resultChecks {
+  display: grid;
+  gap: 7px;
+}
+
+.resultCheck {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 7px;
+  background: rgba(7, 17, 31, 0.62);
+}
+
+.resultCheck small {
+  display: block;
+  margin-top: 3px;
+  color: #a8bed4;
+  line-height: 1.35;
+}
+
+.resultCheck.warn svg {
+  color: #f59e0b;
+}
+
+.evidenceBox {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 16px;
+  padding: 11px;
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  border-radius: 8px;
+  background: rgba(67, 39, 11, 0.34);
+}
+
+.evidenceBox h3 {
+  margin-bottom: 0;
+}
+
+.evidenceBox b {
+  color: #ffedd5;
+}
+
+.evidenceBox p {
+  margin-bottom: 0;
+  color: #f8d8a8;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.evidenceBox code,
+.evidenceBox small {
+  display: block;
+  color: #fff7ed;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
 .traceSteps {
   display: grid;
-  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 
@@ -544,6 +1101,402 @@ h3 {
   color: #fff7ed;
 }
 
+.objectiveBox {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #07111f;
+}
+
+.objectiveBox > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.objectiveBox small {
+  color: #93c5fd;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.objectiveList {
+  display: grid;
+  gap: 6px;
+}
+
+.objectiveItem {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  min-height: 30px;
+  padding: 6px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
+  color: #9db2ca;
+  font-size: 0.79rem;
+  line-height: 1.35;
+}
+
+.objectiveItem.active {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(67, 39, 11, 0.28);
+  color: #ffedd5;
+}
+
+.objectiveItem.done {
+  border-color: rgba(34, 197, 94, 0.34);
+  color: #dcfce7;
+}
+
+.objectiveItem svg {
+  margin-top: 1px;
+}
+
+.objectiveItem.done svg {
+  color: #22c55e;
+}
+
+.objectiveItem.active svg {
+  color: #f59e0b;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 12, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.knowledgePanel,
+.missionModal,
+.completionModal {
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  border: 1px solid #315f94;
+  border-radius: 8px;
+  background: #081220;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+}
+
+.knowledgePanel {
+  display: grid;
+  gap: 16px;
+  width: min(980px, 100%);
+  padding: 22px;
+}
+
+.knowledgePanel h2,
+.missionModal h2,
+.completionModal h2 {
+  margin-bottom: 14px;
+  color: #e8f2ff;
+  font-size: 1.32rem;
+}
+
+.knowledgeTop {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.knowledgeTop h2 {
+  margin-bottom: 0;
+}
+
+.knowledgeTop code {
+  min-width: 64px;
+  padding: 7px 9px;
+  border: 1px solid #315f94;
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  text-align: center;
+}
+
+.knowledgeWorkbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 14px;
+}
+
+.knowledgeVisual,
+.knowledgeCard {
+  padding: 14px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #0a1524;
+}
+
+.knowledgeVisual {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  min-height: 342px;
+}
+
+.knowledgeVisual.interactive {
+  cursor: pointer;
+}
+
+.knowledgeVisual.interactive:hover {
+  border-color: #38bdf8;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.18);
+}
+
+.knowledgeVisual.interactive:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 3px;
+}
+
+.visualStage {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid #20364d;
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(45, 75, 108, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 75, 108, 0.18) 1px, transparent 1px),
+    #07111f;
+  background-size: 26px 26px;
+}
+
+.visualStage code,
+.knowledgeVisual > code {
+  position: relative;
+  display: block;
+  padding: 9px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 7px;
+  background: rgba(8, 18, 32, 0.86);
+  color: #dbeafe;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.visualStage code.active {
+  border-color: #38bdf8;
+  background: rgba(14, 116, 144, 0.2);
+  color: #e0f2fe;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.12);
+}
+
+.lineClickGuide {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: auto;
+  height: 32px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.lineClickGuideBubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 11px;
+  border: 1px solid rgba(125, 211, 252, 0.64);
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.95);
+  color: #e0f2fe;
+  font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.28),
+    0 0 18px rgba(56, 189, 248, 0.16);
+  animation: guideBubblePulse 1.45s ease-in-out infinite;
+}
+
+.lineClickGuideBubble span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #7dd3fc;
+  box-shadow: 0 0 12px rgba(125, 211, 252, 0.72);
+}
+
+@keyframes guideBubblePulse {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateX(-3px);
+  }
+}
+
+.knowledgeVisual.complete {
+  align-content: start;
+}
+
+.knowledgeVisual.complete > b {
+  color: #e8f2ff;
+}
+
+.knowledgeVisual.complete > code {
+  color: #86efac;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.knowledgeCard span {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 26px;
+  margin-bottom: 12px;
+  border: 1px solid #315f94;
+  border-radius: 6px;
+  color: #93c5fd;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.knowledgeCard p,
+.missionModal p,
+.completionModal p {
+  margin-bottom: 0;
+  color: #bfd3e8;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.knowledgeCard.active {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 342px;
+}
+
+.conceptTable {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+}
+
+.conceptTable span,
+.conceptTable small {
+  min-height: 34px;
+  padding: 8px 10px;
+  background: #07111f;
+}
+
+.conceptTable span {
+  color: #93c5fd;
+  font-weight: 900;
+}
+
+.conceptTable small {
+  color: #dbeafe;
+}
+
+.knowledgeActions {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.knowledgeActions .modalAction {
+  justify-self: end;
+}
+
+.knowledgeDots {
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+}
+
+.knowledgeDots button {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: 1px solid #315f94;
+  border-radius: 999px;
+  background: #07111f;
+}
+
+.knowledgeDots button.active {
+  border-color: #7dd3fc;
+  background: #7dd3fc;
+  box-shadow: 0 0 12px rgba(125, 211, 252, 0.45);
+}
+
+.missionModal,
+.completionModal {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.missionSuccess {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #0a1524;
+}
+
+.missionSuccess b {
+  color: #e8f2ff;
+}
+
+.missionSuccess div {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  color: #bfd3e8;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.missionSuccess svg,
+.completionModal > svg {
+  color: #22c55e;
+}
+
+.completionModal {
+  width: min(640px, 100%);
+}
+
+.completionModal > svg {
+  justify-self: start;
+}
+
+.modalAction {
+  justify-self: end;
+  min-width: 154px;
+}
+
+.modalUnlocks {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 @media (max-width: 1280px) {
   .workbenchGrid {
     grid-template-columns: 220px minmax(680px, 1fr);
@@ -551,6 +1504,10 @@ h3 {
 
   .inspector {
     grid-column: 1 / -1;
+  }
+
+  .challengeLayout {
+    grid-template-columns: 1fr;
   }
 
   .traceSteps {
@@ -578,6 +1535,16 @@ h3 {
     flex-direction: column;
   }
 
+  .tagTray,
+  .probeTray,
+  .slotGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledgeWorkbench {
+    grid-template-columns: 1fr;
+  }
+
   .traceSteps {
     grid-template-columns: 1fr 1fr;
   }
@@ -599,5 +1566,32 @@ h3 {
 
   .traceSteps {
     grid-template-columns: 1fr;
+  }
+
+  .knowledgePanel,
+  .missionModal,
+  .completionModal {
+    padding: 16px;
+  }
+
+  .modalAction {
+    justify-self: stretch;
+  }
+
+  .knowledgeActions {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledgeActions .modalAction {
+    justify-self: stretch;
+  }
+
+  .lineClickGuide {
+    right: 8px;
+  }
+
+  .lineClickGuideBubble {
+    min-height: 28px;
+    padding: 5px 9px;
   }
 }
