@@ -356,7 +356,7 @@ export function App() {
             <Boxes size={28} />
           </div>
           <div>
-            <p className="eyebrow">LLM Complete / MVP 0.0.2</p>
+            <p className="eyebrow">LLM Complete / MVP 0.0.3-dev</p>
             <h1>Tensor Bootcamp</h1>
           </div>
         </div>
