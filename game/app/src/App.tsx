@@ -75,6 +75,17 @@ type TensorObjectDetailState = {
   modalOpen: boolean;
 };
 
+type BootcampProgressSave = {
+  version: 1;
+  selectedLevelId?: string;
+  repairStates?: Record<string, LevelRepairState>;
+  results?: Record<string, BootcampResult>;
+  introSeen?: Record<string, boolean>;
+  stageIntroSeen?: Record<string, Record<string, boolean>>;
+  missionStarted?: Record<string, boolean>;
+  completionDismissed?: Record<string, boolean>;
+};
+
 type LevelPhase =
   | "knowledge_intro"
   | "mission_modal"
@@ -104,6 +115,7 @@ type LevelPhase =
   | "completed";
 
 const repairTagDragMime = "application/x-llm-complete-repair-tag";
+const progressStorageKey = "llm-complete:bootcamp-progress:v1";
 
 const modeIcons: Record<WorkbenchMode, JSX.Element> = {
   build: <Wrench size={17} />,
@@ -716,16 +728,19 @@ const chapter02PhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x
 };
 
 export function App() {
+  const [initialProgress] = useState<BootcampProgressSave>(() => readBootcampProgressSave());
+  const initialSelectedLevelId = resolveSavedLevelId(initialProgress.selectedLevelId);
+  const initialSelectedLevel = bootcampLevels.find((level) => level.id === initialSelectedLevelId) ?? bootcampLevels[0];
   const [mode, setMode] = useState<WorkbenchMode>("build");
-  const [selectedLevelId, setSelectedLevelId] = useState(bootcampLevels[0].id);
-  const [selectedId, setSelectedId] = useState(bootcampLevels[0].defaultSelectedNodeId);
+  const [selectedLevelId, setSelectedLevelId] = useState(initialSelectedLevel.id);
+  const [selectedId, setSelectedId] = useState(initialSelectedLevel.defaultSelectedNodeId);
   const [playing, setPlaying] = useState(true);
-  const [repairStates, setRepairStates] = useState<Record<string, LevelRepairState>>({});
-  const [results, setResults] = useState<Record<string, BootcampResult>>({});
-  const [introSeen, setIntroSeen] = useState<Record<string, boolean>>({});
-  const [stageIntroSeen, setStageIntroSeen] = useState<Record<string, Record<string, boolean>>>({});
-  const [missionStarted, setMissionStarted] = useState<Record<string, boolean>>({});
-  const [completionDismissed, setCompletionDismissed] = useState<Record<string, boolean>>({});
+  const [repairStates, setRepairStates] = useState<Record<string, LevelRepairState>>(() => filterBootcampRecord(initialProgress.repairStates));
+  const [results, setResults] = useState<Record<string, BootcampResult>>(() => filterBootcampRecord(initialProgress.results));
+  const [introSeen, setIntroSeen] = useState<Record<string, boolean>>(() => filterBootcampRecord(initialProgress.introSeen));
+  const [stageIntroSeen, setStageIntroSeen] = useState<Record<string, Record<string, boolean>>>(() => filterBootcampRecord(initialProgress.stageIntroSeen));
+  const [missionStarted, setMissionStarted] = useState<Record<string, boolean>>(() => filterBootcampRecord(initialProgress.missionStarted));
+  const [completionDismissed, setCompletionDismissed] = useState<Record<string, boolean>>(() => filterBootcampRecord(initialProgress.completionDismissed));
   const [nodePositions, setNodePositions] = useState<Record<string, NodePositionMap>>({});
   const [stageKnowledgePositions, setStageKnowledgePositions] = useState<Record<string, StageKnowledgePositionMap>>({});
   const [pendingStageDebrief, setPendingStageDebrief] = useState<Record<string, LevelPhase | undefined>>({});
@@ -741,8 +756,9 @@ export function App() {
   );
   const activeRepairState = repairStates[activeLevel.id] ?? createInitialRepairState();
   const levelResult = results[activeLevel.id];
-  const showKnowledgeIntro = Boolean(activeLevel.knowledgeCards?.length && !introSeen[activeLevel.id]);
-  const showMissionModal = Boolean(activeLevel.mission && !showKnowledgeIntro && !missionStarted[activeLevel.id]);
+  const levelCompleted = Boolean(levelResult?.passed);
+  const showKnowledgeIntro = Boolean(!levelCompleted && activeLevel.knowledgeCards?.length && !introSeen[activeLevel.id]);
+  const showMissionModal = Boolean(!levelCompleted && activeLevel.mission && !showKnowledgeIntro && !missionStarted[activeLevel.id]);
   const derivedLevelPhase = deriveLevelPhase(activeLevel, activeRepairState, levelResult, showKnowledgeIntro, showMissionModal);
   const pendingDebriefPhase = pendingStageDebrief[activeLevel.id];
   const levelPhase = pendingDebriefPhase ?? derivedLevelPhase;
@@ -816,9 +832,25 @@ export function App() {
     setStageDebriefOpen((current) => ({ ...current, [activeLevel.id]: false }));
   }, [activeLevel, activeRepairState.assignments, activeRepairState.observations, levelPhase, levelResult?.passed, pendingDebriefPhase]);
 
+  useEffect(() => {
+    writeBootcampProgressSave({
+      version: 1,
+      selectedLevelId,
+      repairStates,
+      results,
+      introSeen,
+      stageIntroSeen,
+      missionStarted,
+      completionDismissed
+    });
+  }, [selectedLevelId, repairStates, results, introSeen, stageIntroSeen, missionStarted, completionDismissed]);
+
   function selectLevel(level: BootcampLevel) {
     setSelectedLevelId(level.id);
     setSelectedId(level.defaultSelectedNodeId);
+    if (results[level.id]?.passed) {
+      setCompletionDismissed((current) => ({ ...current, [level.id]: true }));
+    }
     setPlaying(true);
   }
 
@@ -1389,6 +1421,60 @@ function createInitialRepairState(): LevelRepairState {
     referenceRuns: 0,
     observations: []
   };
+}
+
+function readBootcampProgressSave(): BootcampProgressSave {
+  if (typeof window === "undefined") return { version: 1 };
+
+  try {
+    const raw = window.localStorage.getItem(progressStorageKey);
+    if (!raw) return { version: 1 };
+    const parsed = JSON.parse(raw) as Partial<BootcampProgressSave>;
+    if (parsed.version !== 1) return { version: 1 };
+    return {
+      version: 1,
+      selectedLevelId: parsed.selectedLevelId,
+      repairStates: parsed.repairStates,
+      results: parsed.results,
+      introSeen: parsed.introSeen,
+      stageIntroSeen: parsed.stageIntroSeen,
+      missionStarted: parsed.missionStarted,
+      completionDismissed: parsed.completionDismissed
+    };
+  } catch {
+    return { version: 1 };
+  }
+}
+
+function writeBootcampProgressSave(progress: BootcampProgressSave) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      progressStorageKey,
+      JSON.stringify({
+        ...progress,
+        repairStates: filterBootcampRecord(progress.repairStates),
+        results: filterBootcampRecord(progress.results),
+        introSeen: filterBootcampRecord(progress.introSeen),
+        stageIntroSeen: filterBootcampRecord(progress.stageIntroSeen),
+        missionStarted: filterBootcampRecord(progress.missionStarted),
+        completionDismissed: filterBootcampRecord(progress.completionDismissed)
+      })
+    );
+  } catch {
+    // Progress persistence should never block gameplay.
+  }
+}
+
+function resolveSavedLevelId(levelId: string | undefined) {
+  return bootcampLevels.some((level) => level.id === levelId) ? levelId : bootcampLevels[0].id;
+}
+
+function filterBootcampRecord<T>(record: Record<string, T> | undefined): Record<string, T> {
+  if (!record || typeof record !== "object") return {};
+  const validIds = new Set(bootcampLevels.map((level) => level.id));
+  return Object.fromEntries(Object.entries(record).filter(([levelId]) => validIds.has(levelId)));
 }
 
 function deriveLevelPhase(
