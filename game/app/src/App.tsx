@@ -794,6 +794,8 @@ export function App() {
       !levelResult?.passed &&
       !stageIntroSeen[activeLevel.id]?.[levelPhase]
   );
+  const showCanvasPalette = shouldShowCanvasPalette(activeLevel, levelPhase) && !showKnowledgeIntro && !showMissionModal && !levelResult?.passed;
+  const showRightRepairConsole = activeLevel.id !== "0-1" && activeLevel.id !== "0-2";
   const slotOverlays = useMemo(
     () => buildSlotOverlays(activeLevel, activeRepairState, levelPhase),
     [activeLevel, activeRepairState.assignments, activeRepairState.selectedSlotId, levelPhase]
@@ -1078,7 +1080,7 @@ export function App() {
   }
 
   function getCanvasMenuActions(target: CanvasContextTarget | null): CanvasMenuAction[] {
-    if (!target || activeLevel.id !== "0-1") return [];
+    if (!target || (activeLevel.id !== "0-1" && activeLevel.id !== "0-2")) return [];
 
     const actions: CanvasMenuAction[] = [];
     const targetSlot = target.kind === "slot" ? activeLevel.repair.slots.find((slot) => slot.id === target.id) : undefined;
@@ -1095,6 +1097,17 @@ export function App() {
             detail: probe.detail,
             onSelect: () => probeCanvasSlot(targetSlot.id, probe.id)
           });
+        });
+      }
+    }
+
+    if (activeLevel.id === "0-2" && ((target.kind === "node" && target.id === "matmul_tests") || target.kind === "canvas")) {
+      if (levelPhase === "matmul_gauntlet") {
+        actions.push({
+          id: "run_matmul_tests",
+          label: "Run MatMul Gauntlet",
+          detail: "Execute reference and hidden MatMul cases.",
+          onSelect: runCanvasTests
         });
       }
     }
@@ -1300,7 +1313,7 @@ export function App() {
               <span>知识卡片</span>
             </button>
           ) : null}
-          {activeLevel.id === "0-1" && levelPhase !== "tensor_object" ? (
+          {showCanvasPalette ? (
             <div className="canvasPaletteLayer">
               <BlueprintPalette level={activeLevel} repairState={activeRepairState} phase={levelPhase} onSelectTag={selectTag} onSelectProbe={selectProbe} />
             </div>
@@ -1355,7 +1368,7 @@ export function App() {
             onOpenTensorObjectDetail={openTensorObjectDetail}
             onRunTensorObjectShowcase={runTensorObjectShowcase}
           />
-          {activeLevel.id !== "0-1" ? (
+          {showRightRepairConsole ? (
             <section className="panel levelControlPanel">
               <div className="panelHeader">
                 <Wrench size={18} />
@@ -1556,6 +1569,12 @@ function areAssignmentsCorrect(level: BootcampLevel, assignments: BootcampAnswer
 
 function supportsStageRail(level: BootcampLevel) {
   return level.id === "0-1" || level.id === "0-2";
+}
+
+function shouldShowCanvasPalette(level: BootcampLevel, phase: LevelPhase) {
+  if (level.id === "0-1") return phase !== "tensor_object" && Boolean(chapter01ChallengeByPhase.get(phase));
+  if (level.id === "0-2") return Boolean(chapter02ChallengeByPhase.get(phase));
+  return false;
 }
 
 function supportsStageDebrief(level: BootcampLevel) {
@@ -2032,7 +2051,7 @@ function buildCanvasActionHints(level: BootcampLevel, repairState: LevelRepairSt
               kind: "node",
               id: "matmul_tests",
               icon: "run",
-              tooltip: "Use the repair console to run the final MatMul Gauntlet",
+              tooltip: "Click or right-click: run the final MatMul Gauntlet",
               pulse: true
             }
           ]
