@@ -2,6 +2,7 @@ import type { BootcampAnswerMap, BootcampLevel, BootcampResult, CheckState, Tens
 import { matMulGateLevel } from "./chapter02MatMulGateLevel";
 import { transposeTrapLevel } from "./chapter03TransposeTrapLevel";
 import { broadcastAddLevel } from "./chapter04BroadcastAddLevel";
+import { chapter1TokenizationLevel } from "./chapter1TokenizationLevel";
 
 type NodeSpec = Omit<TensorNode, "stats" | "sample" | "checks"> & {
   stats?: TensorNode["stats"];
@@ -1767,7 +1768,8 @@ const bootcampLevelDefinitions: BootcampLevel[] = [
 
 export const bootcampLevels: BootcampLevel[] = [
   ...bootcampLevelDefinitions.filter((level) => level.id !== "0-2-legacy" && level.id !== "0-3-legacy" && level.id !== "0-4"),
-  broadcastAddLevel
+  broadcastAddLevel,
+  chapter1TokenizationLevel
 ];
 
 export function evaluateBootcampLevel(level: BootcampLevel, assignments: BootcampAnswerMap, metrics: EvaluateMetrics): BootcampResult {

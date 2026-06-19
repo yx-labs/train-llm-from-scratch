@@ -67,6 +67,7 @@ export type RepairTag = {
     | "shape"
     | "semantic"
     | "token"
+    | "mask"
     | "embedding"
     | "consumer";
 };
@@ -113,7 +114,7 @@ export type RepairCheckDefinition = {
 };
 
 export type RepairSpec = {
-  kind: "axis_labels" | "matmul_gate" | "transpose_switch" | "broadcast_rail";
+  kind: "axis_labels" | "matmul_gate" | "transpose_switch" | "broadcast_rail" | "tokenizer_pipeline";
   targetContract: string;
   brokenMessage: string;
   budget: {

@@ -95,7 +95,14 @@ export type CanvasStageKnowledge = {
     | "broadcast_position"
     | "broadcast_mask"
     | "broadcast_debugger"
-    | "broadcast_gauntlet";
+    | "broadcast_gauntlet"
+    | "token_raw_text"
+    | "token_type_gate"
+    | "token_split"
+    | "token_vocab"
+    | "token_buffer"
+    | "token_mask"
+    | "tokenizer_gauntlet";
   carryForward?: string;
 };
 
@@ -989,6 +996,27 @@ function drawStageVisual(layer: Container, visual: CanvasStageKnowledge["visual"
     case "broadcast_gauntlet":
       drawBroadcastStageVisual(layer, x + 14, y + 15, "A-F", "hidden", "pass", "generalize contract");
       break;
+    case "token_raw_text":
+      drawTokenizerStageVisual(layer, x + 14, y + 15, "raw text", "inspect", "not tensor", "utf8 object boundary");
+      break;
+    case "token_type_gate":
+      drawTokenizerStageVisual(layer, x + 14, y + 15, "utf8", "Type Gate", "int ids", "reject raw string");
+      break;
+    case "token_split":
+      drawTokenSplitVisual(layer, x + 14, y + 14);
+      break;
+    case "token_vocab":
+      drawTokenVocabVisual(layer, x + 14, y + 12);
+      break;
+    case "token_buffer":
+      drawTokenBufferVisual(layer, x + 14, y + 12);
+      break;
+    case "token_mask":
+      drawTokenMaskVisual(layer, x + 14, y + 12);
+      break;
+    case "tokenizer_gauntlet":
+      drawTokenizerStageVisual(layer, x + 14, y + 15, "visible", "hidden", "pass", "type pieces vocab mask");
+      break;
   }
 }
 
@@ -1155,6 +1183,100 @@ function drawBroadcastStageVisual(layer: Container, x: number, y: number, leftLa
   drawBroadcastGhostGlyph(layer, x + 89, y + 4);
   drawMatrixGlyph(layer, x + 174, y + 2, 3, 4, 6, 0x22c55e);
   addText(layer, footer, x + 105, y + 78, 9, 0x9db2ca, "800", 0.5);
+}
+
+function drawTokenizerStageVisual(layer: Container, x: number, y: number, leftLabel: string, opLabel: string, rightLabel: string, footer: string) {
+  const nodes = [
+    { label: leftLabel, x, color: 0x1a4164 },
+    { label: opLabel, x: x + 82, color: 0x304b6a },
+    { label: rightLabel, x: x + 164, color: 0x1f6f54 }
+  ];
+
+  nodes.forEach((item, index) => {
+    const box = new Graphics();
+    box.roundRect(item.x, y + 28, 58, 30, 6).fill({ color: item.color, alpha: 0.84 }).stroke({ width: 1, color: 0x7dd3fc, alpha: index === 1 ? 0.54 : 0.34 });
+    layer.addChild(box);
+    addText(layer, item.label, item.x + 29, y + 44, 8, 0xe8f2ff, "900", 0.5);
+  });
+
+  drawSmallArrow(layer, { x: x + 61, y: y + 43 }, { x: x + 78, y: y + 43 }, 0x60a5fa);
+  drawSmallArrow(layer, { x: x + 143, y: y + 43 }, { x: x + 160, y: y + 43 }, 0x60a5fa);
+  addText(layer, "abc", x + 18, y + 12, 12, 0x7dd3fc, "900", 0.5);
+  drawTokenChip(layer, x + 94, y + 6, "tok", 0x38bdf8);
+  drawVectorGlyph(layer, x + 176, y + 9, 4, 0x22c55e);
+  addText(layer, footer, x + 105, y + 78, 9, 0x9db2ca, "800", 0.5);
+}
+
+function drawTokenSplitVisual(layer: Container, x: number, y: number) {
+  addText(layer, "tokenizers!", x + 46, y + 6, 10, 0xe8f2ff, "900", 0.5);
+  const pieces = [
+    { label: "token", color: 0x38bdf8 },
+    { label: "izer", color: 0x7dd3fc },
+    { label: "s", color: 0xfbbf24 },
+    { label: "!", color: 0x22c55e }
+  ];
+  pieces.forEach((piece, index) => drawTokenChip(layer, x + 5 + index * 50, y + 34, piece.label, piece.color));
+  drawSmallArrow(layer, { x: x + 94, y: y + 22 }, { x: x + 94, y: y + 31 }, 0x60a5fa);
+  addText(layer, "ordered pieces -> T axis", x + 105, y + 78, 9, 0x9db2ca, "800", 0.5);
+}
+
+function drawTokenVocabVisual(layer: Container, x: number, y: number) {
+  const rows = [
+    ["token", "12"],
+    ["izer", "13"],
+    ["tokenizer", "14"],
+    ["<unk>", "3"]
+  ];
+  rows.forEach((row, index) => {
+    const yPos = y + 8 + index * 18;
+    const line = new Graphics();
+    line.roundRect(x + 18, yPos, 112, 14, 3)
+      .fill({ color: index === 2 ? 0x123c2f : 0x0f2740, alpha: 0.94 })
+      .stroke({ width: 1, color: index === 2 ? 0x22c55e : 0x315f94, alpha: 0.8 });
+    layer.addChild(line);
+    addText(layer, row[0], x + 44, yPos + 8, 7, 0xe8f2ff, "800", 0.5);
+    addText(layer, row[1], x + 112, yPos + 8, 7, 0xfbbf24, "900", 0.5);
+  });
+  drawSmallArrow(layer, { x: x + 138, y: y + 43 }, { x: x + 168, y: y + 43 }, 0x60a5fa);
+  drawTokenChip(layer, x + 174, y + 31, "id=14", 0x22c55e);
+  addText(layer, "piece lights one row", x + 105, y + 88, 9, 0x9db2ca, "800", 0.5);
+}
+
+function drawTokenBufferVisual(layer: Container, x: number, y: number) {
+  const values = [
+    ["1", "8", "9", "10", "7", "2", "0", "0"],
+    ["1", "15", "3", "20", "5", "2", "0", "0"]
+  ];
+  for (let row = 0; row < values.length; row += 1) {
+    addText(layer, `B${row}`, x, y + 24 + row * 24, 9, 0xfbbf24, "900", 0);
+    for (let col = 0; col < values[row].length; col += 1) {
+      const isPad = values[row][col] === "0";
+      const cell = new Graphics();
+      cell.roundRect(x + 24 + col * 22, y + 13 + row * 24, 18, 18, 3)
+        .fill({ color: isPad ? 0x111827 : 0x0f2740, alpha: 0.95 })
+        .stroke({ width: 1, color: isPad ? 0x475569 : 0x315f94, alpha: 0.8 });
+      layer.addChild(cell);
+      addText(layer, values[row][col], x + 33 + col * 22, y + 23 + row * 24, 7, isPad ? 0x94a3b8 : 0xe8f2ff, "800", 0.5);
+    }
+  }
+  drawDimensionLine(layer, { x: x + 18, y: y + 10 }, { x: x + 18, y: y + 58 }, "B", 0xfbbf24);
+  drawDimensionLine(layer, { x: x + 25, y: y + 65 }, { x: x + 194, y: y + 65 }, "T", 0x7dd3fc);
+  addText(layer, "int[B,T]", x + 110, y + 86, 9, 0x9db2ca, "900", 0.5);
+}
+
+function drawTokenMaskVisual(layer: Container, x: number, y: number) {
+  drawTokenBufferVisual(layer, x, y);
+  const mask = new Graphics();
+  mask.roundRect(x + 108, y + 8, 84, 60, 5).stroke({ width: 2, color: 0xfbbf24, alpha: 0.82 });
+  layer.addChild(mask);
+  addText(layer, "pad=0 -> mask=0", x + 109, y + 88, 9, 0xfbbf24, "900", 0.5);
+}
+
+function drawTokenChip(layer: Container, x: number, y: number, label: string, color: number) {
+  const chip = new Graphics();
+  chip.roundRect(x, y, 42, 20, 5).fill({ color: 0x081524, alpha: 0.98 }).stroke({ width: 1, color, alpha: 0.82 });
+  layer.addChild(chip);
+  addText(layer, label, x + 21, y + 11, 8, 0xe8f2ff, "900", 0.5);
 }
 
 function drawBroadcastGhostGlyph(layer: Container, x: number, y: number) {

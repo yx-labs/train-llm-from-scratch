@@ -125,6 +125,25 @@ type LevelPhase =
   | "broadcast_bonus_residual"
   | "broadcast_bonus_mask_value"
   | "broadcast_gauntlet"
+  | "token_raw_text_object"
+  | "token_type_gate_failure"
+  | "token_tokenizer_socket"
+  | "token_token_id_contract"
+  | "token_boundary_cutter"
+  | "token_split_comparison"
+  | "token_count_meter"
+  | "token_merge_forge"
+  | "token_preserve_symbols"
+  | "token_vocab_lookup"
+  | "token_address_lighting"
+  | "token_stable_id_test"
+  | "token_buffer_build"
+  | "token_oov_failure"
+  | "token_fallback_splitter"
+  | "token_special_token_injector"
+  | "token_padding_builder"
+  | "token_budget_gate"
+  | "tokenizer_gauntlet"
   | "data_flow_repair"
   | "tensor_generated"
   | "axis_probe"
@@ -139,7 +158,8 @@ const progressStorageKey = "llm-complete:bootcamp-progress:v1";
 const bootcampLevelTransitions: Partial<Record<string, string>> = {
   "0-1": "0-2",
   "0-2": "0-3",
-  "0-3": "0-4"
+  "0-3": "0-4",
+  "0-4": "1-1"
 };
 
 const modeIcons: Record<WorkbenchMode, JSX.Element> = {
@@ -577,6 +597,307 @@ const chapter04Challenges: Chapter01ChallengeDef[] = [
 
 const chapter04ChallengeByPhase = new Map(chapter04Challenges.map((challenge) => [challenge.phase, challenge]));
 
+const chapter1TokenizationChallenges: Chapter01ChallengeDef[] = [
+  {
+    phase: "token_raw_text_object",
+    code: "1-1A",
+    title: "Raw Text Object",
+    brief: "观察 raw text 是 utf8 文本对象，但不是 numeric tensor。",
+    slotIds: ["c1_raw_text_object", "c1_text_inspector_open", "c1_not_numeric_tensor"],
+    nodeIds: ["raw_text_input", "text_inspector", "type_gate"],
+    edgeIds: ["e_c1_text_inspector", "e_c1_raw_type_gate"],
+    tagIds: ["raw_text_is_utf8_object", "inspect_text_metadata", "raw_text_not_numeric_tensor", "raw_text_is_tensor_float"],
+    tagCategories: ["object", "operation", "contract"]
+  },
+  {
+    phase: "token_type_gate_failure",
+    code: "1-1B",
+    title: "Type Gate Failure",
+    brief: "让 raw text 在模型数值端口前失败，明确 Embedding 需要 int ids。",
+    slotIds: ["c1_type_gate_input", "c1_type_gate_failure", "c1_embedding_requires_ids"],
+    nodeIds: ["raw_text_input", "type_gate", "raw_embedding_probe"],
+    edgeIds: ["e_c1_raw_type_gate", "e_c1_type_embedding_reject"],
+    tagIds: ["connect_raw_text_to_type_gate", "reject_string_for_embedding", "embedding_requires_int_ids", "send_raw_text_to_embedding"],
+    tagCategories: ["data", "contract", "embedding"]
+  },
+  {
+    phase: "token_tokenizer_socket",
+    code: "1-1C",
+    title: "Tokenizer Socket",
+    brief: "插入 Tokenizer Socket，把 utf8 转成 ordered token pieces，并阻止 raw bypass。",
+    slotIds: ["c1_tokenizer_socket", "c1_tokenizer_input_contract", "c1_raw_bypass_blocked"],
+    nodeIds: ["raw_text_input", "tokenizer_socket", "token_piece_stream"],
+    edgeIds: ["e_c1_text_tokenizer", "e_c1_tokenizer_pieces"],
+    tagIds: ["insert_tokenizer_socket", "utf8_to_token_pieces", "block_raw_bypass", "token_pieces_are_ids"],
+    tagCategories: ["operation", "token", "contract"]
+  },
+  {
+    phase: "token_token_id_contract",
+    code: "1-1D",
+    title: "Token ID Contract",
+    brief: "把 token pieces 继续变成 integer token ids，证明它们能 index embedding rows。",
+    slotIds: ["c1_token_id_output", "c1_token_id_rank", "c1_embedding_id_contract"],
+    nodeIds: ["token_piece_stream", "token_id_emitter", "embedding_lookup_probe"],
+    edgeIds: ["e_c1_pieces_ids", "e_c1_ids_embedding"],
+    tagIds: ["emit_int_token_ids", "token_ids_rank_1", "ids_can_index_embedding", "token_pieces_are_ids"],
+    tagCategories: ["token", "rank", "embedding"]
+  },
+  {
+    phase: "token_boundary_cutter",
+    code: "1-2A",
+    title: "Boundary Cutter",
+    brief: "用空格和标点切出 pieces，同时保持源文本顺序。",
+    slotIds: ["c1_boundary_spaces", "c1_boundary_punctuation", "c1_boundary_order"],
+    nodeIds: ["raw_text_input", "boundary_cutter", "token_piece_stream"],
+    edgeIds: ["e_c1_text_tokenizer", "e_c1_boundary_pieces"],
+    tagIds: ["split_on_spaces", "split_punctuation", "preserve_piece_order", "drop_punctuation"],
+    tagCategories: ["operation", "token", "semantic"]
+  },
+  {
+    phase: "token_split_comparison",
+    code: "1-2B",
+    title: "Split Comparison",
+    brief: "比较 char / word / subword 的 token cost 与 OOV 风险，选择 subword 主线。",
+    slotIds: ["c1_compare_char_policy", "c1_compare_word_policy", "c1_compare_subword_policy"],
+    nodeIds: ["boundary_cutter", "split_policy_switch", "token_count_meter"],
+    edgeIds: ["e_c1_policy_meter"],
+    tagIds: ["char_policy_many_tokens", "word_policy_oov_risk", "subword_policy_balanced", "choose_char_always"],
+    tagCategories: ["token"]
+  },
+  {
+    phase: "token_count_meter",
+    code: "1-2C",
+    title: "Token Count Meter",
+    brief: "在 split / merge 后计算 T，并在超过可见预算 T<=8 时阻塞。",
+    slotIds: ["c1_count_meter_input", "c1_count_budget", "c1_count_fail_fast"],
+    nodeIds: ["split_policy_switch", "token_count_meter", "budget_gate"],
+    edgeIds: ["e_c1_policy_meter", "e_c1_budget_buffer"],
+    tagIds: ["count_tokens_after_split", "budget_t_le_8", "meter_blocks_overflow", "ignore_budget"],
+    tagCategories: ["operation", "shape", "contract"]
+  },
+  {
+    phase: "token_merge_forge",
+    code: "1-2D",
+    title: "Merge Forge",
+    brief: "实现确定性 merge rules，例如 train+ing、tokenizer+s，并同步降低 token count。",
+    slotIds: ["c1_merge_train_ing", "c1_merge_tokenizer_s", "c1_merge_count"],
+    nodeIds: ["token_piece_stream", "merge_forge", "token_count_meter"],
+    edgeIds: ["e_c1_merge_meter"],
+    tagIds: ["merge_train_ing", "merge_tokenizer_s", "merge_reduces_count", "ignore_budget"],
+    tagCategories: ["token", "operation"]
+  },
+  {
+    phase: "token_preserve_symbols",
+    code: "1-2E",
+    title: "Preserve Symbols",
+    brief: "保留标点、空格/词首调试信息，让 decode check 能抓出丢符号问题。",
+    slotIds: ["c1_preserve_space_marker", "c1_preserve_punctuation", "c1_preserve_reversible_debug"],
+    nodeIds: ["token_piece_stream", "symbol_keeper", "vocab_lookup_gate"],
+    edgeIds: ["e_c1_symbols_lookup"],
+    tagIds: ["preserve_space_marker", "preserve_symbols", "decode_debug_possible", "drop_punctuation"],
+    tagCategories: ["token", "semantic"]
+  },
+  {
+    phase: "token_vocab_lookup",
+    code: "1-3A",
+    title: "Vocab Lookup",
+    brief: "让每个 piece 查 Toy Vocab，已知 piece 输出 row id，未知 piece 标为 OOV。",
+    slotIds: ["c1_lookup_vocab_rows", "c1_lookup_unknown_flag", "c1_lookup_emit_ids"],
+    nodeIds: ["token_piece_stream", "vocab_table", "vocab_lookup_gate", "token_id_emitter"],
+    edgeIds: ["e_c1_vocab_lookup", "e_c1_lookup_ids"],
+    tagIds: ["lookup_all_pieces", "flag_missing_vocab", "emit_vocab_ids", "skip_vocab_lookup"],
+    tagCategories: ["operation", "contract", "token"]
+  },
+  {
+    phase: "token_address_lighting",
+    code: "1-3B",
+    title: "Address Lighting",
+    brief: "把 piece、vocab row 和 embedding row 连起来，明确 token id 就是行地址。",
+    slotIds: ["c1_address_piece_row", "c1_address_id_equals_row", "c1_address_embedding_probe"],
+    nodeIds: ["vocab_table", "vocab_lookup_gate", "address_lighting", "embedding_lookup_probe"],
+    edgeIds: ["e_c1_lookup_address", "e_c1_address_embedding"],
+    tagIds: ["piece_lights_row", "id_is_row_address", "embedding_row_probe", "random_id_allocator"],
+    tagCategories: ["semantic", "contract", "embedding"]
+  },
+  {
+    phase: "token_stable_id_test",
+    code: "1-3C",
+    title: "Stable ID Test",
+    brief: "验证同一 piece 跨运行、跨 batch 始终映射到同一个 id，不允许运行时随机扩表。",
+    slotIds: ["c1_stable_same_piece", "c1_stable_repeat_run", "c1_stable_no_random_vocab"],
+    nodeIds: ["vocab_lookup_gate", "stable_id_checker", "token_buffer"],
+    edgeIds: ["e_c1_stable_buffer"],
+    tagIds: ["same_piece_same_id", "deterministic_run", "no_random_vocab", "random_id_allocator"],
+    tagCategories: ["contract", "operation"]
+  },
+  {
+    phase: "token_buffer_build",
+    code: "1-3D",
+    title: "Token Buffer Build",
+    brief: "把多条文本的 token ids 整理为 rectangular int[B,T]，行是 B，列是 T。",
+    slotIds: ["c1_buffer_axis_b", "c1_buffer_axis_t", "c1_buffer_rectangular"],
+    nodeIds: ["token_id_emitter", "stable_id_checker", "token_buffer"],
+    edgeIds: ["e_c1_stable_buffer"],
+    tagIds: ["buffer_axis_b", "buffer_axis_t", "rectangular_token_buffer", "mask_all_ones"],
+    tagCategories: ["axis", "shape"]
+  },
+  {
+    phase: "token_oov_failure",
+    code: "1-4A",
+    title: "OOV Failure",
+    brief: "让未知 piece 先以可诊断方式失败：检测、阻塞并报告具体 piece。",
+    slotIds: ["c1_oov_detector", "c1_oov_block", "c1_oov_report"],
+    nodeIds: ["vocab_lookup_gate", "oov_detector", "fallback_splitter"],
+    edgeIds: ["e_c1_buffer_oov", "e_c1_oov_fallback"],
+    tagIds: ["detect_oov", "block_unresolved_oov", "oov_report_piece", "skip_vocab_lookup"],
+    tagCategories: ["operation", "contract", "semantic"]
+  },
+  {
+    phase: "token_fallback_splitter",
+    code: "1-4B",
+    title: "Fallback Splitter",
+    brief: "按 subword -> char -> <unk> 顺序把 OOV 变成确定性 ids。",
+    slotIds: ["c1_fallback_subword", "c1_fallback_char", "c1_fallback_unk"],
+    nodeIds: ["oov_detector", "fallback_splitter", "special_token_injector"],
+    edgeIds: ["e_c1_oov_fallback", "e_c1_fallback_special"],
+    tagIds: ["fallback_subword", "fallback_char", "fallback_unk", "random_id_allocator"],
+    tagCategories: ["operation", "token"]
+  },
+  {
+    phase: "token_special_token_injector",
+    code: "1-4C",
+    title: "Special Token Injector",
+    brief: "注入 <bos>/<eos>，并保留 <pad>/<unk> 的稳定特殊 id。",
+    slotIds: ["c1_special_bos", "c1_special_eos", "c1_special_reserved"],
+    nodeIds: ["fallback_splitter", "special_token_injector", "padding_builder"],
+    edgeIds: ["e_c1_fallback_special", "e_c1_special_padding"],
+    tagIds: ["inject_bos", "inject_eos", "reserve_special_ids", "random_id_allocator"],
+    tagCategories: ["token", "contract"]
+  },
+  {
+    phase: "token_padding_builder",
+    code: "1-4D",
+    title: "Padding Builder",
+    brief: "在 EOS 后右侧 padding，使用 pad id 0，并构建与 padding 对齐的 attention_mask。",
+    slotIds: ["c1_padding_side", "c1_padding_id", "c1_mask_matches_pad"],
+    nodeIds: ["special_token_injector", "padding_builder", "attention_mask_builder", "token_buffer"],
+    edgeIds: ["e_c1_special_padding", "e_c1_padding_mask"],
+    tagIds: ["right_padding", "pad_id_zero", "attention_mask_matches_pad", "left_padding", "mask_all_ones"],
+    tagCategories: ["operation", "token", "mask"]
+  },
+  {
+    phase: "token_budget_gate",
+    code: "1-4E",
+    title: "Token Budget Gate",
+    brief: "统一处理超长文本：应用 max T，截断或拒绝，并输出可读 budget trace。",
+    slotIds: ["c1_budget_policy", "c1_budget_truncate", "c1_budget_trace"],
+    nodeIds: ["token_count_meter", "budget_gate", "token_buffer", "tokenizer_contract_terminal"],
+    edgeIds: ["e_c1_budget_buffer", "e_c1_budget_gauntlet"],
+    tagIds: ["apply_token_budget", "truncate_or_reject", "budget_trace", "ignore_budget"],
+    tagCategories: ["contract", "operation", "semantic"]
+  },
+  {
+    phase: "tokenizer_gauntlet",
+    code: "1-X",
+    title: "Tokenizer Gauntlet",
+    brief: "运行 visible/hidden 文本集，验证 type、pieces、vocab、fallback、special、batch、mask、budget、determinism。",
+    slotIds: [
+      "c1_gauntlet_type_contract",
+      "c1_gauntlet_piece_contract",
+      "c1_gauntlet_vocab_contract",
+      "c1_gauntlet_fallback_contract",
+      "c1_gauntlet_special_contract",
+      "c1_gauntlet_batch_contract",
+      "c1_gauntlet_mask_contract",
+      "c1_gauntlet_determinism_contract",
+      "c1_gauntlet_budget_contract",
+      "c1_gauntlet_embedding_contract"
+    ],
+    nodeIds: ["gauntlet_cases", "tokenizer_contract_terminal", "tokenizer_gauntlet_result", "embedding_lookup_probe"],
+    edgeIds: ["e_c1_cases_terminal", "e_c1_gauntlet_result", "e_c1_ids_embedding"],
+    tagIds: [
+      "gauntlet_type_contract",
+      "gauntlet_piece_contract",
+      "gauntlet_vocab_contract",
+      "gauntlet_fallback_contract",
+      "gauntlet_special_contract",
+      "gauntlet_batch_contract",
+      "gauntlet_mask_contract",
+      "gauntlet_determinism_contract",
+      "gauntlet_budget_contract",
+      "gauntlet_embedding_ready",
+      "ignore_budget",
+      "mask_all_ones"
+    ],
+    tagCategories: ["contract", "token", "operation", "shape", "mask", "embedding"]
+  }
+];
+
+const chapter1TokenizationChallengeByPhase = new Map(chapter1TokenizationChallenges.map((challenge) => [challenge.phase, challenge]));
+
+const chapter1TokenizationChallengeGroups: Array<{
+  code: string;
+  title: string;
+  brief: string;
+  phases: LevelPhase[];
+}> = [
+  {
+    code: "1-1",
+    title: "Text Cannot Flow",
+    brief: "raw text 不能直接进入模型，先建立 tokenizer 边界。",
+    phases: ["token_raw_text_object", "token_type_gate_failure", "token_tokenizer_socket", "token_token_id_contract"]
+  },
+  {
+    code: "1-2",
+    title: "Token Split",
+    brief: "处理切分策略、token count、merge 与符号保留。",
+    phases: ["token_boundary_cutter", "token_split_comparison", "token_count_meter", "token_merge_forge", "token_preserve_symbols"]
+  },
+  {
+    code: "1-3",
+    title: "Vocab Address",
+    brief: "把 piece 解析成稳定 vocab row id，并构建 token buffer。",
+    phases: ["token_vocab_lookup", "token_address_lighting", "token_stable_id_test", "token_buffer_build"]
+  },
+  {
+    code: "1-4",
+    title: "Unknown & Buffer",
+    brief: "补齐 OOV、fallback、special token、padding、mask 和 budget。",
+    phases: ["token_oov_failure", "token_fallback_splitter", "token_special_token_injector", "token_padding_builder", "token_budget_gate"]
+  },
+  {
+    code: "1-X",
+    title: "Tokenizer Gauntlet",
+    brief: "visible/hidden tokenizer contract 综合考核。",
+    phases: ["tokenizer_gauntlet"]
+  }
+];
+
+type CampaignChapterDef = {
+  id: "chapter0" | "chapter1";
+  code: string;
+  title: string;
+  subtitle: string;
+  levelIds: string[];
+};
+
+const campaignChapterDefs: CampaignChapterDef[] = [
+  {
+    id: "chapter0",
+    code: "Chapter 0",
+    title: "Tensor Bootcamp",
+    subtitle: "Tensor、Shape、Linear、Transpose、Broadcast 基础。",
+    levelIds: ["0-1", "0-2", "0-3", "0-4"]
+  },
+  {
+    id: "chapter1",
+    code: "Chapter 1",
+    title: "Text -> Token",
+    subtitle: "Split、Vocab、OOV、Padding、Mask 与 Token Buffer。",
+    levelIds: ["1-1"]
+  }
+];
+
 const chapter01StageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
   tensor_object: {
     code: "0-1A",
@@ -831,6 +1152,142 @@ const chapter04StageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
     body: "最终测试会更换 B/T/C/O/H 的尺寸，并加入 equal-dimension trap。\n\n你需要证明自己掌握的是 broadcast contract，而不是某个固定形状。",
     visualLines: ["bias", "position", "singleton", "mask", "equal dims", "semantic trace"],
     taskPrompt: "配置全部隐藏测试 case，运行最终 Broadcast Gauntlet。"
+  }
+};
+
+const chapter1TokenizationStageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
+  token_raw_text_object: {
+    code: "1-1A",
+    title: "Raw Text Object：文字先只是对象",
+    body: "Chapter 0 已经证明模型内部流动的是 tensor。\n\n这里先不要急着 tokenize，先确认 raw text 是 utf8 文本对象，而不是 numeric tensor。",
+    visualLines: ["raw text", "dtype=utf8", "not numeric", "inspect first"],
+    taskPrompt: "把 raw text、Text Inspector 和非数值合同放到正确槽位。"
+  },
+  token_type_gate_failure: {
+    code: "1-1B",
+    title: "Type Gate Failure：需要一次有信息量的失败",
+    body: "Raw text 直接接 Embedding 不应该悄悄通过。\n\nType Gate 要明确报出：模型数值端口需要 integer token ids。",
+    visualLines: ["raw utf8", "Type Gate", "expected int ids", "reject string"],
+    taskPrompt: "让 Type Gate 暴露 raw text 失败原因，并标出 Embedding 的输入合同。"
+  },
+  token_tokenizer_socket: {
+    code: "1-1C",
+    title: "Tokenizer Socket：插入黑盒入口",
+    body: "Tokenizer Socket 是 text side 和 model side 的边界。\n\n它把 utf8 text 转成 ordered token pieces，同时阻止 raw text 绕过。",
+    visualLines: ["text", "Tokenizer Socket", "token pieces", "no bypass"],
+    taskPrompt: "插入 tokenizer，声明 pieces 输出，并关闭 raw bypass。"
+  },
+  token_token_id_contract: {
+    code: "1-1D",
+    title: "Token ID Contract：pieces 还不是数字",
+    body: "Token piece 仍然是字符串片段。\n\n只有经过 vocab lookup 后生成 integer token ids，Embedding 才能用它们查行。",
+    visualLines: ["piece", "vocab row", "int id", "embedding row"],
+    taskPrompt: "把 pieces 到 integer ids 的合同补完整。"
+  },
+  token_boundary_cutter: {
+    code: "1-2A",
+    title: "Boundary Cutter：切边界但不丢顺序",
+    body: "切分不是随便拆字符串。\n\n空格、标点和原始顺序都必须能被 trace，否则后续 T 轴会失真。",
+    visualLines: ["spaces", "punctuation", "ordered pieces", "T order"],
+    taskPrompt: "配置空格、标点和顺序保留。"
+  },
+  token_split_comparison: {
+    code: "1-2B",
+    title: "Split Comparison：三种切法的代价",
+    body: "Char split 覆盖强但 token 多；word split 紧凑但容易 OOV。\n\n本章主线采用 subword，因为它在预算和覆盖之间折中。",
+    visualLines: ["char: high T", "word: OOV", "subword: balanced"],
+    taskPrompt: "完成 char / word / subword 三个 policy 判断。"
+  },
+  token_count_meter: {
+    code: "1-2C",
+    title: "Token Count Meter：T 是资源约束",
+    body: "每个 token 都占用 T 轴上的一个位置。\n\n所以 token count 必须在构建 buffer 前被测量和限制。",
+    visualLines: ["pieces", "count T", "max T=8", "block overflow"],
+    taskPrompt: "把计数来源、预算和超限阻塞接好。"
+  },
+  token_merge_forge: {
+    code: "1-2D",
+    title: "Merge Forge：频繁片段合并",
+    body: "Merge rule 会把相邻 pieces 合成更常见的 token。\n\n它必须是确定性的，并且要同步改变 token count。",
+    visualLines: ["train + ing", "tokenizer + s", "lower T", "deterministic"],
+    taskPrompt: "配置两个 merge rule，并让 Token Count Meter 读取合并后的 T。"
+  },
+  token_preserve_symbols: {
+    code: "1-2E",
+    title: "Preserve Symbols：标点也是输入",
+    body: "标点、空格和词首信息不能随手丢弃。\n\nDebug decode 需要它们来发现 tokenizer 是否改变了文本。",
+    visualLines: ["punctuation", "space marker", "decode check", "no silent drop"],
+    taskPrompt: "保留符号和可调试信息。"
+  },
+  token_vocab_lookup: {
+    code: "1-3A",
+    title: "Vocab Lookup：piece 找地址",
+    body: "Vocab 是固定表：piece -> row id。\n\n找不到 row 的 piece 必须被标为 OOV，而不是随便造 id。",
+    visualLines: ["piece", "vocab table", "row id", "OOV flag"],
+    taskPrompt: "完成全量 lookup、missing flag 和 id 输出。"
+  },
+  token_address_lighting: {
+    code: "1-3B",
+    title: "Address Lighting：id 就是行地址",
+    body: "Token id 的意义是“第几行”。\n\n同一个 id 会点亮 vocab row 和 embedding row，这就是后续 Embedding Lookup 的基础。",
+    visualLines: ["token", "row id", "embedding row", "probe"],
+    taskPrompt: "把 piece、row id 和 embedding row 连接起来。"
+  },
+  token_stable_id_test: {
+    code: "1-3C",
+    title: "Stable ID Test：不能运行时随机扩表",
+    body: "同一个 piece 在任何运行中都必须得到同一个 id。\n\n如果 tokenizer 运行时造新 id，训练和推理会失去可复现性。",
+    visualLines: ["run A", "run B", "same ids", "fixed vocab"],
+    taskPrompt: "修复 same piece、repeat run 和 no random vocab 三个合同。"
+  },
+  token_buffer_build: {
+    code: "1-3D",
+    title: "Token Buffer Build：从序列到 batch tensor",
+    body: "单条文本是 token_ids[T]；多条文本组成 token_ids[B,T]。\n\n行是样本 B，列是 token 位置 T。",
+    visualLines: ["row=B", "col=T", "int[B,T]", "rectangular"],
+    taskPrompt: "把 buffer 的 B/T 轴和 rectangular int tensor 合同补完整。"
+  },
+  token_oov_failure: {
+    code: "1-4A",
+    title: "OOV Failure：先让未知词正确失败",
+    body: "OOV 不应该被吞掉。\n\n好的失败会检测未知 piece、阻止它进入 ids，并报告具体哪个 piece 失败。",
+    visualLines: ["unknown piece", "detect", "block", "report"],
+    taskPrompt: "配置 OOV detector 的检测、阻塞和报告。"
+  },
+  token_fallback_splitter: {
+    code: "1-4B",
+    title: "Fallback Splitter：把失败变成稳定输出",
+    body: "OOV 之后先尝试更小 subword，再尝试 char，最后才落到 reserved <unk>。\n\n每一步都必须确定性。",
+    visualLines: ["subword", "char", "<unk>", "stable id"],
+    taskPrompt: "接好 subword / char / <unk> fallback 链。"
+  },
+  token_special_token_injector: {
+    code: "1-4C",
+    title: "Special Token Injector：序列边界也是 token",
+    body: "<bos> 和 <eos> 显式标记序列边界。\n\n<pad> 和 <unk> 需要稳定保留 id，避免和普通词冲突。",
+    visualLines: ["<bos>", "content", "<eos>", "<pad>/<unk> reserved"],
+    taskPrompt: "注入 BOS/EOS，并保留特殊 token id。"
+  },
+  token_padding_builder: {
+    code: "1-4D",
+    title: "Padding Builder：batch 需要矩形",
+    body: "不同文本长度不同，但 batch tensor 必须是矩形。\n\nPadding 填空位，attention_mask 告诉模型哪些位置是真内容。",
+    visualLines: ["right pad", "pad id 0", "mask 1/0", "int[B,T]"],
+    taskPrompt: "配置右 padding、pad id 和 attention mask。"
+  },
+  token_budget_gate: {
+    code: "1-4E",
+    title: "Token Budget Gate：超长必须处理",
+    body: "超出 max T 的文本不能静默溢出。\n\n可以截断或拒绝，但必须输出 trace 告诉玩家预算消耗在哪里。",
+    visualLines: ["max T", "truncate/reject", "trace pieces", "no overflow"],
+    taskPrompt: "修复 token budget policy、overflow action 和 trace。"
+  },
+  tokenizer_gauntlet: {
+    code: "1-X",
+    title: "Tokenizer Gauntlet：完整合同考核",
+    body: "最终考核会混合标点、OOV、padding、budget 和 determinism。\n\n目标不是记住 visible strings，而是证明 tokenizer contract 可以泛化。",
+    visualLines: ["visible set", "hidden set", "reference encode", "determinism"],
+    taskPrompt: "填满 10 个 gauntlet 合同槽位，然后运行最终测试。"
   }
 };
 
@@ -1231,6 +1688,218 @@ const chapter04StageKnowledge: Partial<Record<LevelPhase, Chapter01StageKnowledg
   }
 };
 
+const chapter1TokenizationStageKnowledge: Partial<Record<LevelPhase, Chapter01StageKnowledge>> = {
+  token_raw_text_object: {
+    code: "1-1A",
+    title: "Raw Text Object",
+    concept: "Raw text 是 utf8 对象，不是 numeric tensor。",
+    tool: "Text Inspector",
+    mission: "确认 text 可被检查，但不能作为模型数值输入。",
+    visual: "token_raw_text",
+    inspectorNotes: ["Text 有长度、字符和字节。", "Text 没有 numeric shape。", "本阶段只建立对象与类型边界。"],
+    failureLesson: ["Raw text object contract missing。", "不要把文字当成 float tensor。", "先用 Text Inspector 暴露 dtype。"],
+    debrief: "Raw text 可以被检查，但它还不是模型能消费的数字。"
+  },
+  token_type_gate_failure: {
+    code: "1-1B",
+    title: "Type Gate Failure",
+    concept: "失败也要有信息量：Embedding 需要 integer token ids。",
+    tool: "Type Gate",
+    mission: "让 raw text 在数值端口前失败，并标出 expected/received。",
+    visual: "token_type_gate",
+    inspectorNotes: ["expected: int64 token ids。", "received: utf8 string。", "这是正确的教学失败。"],
+    failureLesson: ["Type Gate reason mismatch。", "如果 raw text 直接进 Embedding，就是绕过了 tokenizer。", "把失败原因标成 string rejected at numeric port。"],
+    debrief: "你已经证明 raw text 不能直接进入模型侧数值端口。"
+  },
+  token_tokenizer_socket: {
+    code: "1-1C",
+    title: "Tokenizer Socket",
+    concept: "Tokenizer 是 text side 与 model side 的边界。",
+    tool: "Tokenizer Socket",
+    mission: "插入 tokenizer，输出 ordered token pieces，并关闭 raw bypass。",
+    visual: "token_split",
+    inspectorNotes: ["Tokenizer 输出 pieces，不是最终 ids。", "所有 raw text 路径都必须经过 socket。", "pieces 保留文本顺序。"],
+    failureLesson: ["Tokenizer Socket missing。", "raw bypass 会让模型侧收到字符串。", "把 tokenizer 放在 Text 和 Piece Stream 之间。"],
+    debrief: "Tokenizer Socket 已成为文字进入模型前的唯一入口。"
+  },
+  token_token_id_contract: {
+    code: "1-1D",
+    title: "Token ID Contract",
+    concept: "Pieces 经过 vocab lookup 后才成为 integer token ids。",
+    tool: "Token ID Emitter",
+    mission: "声明 token_ids[T] 并证明 ids 能 index embedding row。",
+    visual: "token_vocab",
+    inspectorNotes: ["Piece 是字符串片段。", "Token id 是整数 row address。", "Embedding Lookup 只接受 ids。"],
+    failureLesson: ["Token id contract incomplete。", "不要把 pieces 直接当 ids。", "需要 Vocab Lookup 输出 integer row ids。"],
+    debrief: "从单条文本到 token_ids[T] 的模型侧数字合同已经成立。"
+  },
+  token_boundary_cutter: {
+    code: "1-2A",
+    title: "Boundary Cutter",
+    concept: "切分要保留边界、标点和顺序。",
+    tool: "Boundary Cutter",
+    mission: "按空格和标点切 pieces，并保持 T 顺序。",
+    visual: "token_split",
+    inspectorNotes: ["空格是候选边界。", "标点是可见输入，不能静默丢弃。", "pieces 的顺序就是之后 T 轴顺序。"],
+    failureLesson: ["Boundary split failed。", "检查标点是否被丢弃。", "确认 pieces 没有重排。"],
+    debrief: "你已经让文本变成有序 pieces，而不是一串不可控字符。"
+  },
+  token_split_comparison: {
+    code: "1-2B",
+    title: "Split Comparison",
+    concept: "Char、word、subword 是成本与覆盖的取舍。",
+    tool: "Split Policy Switch",
+    mission: "比较三种策略，并选择 subword 作为主线策略。",
+    visual: "token_split",
+    inspectorNotes: ["Char 覆盖好但 T 很长。", "Word 紧凑但 OOV 多。", "Subword 是本章主线折中。"],
+    failureLesson: ["Policy comparison wrong。", "不要因为 char 最稳就忽略预算。", "不要因为 word 最短就忽略 OOV。"],
+    debrief: "你已经用工程约束选择了 subword，而不是凭直觉切词。"
+  },
+  token_count_meter: {
+    code: "1-2C",
+    title: "Token Count Meter",
+    concept: "Token count 决定 T 轴长度，是资源约束。",
+    tool: "Token Count Meter",
+    mission: "在 split/merge 后计算 T，并阻塞超过 T<=8 的输入。",
+    visual: "token_buffer",
+    inspectorNotes: ["预算检查要发生在当前 pieces 上。", "T 超限会破坏后续 buffer。", "失败要早于 Embedding。"],
+    failureLesson: ["Token budget missing。", "不要等 batch buffer 才发现溢出。", "把 max T 和 fail-fast 接到 meter。"],
+    debrief: "你已经把 token 数变成可测试资源，而不是隐形副作用。"
+  },
+  token_merge_forge: {
+    code: "1-2D",
+    title: "Merge Forge",
+    concept: "Merge rules 把常见相邻 pieces 合成稳定 token。",
+    tool: "Merge Forge",
+    mission: "配置 train+ing、tokenizer+s，并让 count 使用合并结果。",
+    visual: "token_split",
+    inspectorNotes: ["Merge rule 必须按固定顺序执行。", "Merge 后 T 会改变。", "Merge 不应打乱原始顺序。"],
+    failureLesson: ["Merge rule failed。", "确认规则输入是相邻 pieces。", "确认 Token Count Meter 读取合并后列表。"],
+    debrief: "你已经实现确定性 merge，并看到它如何降低 token budget 压力。"
+  },
+  token_preserve_symbols: {
+    code: "1-2E",
+    title: "Preserve Symbols",
+    concept: "标点和空格信息是 tokenizer 可调试合同的一部分。",
+    tool: "Symbol Keeper",
+    mission: "保留符号、space marker 和 decode debug 所需信息。",
+    visual: "token_split",
+    inspectorNotes: ["标点可能影响语义和训练目标。", "space marker 能帮助定位词边界。", "decode check 可以发现静默丢符号。"],
+    failureLesson: ["Symbols dropped。", "不要把标点当噪声直接删除。", "保留足够调试信息以便 decode check。"],
+    debrief: "Token pieces 现在既能供模型使用，也能被人调试。"
+  },
+  token_vocab_lookup: {
+    code: "1-3A",
+    title: "Vocab Lookup",
+    concept: "Vocab 是 piece 到稳定 row id 的固定映射。",
+    tool: "Vocab Lookup Gate",
+    mission: "每个 piece 都必须 lookup，missing piece 必须标 OOV。",
+    visual: "token_vocab",
+    inspectorNotes: ["已知 piece 输出 row id。", "未知 piece 不能随便造 id。", "OOV 是需要处理的中间状态。"],
+    failureLesson: ["Vocab lookup incomplete。", "检查是否有 piece 绕过 lookup。", "找不到 row 时先 flag OOV。"],
+    debrief: "Pieces 已经接上 Toy Vocab，模型侧开始获得稳定整数地址。"
+  },
+  token_address_lighting: {
+    code: "1-3B",
+    title: "Address Lighting",
+    concept: "Token id 的意义是 vocab/embedding 表中的行地址。",
+    tool: "Address Lighting",
+    mission: "让 piece 点亮 vocab row，并用 probe 读 embedding row。",
+    visual: "token_vocab",
+    inspectorNotes: ["id 不是分数。", "id 是查表地址。", "Embedding row 与 vocab row 共享这个地址。"],
+    failureLesson: ["Address contract failed。", "不要把 id 当随机编号。", "用 row lighting 证明 id=row。"],
+    debrief: "你已经把 token id 和 Embedding Lookup 的查表行为连接起来。"
+  },
+  token_stable_id_test: {
+    code: "1-3C",
+    title: "Stable ID Test",
+    concept: "同一 piece 必须跨运行映射到同一 id。",
+    tool: "Stable ID Checker",
+    mission: "验证 same piece、repeat run 和 no random vocab。",
+    visual: "token_vocab",
+    inspectorNotes: ["Vocab 在 encode 时固定。", "推理和训练必须复现同一 ids。", "运行时扩表会破坏 checkpoint。"],
+    failureLesson: ["Stable id failed。", "检查是否运行时新建 id。", "同一 piece 必须查到同一 row。"],
+    debrief: "Tokenizer 输出现在可复现，后续训练/推理可以共享同一 vocab。"
+  },
+  token_buffer_build: {
+    code: "1-3D",
+    title: "Token Buffer Build",
+    concept: "多条文本需要 rectangular token_ids[B,T]。",
+    tool: "Token Buffer",
+    mission: "标出 B rows、T columns 和 int[B,T] rectangular buffer。",
+    visual: "token_buffer",
+    inspectorNotes: ["B 轴分离样本。", "T 轴保存每条样本内的 token 位置。", "Batch tensor 不能是 ragged list。"],
+    failureLesson: ["Token Buffer shape failed。", "确认行是 B、列是 T。", "输出必须是整数矩形 buffer。"],
+    debrief: "单条 token_ids[T] 已经升级为可批处理的 token_ids[B,T]。"
+  },
+  token_oov_failure: {
+    code: "1-4A",
+    title: "OOV Failure",
+    concept: "未知 piece 要先明确失败，不能静默进入模型。",
+    tool: "OOV Detector",
+    mission: "检测 OOV，阻塞 unresolved piece，并报告具体 piece。",
+    visual: "token_vocab",
+    inspectorNotes: ["OOV 是 vocab lookup 的失败状态。", "未解决 OOV 不能输出普通 id。", "好的错误信息会指向具体 piece。"],
+    failureLesson: ["OOV failure uninformative。", "检查 detector 是否拿到了 missing piece。", "报告中必须包含 unresolved token。"],
+    debrief: "OOV 已经变成可定位、可处理的失败，而不是随机坏数据。"
+  },
+  token_fallback_splitter: {
+    code: "1-4B",
+    title: "Fallback Splitter",
+    concept: "Fallback 把 OOV 转成确定性 token ids。",
+    tool: "Fallback Splitter",
+    mission: "按 subword -> char -> <unk> 处理 OOV。",
+    visual: "token_vocab",
+    inspectorNotes: ["Subword fallback 尽量保留信息。", "Char fallback 覆盖更强但更贵。", "<unk> 是最后的稳定保底。"],
+    failureLesson: ["Fallback chain failed。", "不要随机分配新 id。", "用 reserved <unk> 结束无法解析的路径。"],
+    debrief: "未知文本现在也能以确定性方式进入 token id 流。"
+  },
+  token_special_token_injector: {
+    code: "1-4C",
+    title: "Special Token Injector",
+    concept: "BOS/EOS/PAD/UNK 是序列合同的一部分。",
+    tool: "Special Token Injector",
+    mission: "注入 BOS/EOS，并保留 PAD/UNK 的固定 id。",
+    visual: "token_buffer",
+    inspectorNotes: ["BOS 标记序列开始。", "EOS 标记内容结束。", "PAD/UNK 的 id 必须稳定保留。"],
+    failureLesson: ["Special token contract failed。", "检查 BOS/EOS 的位置。", "不要让普通 token 占用 reserved ids。"],
+    debrief: "序列边界和特殊状态现在都显式写进 token 流。"
+  },
+  token_padding_builder: {
+    code: "1-4D",
+    title: "Padding Builder",
+    concept: "Padding 让 batch 成为矩形，attention_mask 区分内容和空位。",
+    tool: "Padding Builder + Attention Mask",
+    mission: "右侧 padding、pad id 0，并构建 mask 1/0。",
+    visual: "token_mask",
+    inspectorNotes: ["Pad 应在内容之后。", "pad id 在 Toy Vocab 中是 0。", "mask=0 的位置不应参与 attention 内容。"],
+    failureLesson: ["Padding / mask mismatch。", "检查 pad id 是否为 0。", "mask 必须对 pad 位置置 0。"],
+    debrief: "token_ids[B,T] 与 attention_mask[B,T] 已经成对成立。"
+  },
+  token_budget_gate: {
+    code: "1-4E",
+    title: "Token Budget Gate",
+    concept: "超长文本必须被截断或拒绝，并留下 trace。",
+    tool: "Token Budget Gate",
+    mission: "应用 max T，处理 overflow，并显示预算消耗。",
+    visual: "token_buffer",
+    inspectorNotes: ["Budget gate 保护后续固定 shape。", "截断或拒绝都不能静默发生。", "trace 要指出哪些 pieces 占用了 T。"],
+    failureLesson: ["Budget gate failed。", "检查是否忽略了 max T。", "超长文本需要明确策略和 trace。"],
+    debrief: "长文本现在不会破坏 batch tensor，而是通过显式 budget policy 处理。"
+  },
+  tokenizer_gauntlet: {
+    code: "1-X",
+    title: "Tokenizer Gauntlet",
+    concept: "完整 tokenizer contract 必须跨 visible/hidden 文本泛化。",
+    tool: "Tokenizer Autograder",
+    mission: "通过 type、pieces、vocab、fallback、special、batch、mask、determinism、budget、embedding 十项合同。",
+    visual: "tokenizer_gauntlet",
+    inspectorNotes: ["Hidden cases 会包含标点、OOV、padding 和 budget。", "同一输入会重复 encode 检查 determinism。", "最终输出必须能接 Chapter 2 Embedding。"],
+    failureLesson: ["Tokenizer Gauntlet failed。", "按失败项回到对应小节。", "不要只适配 visible strings。"],
+    debrief: "Chapter 1 完成：你已经把 raw text 变成可批处理、可查表、可测试的 token_ids[B,T]。"
+  }
+};
+
 const chapter01PhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x: number; y: number }>>> = {
   tensor_object: {
     tensor_inspector: { x: 548, y: 278 },
@@ -1425,6 +2094,109 @@ const chapter04PhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x
   }
 };
 
+const chapter1TokenizationPhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x: number; y: number }>>> = {
+  token_raw_text_object: {
+    raw_text_input: { x: 246, y: 300 },
+    text_inspector: { x: 590, y: 286 },
+    type_gate: { x: 936, y: 302 }
+  },
+  token_type_gate_failure: {
+    raw_text_input: { x: 230, y: 304 },
+    type_gate: { x: 584, y: 298 },
+    raw_embedding_probe: { x: 934, y: 298 }
+  },
+  token_tokenizer_socket: {
+    raw_text_input: { x: 226, y: 306 },
+    tokenizer_socket: { x: 562, y: 298 },
+    token_piece_stream: { x: 914, y: 292 }
+  },
+  token_token_id_contract: {
+    token_piece_stream: { x: 218, y: 292 },
+    token_id_emitter: { x: 578, y: 292 },
+    embedding_lookup_probe: { x: 952, y: 300 }
+  },
+  token_boundary_cutter: {
+    raw_text_input: { x: 164, y: 292 },
+    boundary_cutter: { x: 492, y: 292 },
+    token_piece_stream: { x: 834, y: 288 }
+  },
+  token_split_comparison: {
+    boundary_cutter: { x: 210, y: 292 },
+    split_policy_switch: { x: 564, y: 286 },
+    token_count_meter: { x: 940, y: 296 }
+  },
+  token_count_meter: {
+    split_policy_switch: { x: 202, y: 286 },
+    token_count_meter: { x: 568, y: 294 },
+    budget_gate: { x: 934, y: 296 }
+  },
+  token_merge_forge: {
+    token_piece_stream: { x: 196, y: 252 },
+    merge_forge: { x: 566, y: 294 },
+    token_count_meter: { x: 944, y: 296 }
+  },
+  token_preserve_symbols: {
+    token_piece_stream: { x: 198, y: 286 },
+    symbol_keeper: { x: 560, y: 292 },
+    vocab_lookup_gate: { x: 932, y: 294 }
+  },
+  token_vocab_lookup: {
+    token_piece_stream: { x: 120, y: 286 },
+    vocab_table: { x: 402, y: 252 },
+    vocab_lookup_gate: { x: 736, y: 292 },
+    token_id_emitter: { x: 1082, y: 292 }
+  },
+  token_address_lighting: {
+    vocab_table: { x: 170, y: 252 },
+    vocab_lookup_gate: { x: 508, y: 292 },
+    address_lighting: { x: 834, y: 292 },
+    embedding_lookup_probe: { x: 1166, y: 296 }
+  },
+  token_stable_id_test: {
+    vocab_lookup_gate: { x: 224, y: 292 },
+    stable_id_checker: { x: 590, y: 292 },
+    token_buffer: { x: 966, y: 284 }
+  },
+  token_buffer_build: {
+    token_id_emitter: { x: 214, y: 292 },
+    stable_id_checker: { x: 562, y: 292 },
+    token_buffer: { x: 936, y: 282 }
+  },
+  token_oov_failure: {
+    vocab_lookup_gate: { x: 202, y: 292 },
+    oov_detector: { x: 558, y: 292 },
+    fallback_splitter: { x: 916, y: 292 }
+  },
+  token_fallback_splitter: {
+    oov_detector: { x: 204, y: 292 },
+    fallback_splitter: { x: 562, y: 292 },
+    special_token_injector: { x: 936, y: 292 }
+  },
+  token_special_token_injector: {
+    fallback_splitter: { x: 204, y: 292 },
+    special_token_injector: { x: 570, y: 292 },
+    padding_builder: { x: 960, y: 292 }
+  },
+  token_padding_builder: {
+    special_token_injector: { x: 160, y: 262 },
+    padding_builder: { x: 520, y: 262 },
+    attention_mask_builder: { x: 880, y: 228 },
+    token_buffer: { x: 880, y: 424 }
+  },
+  token_budget_gate: {
+    token_count_meter: { x: 184, y: 282 },
+    budget_gate: { x: 540, y: 290 },
+    token_buffer: { x: 890, y: 216 },
+    tokenizer_contract_terminal: { x: 890, y: 420 }
+  },
+  tokenizer_gauntlet: {
+    gauntlet_cases: { x: 178, y: 292 },
+    tokenizer_contract_terminal: { x: 546, y: 272 },
+    tokenizer_gauntlet_result: { x: 934, y: 298 },
+    embedding_lookup_probe: { x: 1240, y: 302 }
+  }
+};
+
 export function App() {
   const [initialProgress] = useState<BootcampProgressSave>(() => readBootcampProgressSave());
   const initialSelectedLevelId = resolveSavedLevelId(initialProgress.selectedLevelId);
@@ -1442,6 +2214,10 @@ export function App() {
   const [expandedLevelIds, setExpandedLevelIds] = useState<Record<string, boolean>>(() => ({
     [initialSelectedLevel.id]: supportsStageRail(initialSelectedLevel) && !Boolean(initialProgress.results?.[initialSelectedLevel.id]?.passed)
   }));
+  const [expandedChapterIds, setExpandedChapterIds] = useState<Record<string, boolean>>(() => ({
+    [chapterIdForLevel(initialSelectedLevel)]: true
+  }));
+  const [expandedChapter1GroupIds, setExpandedChapter1GroupIds] = useState<Record<string, boolean>>({});
   const [nodePositions, setNodePositions] = useState<Record<string, NodePositionMap>>({});
   const [stageKnowledgePositions, setStageKnowledgePositions] = useState<Record<string, StageKnowledgePositionMap>>({});
   const [pendingStageDebrief, setPendingStageDebrief] = useState<Record<string, LevelPhase | undefined>>({});
@@ -1553,6 +2329,7 @@ export function App() {
     const alreadySelected = selectedLevelId === level.id;
     setSelectedLevelId(level.id);
     setSelectedId(level.defaultSelectedNodeId);
+    setExpandedChapterIds((current) => ({ ...current, [chapterIdForLevel(level)]: true }));
     if (supportsStageRail(level)) {
       setExpandedLevelIds((current) => ({
         ...current,
@@ -1796,7 +2573,7 @@ export function App() {
   }
 
   function getCanvasMenuActions(target: CanvasContextTarget | null): CanvasMenuAction[] {
-    if (!target || (activeLevel.id !== "0-1" && activeLevel.id !== "0-2" && activeLevel.id !== "0-3" && activeLevel.id !== "0-4")) return [];
+    if (!target || (activeLevel.id !== "0-1" && activeLevel.id !== "0-2" && activeLevel.id !== "0-3" && activeLevel.id !== "0-4" && activeLevel.id !== "1-1")) return [];
 
     const actions: CanvasMenuAction[] = [];
     const targetSlot = target.kind === "slot" ? activeLevel.repair.slots.find((slot) => slot.id === target.id) : undefined;
@@ -1845,6 +2622,17 @@ export function App() {
           id: "run_broadcast_tests",
           label: "Run Broadcast Gauntlet",
           detail: "Execute reference and hidden Broadcast Add cases.",
+          onSelect: runCanvasTests
+        });
+      }
+    }
+
+    if (activeLevel.id === "1-1" && ((target.kind === "node" && target.id === "tokenizer_gauntlet_result") || target.kind === "canvas")) {
+      if (levelPhase === "tokenizer_gauntlet") {
+        actions.push({
+          id: "run_tokenizer_tests",
+          label: "Run Tokenizer Gauntlet",
+          detail: "Execute visible and hidden tokenizer contract cases.",
           onSelect: runCanvasTests
         });
       }
@@ -1917,7 +2705,7 @@ export function App() {
           </div>
           <div>
             <p className="eyebrow">LLM Complete / MVP 0.0.3-dev</p>
-            <h1>Tensor Bootcamp</h1>
+            <h1>Campaign Workbench</h1>
           </div>
         </div>
         <div className="topControls">
@@ -1946,7 +2734,7 @@ export function App() {
       </header>
 
       <section className="statusStrip">
-        <StatusPill label="Chapter" value={`${activeLevel.id} / ${activeLevel.title}`} />
+        <StatusPill label="Chapter" value={levelDisplayTitle(activeLevel)} />
         <StatusPill label="Mode" value={modeCopy.title} />
         <StatusPill label="Selected" value={`${selectedNode.semanticName} ${selectedNode.shape}`} />
         <StatusPill label="Tool" value={activeToolLabel(activeLevel, activeRepairState)} />
@@ -1958,45 +2746,112 @@ export function App() {
         <aside className="panel moduleShelf">
           <div className="panelHeader">
             <Wrench size={18} />
-            <h2>Chapter 0</h2>
+            <h2>Campaign</h2>
           </div>
-          <p className="panelNote">玩家产物现在是可验证的 shape repair，而不是选择题答案。</p>
+          <p className="panelNote">玩家产物是可验证的模型构建 repair，而不是选择题答案。</p>
 
           <div className="levelList">
-            {bootcampLevels.map((level) => {
-              const result = results[level.id];
-              const statusClass = result ? (result.passed ? "pass" : "fail") : "pending";
-              const hasNestedChallenges = supportsStageRail(level);
-              const selected = selectedLevelId === level.id;
-              const showNestedChallenges = hasNestedChallenges && selected && Boolean(expandedLevelIds[level.id]);
+            {campaignChapterDefs.map((chapter) => {
+              const chapterLevels = levelsForCampaignChapter(chapter);
+              const chapterSelected = chapterLevels.some((level) => level.id === activeLevel.id);
+              const chapterExpanded = expandedChapterIds[chapter.id] ?? chapterSelected;
+              const chapterPassedCount = chapterLevels.filter((level) => results[level.id]?.passed).length;
+              const chapterHasFail = chapterLevels.some((level) => results[level.id] && !results[level.id]?.passed);
+              const chapterState: CheckState = chapterPassedCount === chapterLevels.length ? "pass" : chapterHasFail ? "fail" : "warn";
+              const useChapter1Groups = chapter.id === "chapter1" && chapterLevels.length === 1;
               return (
-                <div key={level.id} className={`levelGroup ${showNestedChallenges ? "expanded" : ""}`}>
+                <section key={chapter.id} className={`chapterNavBlock ${chapterExpanded ? "expanded" : ""} ${chapterSelected ? "active" : ""}`}>
                   <button
-                    className={`levelItem ${selected ? "active" : ""} ${statusClass} ${hasNestedChallenges ? "collapsible" : ""}`}
-                    aria-expanded={hasNestedChallenges ? showNestedChallenges : undefined}
-                    title={hasNestedChallenges ? `${level.title}: ${showNestedChallenges ? "收起阶段列表" : "展开阶段列表"}` : level.title}
-                    onClick={() => selectLevel(level)}
+                    className={`chapterNavHeader ${chapterSelected ? "active" : ""} ${chapterState}`}
+                    type="button"
+                    aria-expanded={chapterExpanded}
+                    title={`${chapter.code}: ${chapterExpanded ? "收起章节" : "展开章节"}`}
+                    onClick={() => {
+                      if (useChapter1Groups && !chapterSelected) {
+                        selectLevel(chapterLevels[0]);
+                        return;
+                      }
+                      setExpandedChapterIds((current) => ({ ...current, [chapter.id]: !(current[chapter.id] ?? chapterSelected) }));
+                    }}
                   >
-                    <span className="levelId">{level.id}</span>
+                    <span className="chapterCode">{chapter.code.replace("Chapter ", "Ch")}</span>
                     <span>
-                      <b>{level.title}</b>
-                      <small>{level.subtitle}</small>
-                      <small>Tool: {repairKindLabel(level.repair.kind)}</small>
-                      <small>Reward: {level.unlocks[0]}</small>
+                      <b>{chapter.title}</b>
+                      <small>{chapter.subtitle}</small>
                     </span>
-                    {hasNestedChallenges ? (
-                      <span className={`levelExpandIcon ${showNestedChallenges ? "open" : ""}`} aria-hidden="true">
-                        <ChevronDown size={16} />
-                      </span>
-                    ) : (
-                      <span className="levelExpandIcon placeholder" aria-hidden="true" />
-                    )}
-                    <StateIcon state={result ? (result.passed ? "pass" : "fail") : "warn"} />
+                    <code>{chapterPassedCount}/{chapterLevels.length}</code>
+                    <span className={`levelExpandIcon ${chapterExpanded ? "open" : ""}`} aria-hidden="true">
+                      <ChevronDown size={16} />
+                    </span>
+                    <StateIcon state={chapterState} />
                   </button>
-                  {showNestedChallenges ? (
-                    <ChapterChallengeRail level={level} repairState={activeRepairState} phase={levelPhase} result={levelResult} />
+
+                  {chapterExpanded ? useChapter1Groups ? (
+                    <div className="chapterLevelList chapter1LevelList">
+                      {chapterLevels.map((level) => {
+                        const result = results[level.id];
+                        const selected = selectedLevelId === level.id;
+                        const levelRepairState = selected ? activeRepairState : repairStates[level.id] ?? createInitialRepairState();
+                        const displayPhase = selected ? levelPhase : deriveLevelPhase(level, levelRepairState, result, false, false);
+                        return (
+                          <Chapter1GroupLevelList
+                            key={level.id}
+                            level={level}
+                            repairState={levelRepairState}
+                            phase={displayPhase}
+                            result={result}
+                            selected={selected}
+                            expandedGroups={expandedChapter1GroupIds}
+                            onSelect={() => selectLevel(level)}
+                            onToggleGroup={(groupCode, currentlyExpanded) =>
+                              setExpandedChapter1GroupIds((current) => ({ ...current, [groupCode]: !currentlyExpanded }))
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="chapterLevelList">
+                      {chapterLevels.map((level) => {
+                        const result = results[level.id];
+                        const statusClass = result ? (result.passed ? "pass" : "fail") : "pending";
+                        const hasNestedChallenges = supportsStageRail(level);
+                        const selected = selectedLevelId === level.id;
+                        const showNestedChallenges = hasNestedChallenges && selected && Boolean(expandedLevelIds[level.id]);
+                        const levelRepairState = selected ? activeRepairState : repairStates[level.id] ?? createInitialRepairState();
+                        return (
+                          <div key={level.id} className={`levelGroup ${showNestedChallenges ? "expanded" : ""}`}>
+                            <button
+                              className={`levelItem ${selected ? "active" : ""} ${statusClass} ${hasNestedChallenges ? "collapsible" : ""}`}
+                              aria-expanded={hasNestedChallenges ? showNestedChallenges : undefined}
+                              title={hasNestedChallenges ? `${level.title}: ${showNestedChallenges ? "收起阶段列表" : "展开阶段列表"}` : level.title}
+                              onClick={() => selectLevel(level)}
+                            >
+                              <span className="levelId">{levelDisplayBadge(level)}</span>
+                              <span>
+                                <b>{level.title}</b>
+                                <small>{level.subtitle}</small>
+                                <small>Tool: {repairKindLabel(level.repair.kind)}</small>
+                                <small>Reward: {level.unlocks[0]}</small>
+                              </span>
+                              {hasNestedChallenges ? (
+                                <span className={`levelExpandIcon ${showNestedChallenges ? "open" : ""}`} aria-hidden="true">
+                                  <ChevronDown size={16} />
+                                </span>
+                              ) : (
+                                <span className="levelExpandIcon placeholder" aria-hidden="true" />
+                              )}
+                              <StateIcon state={result ? (result.passed ? "pass" : "fail") : "warn"} />
+                            </button>
+                            {showNestedChallenges ? (
+                              <ChapterChallengeRail level={level} repairState={levelRepairState} phase={levelPhase} result={result} />
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : null}
-                </div>
+                </section>
               );
             })}
           </div>
@@ -2284,6 +3139,28 @@ function deriveLevelPhase(
   if (showMissionModal) return "mission_modal";
   if (result?.passed) return "completed";
 
+  if (level.id === "1-1") {
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_raw_text_object"))) return "token_raw_text_object";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_type_gate_failure"))) return "token_type_gate_failure";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_tokenizer_socket"))) return "token_tokenizer_socket";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_token_id_contract"))) return "token_token_id_contract";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_boundary_cutter"))) return "token_boundary_cutter";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_split_comparison"))) return "token_split_comparison";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_count_meter"))) return "token_count_meter";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_merge_forge"))) return "token_merge_forge";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_preserve_symbols"))) return "token_preserve_symbols";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_vocab_lookup"))) return "token_vocab_lookup";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_address_lighting"))) return "token_address_lighting";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_stable_id_test"))) return "token_stable_id_test";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_buffer_build"))) return "token_buffer_build";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_oov_failure"))) return "token_oov_failure";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_fallback_splitter"))) return "token_fallback_splitter";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_special_token_injector"))) return "token_special_token_injector";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_padding_builder"))) return "token_padding_builder";
+    if (!areSlotsCorrect(level, repairState, chapter1TokenizationSlotIds("token_budget_gate"))) return "token_budget_gate";
+    return "tokenizer_gauntlet";
+  }
+
   if (level.id !== "0-1") {
     if (level.id === "0-2") {
       if (!areSlotsCorrect(level, repairState, chapter02SlotIds("matmul_dot_cell"))) return "matmul_dot_cell";
@@ -2347,7 +3224,7 @@ function areAssignmentsCorrect(level: BootcampLevel, assignments: BootcampAnswer
 }
 
 function supportsStageRail(level: BootcampLevel) {
-  return level.id === "0-1" || level.id === "0-2" || level.id === "0-3" || level.id === "0-4";
+  return level.id === "0-1" || level.id === "0-2" || level.id === "0-3" || level.id === "0-4" || level.id === "1-1";
 }
 
 function shouldShowCanvasPalette(level: BootcampLevel, phase: LevelPhase) {
@@ -2355,6 +3232,7 @@ function shouldShowCanvasPalette(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-2") return Boolean(chapter02ChallengeByPhase.get(phase));
   if (level.id === "0-3") return Boolean(chapter03ChallengeByPhase.get(phase));
   if (level.id === "0-4") return Boolean(chapter04ChallengeByPhase.get(phase));
+  if (level.id === "1-1") return Boolean(chapter1TokenizationChallengeByPhase.get(phase));
   return visibleSlotsForPhase(level, phase).length > 0 && visibleTagsForPhase(level, phase).length > 0;
 }
 
@@ -2363,6 +3241,7 @@ function shouldShowCanvasRunButton(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-2") return phase === "matmul_gauntlet";
   if (level.id === "0-3") return phase === "transpose_gauntlet";
   if (level.id === "0-4") return phase === "broadcast_gauntlet";
+  if (level.id === "1-1") return phase === "tokenizer_gauntlet";
   return true;
 }
 
@@ -2371,6 +3250,7 @@ function canvasRunTestLabel(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-2" && phase === "matmul_gauntlet") return "Run MatMul Gauntlet";
   if (level.id === "0-3" && phase === "transpose_gauntlet") return "Run Transpose Gauntlet";
   if (level.id === "0-4" && phase === "broadcast_gauntlet") return "Run Broadcast Gauntlet";
+  if (level.id === "1-1" && phase === "tokenizer_gauntlet") return "Run Tokenizer Gauntlet";
   return "Run Contract Tests";
 }
 
@@ -2383,6 +3263,7 @@ function challengesForLevel(level: BootcampLevel) {
   if (level.id === "0-2") return chapter02Challenges;
   if (level.id === "0-3") return chapter03Challenges;
   if (level.id === "0-4") return chapter04Challenges;
+  if (level.id === "1-1") return chapter1TokenizationChallenges;
   return [];
 }
 
@@ -2391,6 +3272,7 @@ function challengeForLevelPhase(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-2") return chapter02ChallengeForPhase(phase);
   if (level.id === "0-3") return chapter03ChallengeForPhase(phase);
   if (level.id === "0-4") return chapter04ChallengeForPhase(phase);
+  if (level.id === "1-1") return chapter1TokenizationChallengeForPhase(phase);
   return undefined;
 }
 
@@ -2399,6 +3281,7 @@ function stageIntroForLevelPhase(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-2") return chapter02StageIntros[phase];
   if (level.id === "0-3") return chapter03StageIntros[phase];
   if (level.id === "0-4") return chapter04StageIntros[phase];
+  if (level.id === "1-1") return chapter1TokenizationStageIntros[phase];
   return undefined;
 }
 
@@ -2407,6 +3290,7 @@ function stageKnowledgeForLevelPhase(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-2") return chapter02StageKnowledge[phase];
   if (level.id === "0-3") return chapter03StageKnowledge[phase];
   if (level.id === "0-4") return chapter04StageKnowledge[phase];
+  if (level.id === "1-1") return chapter1TokenizationStageKnowledge[phase];
   return undefined;
 }
 
@@ -2422,6 +3306,10 @@ function stageReadyForDebrief(level: BootcampLevel, phase: LevelPhase, assignmen
   }
   if (level.id === "0-4") {
     const challenge = chapter04ChallengeForPhase(phase);
+    return Boolean(challenge?.slotIds.length && areAssignmentsCorrect(level, assignments, challenge.slotIds));
+  }
+  if (level.id === "1-1") {
+    const challenge = chapter1TokenizationChallengeForPhase(phase);
     return Boolean(challenge?.slotIds.length && areAssignmentsCorrect(level, assignments, challenge.slotIds));
   }
   return false;
@@ -2461,6 +3349,10 @@ function chapter04SlotIds(phase: LevelPhase) {
   return chapter04ChallengeByPhase.get(phase)?.slotIds ?? [];
 }
 
+function chapter1TokenizationSlotIds(phase: LevelPhase) {
+  return chapter1TokenizationChallengeByPhase.get(phase)?.slotIds ?? [];
+}
+
 function chapter01ChallengeForPhase(phase: LevelPhase) {
   if (phase === "knowledge_intro" || phase === "mission_modal") return chapter01Challenges[0];
   if (phase === "completed") return chapter01ChallengeByPhase.get("hidden_test_gauntlet");
@@ -2485,10 +3377,22 @@ function chapter04ChallengeForPhase(phase: LevelPhase) {
   return chapter04ChallengeByPhase.get(phase);
 }
 
+function chapter1TokenizationChallengeForPhase(phase: LevelPhase) {
+  if (phase === "knowledge_intro" || phase === "mission_modal") return chapter1TokenizationChallenges[0];
+  if (phase === "completed") return chapter1TokenizationChallengeByPhase.get("tokenizer_gauntlet");
+  return chapter1TokenizationChallengeByPhase.get(phase);
+}
+
 function buildCanvasStageKnowledge(level: BootcampLevel, phase: LevelPhase): Chapter01StageKnowledge | undefined {
-  if (level.id !== "0-1" && level.id !== "0-2" && level.id !== "0-3" && level.id !== "0-4") return undefined;
-  const finalPhase =
-    level.id === "0-1" ? "hidden_test_gauntlet" : level.id === "0-2" ? "matmul_gauntlet" : level.id === "0-3" ? "transpose_gauntlet" : "broadcast_gauntlet";
+  const finalPhases: Partial<Record<string, LevelPhase>> = {
+    "0-1": "hidden_test_gauntlet",
+    "0-2": "matmul_gauntlet",
+    "0-3": "transpose_gauntlet",
+    "0-4": "broadcast_gauntlet",
+    "1-1": "tokenizer_gauntlet"
+  };
+  const finalPhase = finalPhases[level.id];
+  if (!finalPhase) return undefined;
   const normalizedPhase = phase === "completed" ? finalPhase : phase;
   const knowledge = stageKnowledgeForLevelPhase(level, normalizedPhase);
   if (!knowledge) return undefined;
@@ -2538,6 +3442,25 @@ function phaseLabel(phase: LevelPhase) {
     broadcast_bonus_residual: "Bonus C Residual Add",
     broadcast_bonus_mask_value: "Bonus D Mask Value",
     broadcast_gauntlet: "0-4X Broadcast Gauntlet",
+    token_raw_text_object: "1-1A Raw Text Object",
+    token_type_gate_failure: "1-1B Type Gate Failure",
+    token_tokenizer_socket: "1-1C Tokenizer Socket",
+    token_token_id_contract: "1-1D Token ID Contract",
+    token_boundary_cutter: "1-2A Boundary Cutter",
+    token_split_comparison: "1-2B Split Comparison",
+    token_count_meter: "1-2C Token Count Meter",
+    token_merge_forge: "1-2D Merge Forge",
+    token_preserve_symbols: "1-2E Preserve Symbols",
+    token_vocab_lookup: "1-3A Vocab Lookup",
+    token_address_lighting: "1-3B Address Lighting",
+    token_stable_id_test: "1-3C Stable ID Test",
+    token_buffer_build: "1-3D Token Buffer Build",
+    token_oov_failure: "1-4A OOV Failure",
+    token_fallback_splitter: "1-4B Fallback Splitter",
+    token_special_token_injector: "1-4C Special Token Injector",
+    token_padding_builder: "1-4D Padding Builder",
+    token_budget_gate: "1-4E Token Budget Gate",
+    tokenizer_gauntlet: "1-X Tokenizer Gauntlet",
     data_flow_repair: "Restore Data Flow",
     tensor_generated: "Tensor Generated",
     axis_probe: "Probe Axes",
@@ -2551,9 +3474,15 @@ function phaseLabel(phase: LevelPhase) {
 }
 
 function visibleTagsForPhase(level: BootcampLevel, phase: LevelPhase): RepairTag[] {
-  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4" || level.id === "1-1") {
     const challenge =
-      level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
+      level.id === "0-2"
+        ? chapter02ChallengeForPhase(phase)
+        : level.id === "0-3"
+          ? chapter03ChallengeForPhase(phase)
+          : level.id === "0-4"
+            ? chapter04ChallengeForPhase(phase)
+            : chapter1TokenizationChallengeForPhase(phase);
     if (!challenge) return level.repair.tags;
     if (challenge.tagIds?.length) {
       const tagIds = new Set(challenge.tagIds);
@@ -2570,14 +3499,20 @@ function visibleTagsForPhase(level: BootcampLevel, phase: LevelPhase): RepairTag
 }
 
 function visiblePaletteTagsForPhase(level: BootcampLevel, phase: LevelPhase): RepairTag[] {
-  if (level.id === "0-4") return visibleTagsForPhase(level, phase);
+  if (level.id === "0-4" || level.id === "1-1") return visibleTagsForPhase(level, phase);
   return visibleTagsForPhase(level, phase).filter((tag) => tag.category !== "data" && tag.category !== "consumer");
 }
 
 function visibleSlotsForPhase(level: BootcampLevel, phase: LevelPhase): RepairSlot[] {
-  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4" || level.id === "1-1") {
     const challenge =
-      level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
+      level.id === "0-2"
+        ? chapter02ChallengeForPhase(phase)
+        : level.id === "0-3"
+          ? chapter03ChallengeForPhase(phase)
+          : level.id === "0-4"
+            ? chapter04ChallengeForPhase(phase)
+            : chapter1TokenizationChallengeForPhase(phase);
     if (!challenge) return [];
     const slotIds = new Set(challenge.slotIds);
     return level.repair.slots.filter((slot) => slotIds.has(slot.id));
@@ -2623,6 +3558,26 @@ function visibleProbesForPhase(level: BootcampLevel, phase: LevelPhase) {
             : ["trap_probe"];
     return level.repair.probes.filter((probe) => probeIds.includes(probe.id));
   }
+  if (level.id === "1-1") {
+    const probeIds =
+      phase === "token_raw_text_object" || phase === "token_type_gate_failure" || phase === "token_tokenizer_socket" || phase === "token_token_id_contract"
+        ? ["text_probe"]
+        : phase === "token_boundary_cutter" ||
+            phase === "token_split_comparison" ||
+            phase === "token_count_meter" ||
+            phase === "token_merge_forge" ||
+            phase === "token_preserve_symbols"
+          ? ["split_probe"]
+          : phase === "token_vocab_lookup" ||
+              phase === "token_address_lighting" ||
+              phase === "token_stable_id_test" ||
+              phase === "token_buffer_build" ||
+              phase === "token_oov_failure" ||
+              phase === "token_fallback_splitter"
+            ? ["vocab_probe"]
+            : ["buffer_probe"];
+    return level.repair.probes.filter((probe) => probeIds.includes(probe.id));
+  }
   if (level.id !== "0-1") return level.repair.probes;
   return phase === "hidden_contract_repair" ? level.repair.probes : [];
 }
@@ -2637,6 +3592,9 @@ function defaultProbeForSlot(level: BootcampLevel, phase: LevelPhase, slot: Repa
     return visibleProbesForPhase(level, phase)[0]?.id;
   }
   if (level.id === "0-4") {
+    return visibleProbesForPhase(level, phase)[0]?.id;
+  }
+  if (level.id === "1-1") {
     return visibleProbesForPhase(level, phase)[0]?.id;
   }
   if (level.id !== "0-1" || phase !== "hidden_contract_repair") return undefined;
@@ -2661,6 +3619,18 @@ function applyNodePositions(nodes: TensorNode[], positions?: NodePositionMap): T
 }
 
 function filterDisplayNodesForPhase(level: BootcampLevel, nodes: TensorNode[], phase: LevelPhase): TensorNode[] {
+  if (level.id === "1-1") {
+    const challenge = chapter1TokenizationChallengeForPhase(phase);
+    if (!challenge) return nodes;
+    const visibleIds = new Set(challenge.nodeIds);
+    const phasePositions = chapter1TokenizationPhaseNodePositions[phase] ?? {};
+    return nodes
+      .filter((node) => visibleIds.has(node.id))
+      .map((node) => {
+        const positioned = phasePositions[node.id] ? { ...node, ...phasePositions[node.id] } : node;
+        return sizeChapter1TokenizationPhaseNode(positioned, phase);
+      });
+  }
   if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
     const challenge =
       level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
@@ -2704,6 +3674,18 @@ function filterDisplayNodesForPhase(level: BootcampLevel, nodes: TensorNode[], p
 
     return positioned;
   });
+}
+
+function sizeChapter1TokenizationPhaseNode(node: TensorNode, phase: LevelPhase): TensorNode {
+  if (phase === "tokenizer_gauntlet") {
+    if (node.id === "tokenizer_contract_terminal") return { ...node, w: 294, h: 160 };
+    if (node.id === "gauntlet_cases") return { ...node, w: 250, h: 142 };
+  }
+
+  if (node.id === "token_piece_stream" || node.id === "token_buffer") return { ...node, w: Math.max(node.w, 236), h: Math.max(node.h, 122) };
+  if (node.id === "vocab_table") return { ...node, w: Math.max(node.w, 238), h: Math.max(node.h, 136) };
+  if (node.id === "attention_mask_builder") return { ...node, w: Math.max(node.w, 236), h: Math.max(node.h, 120) };
+  return node;
 }
 
 function sizeChapter02PhaseNode(node: TensorNode, phase: LevelPhase): TensorNode {
@@ -2877,6 +3859,13 @@ const manualConnectionEdgeIds = new Set([
 ]);
 
 function filterDisplayEdgesForPhase(level: BootcampLevel, edges: BootcampLevel["edges"], nodes: TensorNode[], phase: LevelPhase) {
+  if (level.id === "1-1") {
+    const challenge = chapter1TokenizationChallengeForPhase(phase);
+    if (!challenge) return edges;
+    const visibleNodeIds = new Set(nodes.map((node) => node.id));
+    const visibleEdgeIds = new Set(challenge.edgeIds);
+    return edges.filter((edge) => visibleEdgeIds.has(edge.id) && visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to));
+  }
   if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
     const challenge =
       level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
@@ -3011,10 +4000,12 @@ function buildCanvasConnections(level: BootcampLevel, repairState: LevelRepairSt
 }
 
 function buildCanvasActionHints(level: BootcampLevel, repairState: LevelRepairState, phase: LevelPhase): CanvasActionHint[] {
-  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
-    const finalGauntletPhase = level.id === "0-2" ? "matmul_gauntlet" : level.id === "0-3" ? "transpose_gauntlet" : "broadcast_gauntlet";
-    const finalGauntletNodeId = level.id === "0-2" ? "matmul_tests" : level.id === "0-3" ? "gauntlet_result" : "broadcast_gauntlet_result";
-    const gauntletLabel = level.id === "0-2" ? "MatMul" : level.id === "0-3" ? "Transpose" : "Broadcast";
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4" || level.id === "1-1") {
+    const finalGauntletPhase =
+      level.id === "0-2" ? "matmul_gauntlet" : level.id === "0-3" ? "transpose_gauntlet" : level.id === "0-4" ? "broadcast_gauntlet" : "tokenizer_gauntlet";
+    const finalGauntletNodeId =
+      level.id === "0-2" ? "matmul_tests" : level.id === "0-3" ? "gauntlet_result" : level.id === "0-4" ? "broadcast_gauntlet_result" : "tokenizer_gauntlet_result";
+    const gauntletLabel = level.id === "0-2" ? "MatMul" : level.id === "0-3" ? "Transpose" : level.id === "0-4" ? "Broadcast" : "Tokenizer";
     const hints: CanvasActionHint[] =
       phase === finalGauntletPhase
         ? [
@@ -3094,6 +4085,97 @@ function buildDisplayNodes(level: BootcampLevel, assignments: BootcampAnswerMap)
     const node = nodes.find((item) => item.id === id);
     if (node) Object.assign(node, patch);
   };
+
+  if (level.id === "1-1") {
+    const slotCorrect = (slotId: string) => {
+      const slot = level.repair.slots.find((item) => item.id === slotId);
+      return slot ? slot.correctTagIds.includes(assignments[slotId]) : false;
+    };
+    const stageReady = (phase: LevelPhase) => chapter1TokenizationSlotIds(phase).every(slotCorrect);
+    const textReady = stageReady("token_raw_text_object");
+    const typeReady = stageReady("token_type_gate_failure");
+    const tokenizerReady = stageReady("token_tokenizer_socket");
+    const idsReady = stageReady("token_token_id_contract");
+    const splitReady = stageReady("token_boundary_cutter") && stageReady("token_split_comparison");
+    const mergeReady = stageReady("token_merge_forge");
+    const vocabReady = stageReady("token_vocab_lookup") && stageReady("token_address_lighting");
+    const stableReady = stageReady("token_stable_id_test");
+    const bufferReady = stageReady("token_buffer_build");
+    const oovReady = stageReady("token_oov_failure") && stageReady("token_fallback_splitter");
+    const specialReady = stageReady("token_special_token_injector");
+    const padReady = stageReady("token_padding_builder");
+    const budgetReady = stageReady("token_budget_gate");
+
+    patchNode("raw_text_input", {
+      subtitle: textReady ? "utf8 object inspected" : "raw utf8 string",
+      checks: [check("text object", textReady ? "pass" : "warn", textReady ? "raw text is identified as non-numeric utf8" : "inspect raw text before model-side ports")]
+    });
+    patchNode("type_gate", {
+      subtitle: typeReady ? "failure explained" : "numeric port guard",
+      checks: [check("type contract", typeReady ? "pass" : "warn", typeReady ? "string input is rejected; int ids required" : "make the raw text failure explicit")]
+    });
+    patchNode("tokenizer_socket", {
+      subtitle: tokenizerReady ? "socket installed" : "utf8 -> pieces",
+      checks: [check("tokenizer boundary", tokenizerReady ? "pass" : "warn", tokenizerReady ? "raw text must pass through tokenizer" : "insert tokenizer and block bypass")]
+    });
+    patchNode("token_piece_stream", {
+      subtitle: splitReady ? "ordered pieces" : tokenizerReady ? "piece stream open" : "waiting for tokenizer",
+      checks: [
+        check("pieces", tokenizerReady ? "pass" : "warn", tokenizerReady ? "tokenizer emits pieces" : "install tokenizer first"),
+        check("boundaries", splitReady ? "pass" : "warn", splitReady ? "space, punctuation, and policy checks pass" : "finish split policy and boundary checks"),
+        check("merge/symbols", mergeReady && stageReady("token_preserve_symbols") ? "pass" : "warn", mergeReady ? "merge rules are active; verify symbols remain visible" : "configure merges and symbol preservation")
+      ]
+    });
+    patchNode("token_count_meter", {
+      subtitle: stageReady("token_count_meter") ? "budget enforced" : "budget T <= 8",
+      checks: [check("T budget", stageReady("token_count_meter") ? "pass" : "warn", stageReady("token_count_meter") ? "token count blocks overflow" : "count current pieces and enforce max T")]
+    });
+    patchNode("vocab_lookup_gate", {
+      subtitle: vocabReady ? "pieces resolved" : "resolve pieces",
+      checks: [check("vocab ids", vocabReady ? "pass" : "warn", vocabReady ? "pieces resolve to stable row ids or OOV" : "lookup every piece and flag missing rows")]
+    });
+    patchNode("token_id_emitter", {
+      subtitle: idsReady || vocabReady ? "integer ids emitted" : "pieces -> int ids",
+      checks: [check("id contract", idsReady || vocabReady ? "pass" : "warn", idsReady || vocabReady ? "integer token ids can index embedding rows" : "emit integer ids before embedding")]
+    });
+    patchNode("stable_id_checker", {
+      subtitle: stableReady ? "deterministic" : "same input -> same ids",
+      checks: [check("stable ids", stableReady ? "pass" : "warn", stableReady ? "same piece maps to same id across runs" : "prove repeated encode is stable")]
+    });
+    patchNode("token_buffer", {
+      subtitle: padReady ? "token_ids[B,T] + mask ready" : bufferReady ? "token_ids[B,T]" : "batch buffer pending",
+      checks: [
+        check("B/T buffer", bufferReady ? "pass" : "warn", bufferReady ? "rectangular int[B,T] buffer built" : "build rows=B and columns=T"),
+        check("padding", padReady ? "pass" : "warn", padReady ? "padding and attention_mask agree" : "finish padding and mask builder"),
+        check("budget", budgetReady ? "pass" : "warn", budgetReady ? "max T is enforced before buffer output" : "apply token budget gate")
+      ]
+    });
+    patchNode("oov_detector", {
+      subtitle: stageReady("token_oov_failure") ? "OOV reported" : "find missing pieces",
+      checks: [check("OOV", stageReady("token_oov_failure") ? "pass" : "warn", stageReady("token_oov_failure") ? "missing pieces are detected, blocked, and named" : "make OOV failure informative")]
+    });
+    patchNode("fallback_splitter", {
+      subtitle: oovReady ? "fallback chain locked" : "subword / char / unk",
+      checks: [check("fallback", oovReady ? "pass" : "warn", oovReady ? "OOV resolves deterministically through fallback chain" : "configure subword, char, and <unk> fallback")]
+    });
+    patchNode("special_token_injector", {
+      subtitle: specialReady ? "special ids reserved" : "BOS / EOS / PAD / UNK",
+      checks: [check("special tokens", specialReady ? "pass" : "warn", specialReady ? "BOS/EOS/PAD/UNK contract is explicit" : "inject BOS/EOS and reserve special ids")]
+    });
+    patchNode("attention_mask_builder", {
+      subtitle: padReady ? "mask matches pad" : "1 content / 0 pad",
+      checks: [check("mask", padReady ? "pass" : "warn", padReady ? "attention_mask mirrors pad positions" : "build mask from padded token ids")]
+    });
+    patchNode("budget_gate", {
+      subtitle: budgetReady ? "max T guarded" : "max T enforcement",
+      checks: [check("budget", budgetReady ? "pass" : "warn", budgetReady ? "over-budget texts are truncated or rejected with trace" : "choose overflow policy and trace")]
+    });
+    patchNode("tokenizer_contract_terminal", {
+      subtitle: budgetReady ? "ready for gauntlet" : "autograder checks",
+      checks: [check("pipeline", budgetReady ? "pass" : "warn", budgetReady ? "visible stages ready; run tokenizer gauntlet" : "complete visible stages before final tests")]
+    });
+    return nodes;
+  }
 
   if (level.id === "0-1") {
     const slotCorrect = (slotId: string) => {
@@ -3852,10 +4934,34 @@ function activeToolLabel(level: BootcampLevel, state: LevelRepairState) {
   return "canvas context";
 }
 
+function levelsForCampaignChapter(chapter: CampaignChapterDef) {
+  const levelIds = new Set(chapter.levelIds);
+  return bootcampLevels.filter((level) => levelIds.has(level.id));
+}
+
+function campaignChapterForLevel(level: BootcampLevel) {
+  return campaignChapterDefs.find((chapter) => chapter.levelIds.includes(level.id)) ?? campaignChapterDefs[0];
+}
+
+function chapterIdForLevel(level: BootcampLevel) {
+  return campaignChapterForLevel(level).id;
+}
+
+function levelDisplayBadge(level: BootcampLevel) {
+  if (level.id === "1-1") return "1";
+  return level.id;
+}
+
+function levelDisplayTitle(level: BootcampLevel) {
+  const chapter = campaignChapterForLevel(level);
+  return `${chapter.code.replace("Chapter ", "")} / ${level.title}`;
+}
+
 function repairKindLabel(kind: BootcampLevel["repair"]["kind"]) {
   if (kind === "axis_labels") return "Axis Tags";
   if (kind === "matmul_gate") return "Weight Plate";
   if (kind === "transpose_switch") return "Transpose Switch";
+  if (kind === "tokenizer_pipeline") return "Tokenizer Pipeline";
   return "Broadcast Rail";
 }
 
@@ -3926,10 +5032,11 @@ function ObjectiveTracker({
           done:
             challenge.phase === "hidden_contract_repair"
               ? areSlotsCorrect(level, repairState, challenge.slotIds) && repairState.observations.length >= 3
-              : challenge.phase === "hidden_test_gauntlet" ||
+                : challenge.phase === "hidden_test_gauntlet" ||
                   challenge.phase === "matmul_gauntlet" ||
                   challenge.phase === "transpose_gauntlet" ||
-                  challenge.phase === "broadcast_gauntlet"
+                  challenge.phase === "broadcast_gauntlet" ||
+                  challenge.phase === "tokenizer_gauntlet"
                 ? Boolean(result?.passed)
                 : areSlotsCorrect(level, repairState, challenge.slotIds),
           active: phase === challenge.phase
@@ -4071,6 +5178,84 @@ function paletteKindLabel(tag: RepairTag) {
   return "Item";
 }
 
+function Chapter1GroupLevelList({
+  level,
+  repairState,
+  phase,
+  result,
+  selected,
+  expandedGroups,
+  onSelect,
+  onToggleGroup
+}: {
+  level: BootcampLevel;
+  repairState: LevelRepairState;
+  phase: LevelPhase;
+  result?: BootcampResult;
+  selected: boolean;
+  expandedGroups: Record<string, boolean>;
+  onSelect: () => void;
+  onToggleGroup: (groupCode: string, currentlyExpanded: boolean) => void;
+}) {
+  const challenges = challengesForLevel(level);
+  const challengeByPhase = new Map(challenges.map((challenge) => [challenge.phase, challenge]));
+  const challengeDone = (challenge: Chapter01ChallengeDef) => isChallengeDone(level, repairState, challenge, result);
+
+  return (
+    <>
+      {chapter1TokenizationChallengeGroups.map((group) => {
+        const groupChallenges = group.phases.map((groupPhase) => challengeByPhase.get(groupPhase)).filter(Boolean) as Chapter01ChallengeDef[];
+        const doneCount = groupChallenges.filter(challengeDone).length;
+        const groupDone = doneCount === groupChallenges.length;
+        const groupActive = selected && (groupChallenges.some((challenge) => challenge.phase === phase) || (phase === "completed" && group.code === "1-X"));
+        const expanded = expandedGroups[group.code] ?? groupActive;
+        return (
+          <div key={group.code} className={`levelGroup chapter1LevelGroup ${expanded ? "expanded" : ""}`}>
+            <button
+              className={`levelItem chapter1GroupItem ${groupActive ? "active" : ""} ${groupDone ? "pass" : "pending"} collapsible`}
+              aria-expanded={expanded}
+              title={`${group.code} ${group.title}: ${expanded ? "收起阶段列表" : "展开阶段列表"}`}
+              onClick={() => {
+                onSelect();
+                onToggleGroup(group.code, expanded);
+              }}
+            >
+              <span className="levelId">{group.code}</span>
+              <span>
+                <b>{group.title}</b>
+                <small>{group.brief}</small>
+              </span>
+              <span className={`levelExpandIcon ${expanded ? "open" : ""}`} aria-hidden="true">
+                <ChevronDown size={16} />
+              </span>
+              <StateIcon state={groupDone ? "pass" : groupActive ? "warn" : "warn"} />
+            </button>
+            {expanded ? (
+              <div className="challengeRail chapter1StageRail">
+                {groupChallenges.map((challenge) => {
+                  const active = phase === challenge.phase;
+                  const done = challengeDone(challenge);
+                  return (
+                    <div key={challenge.code} className={`challengeStep ${active ? "active" : ""} ${done ? "done" : ""}`}>
+                      <StateIcon state={done ? "pass" : active ? "warn" : "warn"} />
+                      <span>
+                        <b>
+                          {challenge.code} {challenge.title}
+                        </b>
+                        <small>{challenge.brief}</small>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function ChapterChallengeRail({
   level,
   repairState,
@@ -4083,19 +5268,60 @@ function ChapterChallengeRail({
   result?: BootcampResult;
 }) {
   const challenges = challengesForLevel(level);
+  const challengeDone = (challenge: Chapter01ChallengeDef) => isChallengeDone(level, repairState, challenge, result);
+
+  if (level.id === "1-1") {
+    const challengeByPhase = new Map(challenges.map((challenge) => [challenge.phase, challenge]));
+    return (
+      <div className="challengeRail grouped">
+        {chapter1TokenizationChallengeGroups.map((group) => {
+          const groupChallenges = group.phases.map((groupPhase) => challengeByPhase.get(groupPhase)).filter(Boolean) as Chapter01ChallengeDef[];
+          const doneCount = groupChallenges.filter(challengeDone).length;
+          const groupDone = doneCount === groupChallenges.length;
+          const groupActive = groupChallenges.some((challenge) => challenge.phase === phase);
+          const expanded = groupActive || (phase === "completed" && group.code === "1-X");
+          return (
+            <section key={group.code} className={`challengeGroupBlock ${groupActive ? "active" : ""} ${groupDone ? "done" : ""}`}>
+              <div className="challengeGroupHeader">
+                <StateIcon state={groupDone ? "pass" : groupActive ? "warn" : "warn"} />
+                <span className="challengeGroupCode">{group.code}</span>
+                <span className="challengeGroupTitle">
+                  <b>{group.title}</b>
+                  <small>{group.brief}</small>
+                </span>
+                <code>{doneCount}/{groupChallenges.length}</code>
+              </div>
+              {expanded ? (
+                <div className="challengeGroupSteps">
+                  {groupChallenges.map((challenge) => {
+                    const active = phase === challenge.phase;
+                    const done = challengeDone(challenge);
+                    return (
+                      <div key={challenge.code} className={`challengeStep compact ${active ? "active" : ""} ${done ? "done" : ""}`}>
+                        <StateIcon state={done ? "pass" : active ? "warn" : "warn"} />
+                        <span>
+                          <b>
+                            {challenge.code} {challenge.title}
+                          </b>
+                          <small>{challenge.brief}</small>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="challengeRail">
       {challenges.map((challenge) => {
         const active = phase === challenge.phase;
-        const done =
-          challenge.phase === "hidden_contract_repair"
-            ? areSlotsCorrect(level, repairState, challenge.slotIds) && chapter01ProbeEvidenceReady(repairState.observations)
-            : challenge.phase === "hidden_test_gauntlet" ||
-                challenge.phase === "matmul_gauntlet" ||
-                challenge.phase === "transpose_gauntlet" ||
-                challenge.phase === "broadcast_gauntlet"
-              ? Boolean(result?.passed)
-              : areSlotsCorrect(level, repairState, challenge.slotIds);
+        const done = challengeDone(challenge);
         return (
           <div key={challenge.code} className={`challengeStep ${active ? "active" : ""} ${done ? "done" : ""}`}>
             <StateIcon state={done ? "pass" : active ? "warn" : "warn"} />
@@ -4110,6 +5336,22 @@ function ChapterChallengeRail({
       })}
     </div>
   );
+}
+
+function isChallengeDone(level: BootcampLevel, repairState: LevelRepairState, challenge: Chapter01ChallengeDef, result?: BootcampResult) {
+  if (challenge.phase === "hidden_contract_repair") {
+    return areSlotsCorrect(level, repairState, challenge.slotIds) && chapter01ProbeEvidenceReady(repairState.observations);
+  }
+  if (
+    challenge.phase === "hidden_test_gauntlet" ||
+    challenge.phase === "matmul_gauntlet" ||
+    challenge.phase === "transpose_gauntlet" ||
+    challenge.phase === "broadcast_gauntlet" ||
+    challenge.phase === "tokenizer_gauntlet"
+  ) {
+    return Boolean(result?.passed);
+  }
+  return areSlotsCorrect(level, repairState, challenge.slotIds);
 }
 
 function nextStageLabel(level: BootcampLevel, phase: LevelPhase | undefined) {
