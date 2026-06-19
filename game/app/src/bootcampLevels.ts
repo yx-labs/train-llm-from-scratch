@@ -1,4 +1,5 @@
 import type { BootcampAnswerMap, BootcampLevel, BootcampResult, CheckState, TensorNode } from "./workbenchTypes";
+import { matMulGateLevel } from "./chapter02MatMulGateLevel";
 
 type NodeSpec = Omit<TensorNode, "stats" | "sample" | "checks"> & {
   stats?: TensorNode["stats"];
@@ -26,7 +27,7 @@ function check(label: string, state: CheckState, detail: string) {
   return { label, state, detail };
 }
 
-export const bootcampLevels: BootcampLevel[] = [
+const bootcampLevelDefinitions: BootcampLevel[] = [
   {
     id: "0-1",
     title: "Shape Reader",
@@ -43,8 +44,8 @@ export const bootcampLevels: BootcampLevel[] = [
     knowledgeCards: [
       {
         title: "0-1 Shape Reader",
-        body: "LLM 的内部不是直接流动文字，而是流动一组组 tensor。\n\n在这个训练关里，你会从最基础的数据对象开始，一步步修复一条模型数据链路。\n\n每个概念只会在需要操作它时解锁。",
-        visual: ["Text", "Token IDs", "Embedding", "Hidden Tensor", "Shape Contract", "Downstream Tests"]
+        body: "LLM 的内部不是直接流动文字，而是流动一组组 tensor。\n\n在这个训练关里，你会从最基础的数据对象开始，一步步理解一条模型数据链路。",
+        visual: ["Token IDs", "Embedding", "Hidden Tensor", "Shape Contract", "Downstream Tests"]
       }
     ],
     knowledgeTransition: {
@@ -1011,8 +1012,9 @@ export const bootcampLevels: BootcampLevel[] = [
       { id: "01_step_tests", title: "Gauntlet", state: "warn", detail: "consumer validation + hidden tests", selectNodeId: "shape_tests" }
     ]
   },
+  matMulGateLevel,
   {
-    id: "0-2",
+    id: "0-2-legacy",
     title: "MatMul Gate",
     subtitle: "Repair Linear inner dimension",
     objective: "修复 Linear Gate 的权重方向，让 input[B,T,C] @ weight[C,O] 输出 [B,T,O]。",
@@ -1759,6 +1761,8 @@ export const bootcampLevels: BootcampLevel[] = [
     ]
   }
 ];
+
+export const bootcampLevels: BootcampLevel[] = bootcampLevelDefinitions.filter((level) => level.id !== "0-2-legacy");
 
 export function evaluateBootcampLevel(level: BootcampLevel, assignments: BootcampAnswerMap, metrics: EvaluateMetrics): BootcampResult {
   const tagsById = new Map(level.repair.tags.map((tag) => [tag.id, tag]));

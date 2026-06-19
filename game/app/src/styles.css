@@ -6,6 +6,13 @@
   text-rendering: optimizeLegibility;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -13,6 +20,7 @@
 body {
   margin: 0;
   min-width: 360px;
+  overflow: hidden;
 }
 
 button,
@@ -41,8 +49,14 @@ p {
 }
 
 .appShell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  height: 100vh;
   min-height: 100vh;
-  padding: 18px;
+  padding: 0;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 10%, rgba(56, 189, 248, 0.11), transparent 24rem),
     linear-gradient(135deg, #060b13 0%, #08111f 48%, #0a0f19 100%);
@@ -51,8 +65,9 @@ p {
 .topBar,
 .statusStrip,
 .workbenchGrid {
-  max-width: 1640px;
-  margin-inline: auto;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
 }
 
 .topBar {
@@ -61,7 +76,8 @@ p {
   justify-content: space-between;
   gap: 18px;
   min-height: 62px;
-  margin-bottom: 12px;
+  padding: 8px 8px 0;
+  margin-bottom: 0;
 }
 
 .brand,
@@ -183,7 +199,8 @@ h3 {
 .statusStrip {
   flex-wrap: nowrap;
   gap: 10px;
-  margin-bottom: 14px;
+  padding: 0 8px;
+  margin-bottom: 0;
   overflow: hidden;
 }
 
@@ -218,9 +235,45 @@ h3 {
 
 .workbenchGrid {
   display: grid;
-  grid-template-columns: 280px minmax(760px, 1fr) 340px;
-  grid-template-rows: minmax(640px, calc(100vh - 146px));
-  gap: 14px;
+  grid-template-columns: clamp(240px, 17vw, 310px) minmax(0, 1fr) clamp(300px, 22vw, 390px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.rightStack {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rightStack > .inspector {
+  min-height: 0;
+}
+
+.levelControlPanel {
+  display: grid;
+  gap: 12px;
+  max-height: 46vh;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.levelControlPanel .panelHeader {
+  margin-bottom: 0;
+}
+
+.consoleActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.consoleActions .runButton {
+  width: 100%;
 }
 
 .panel {
@@ -293,6 +346,18 @@ h3 {
   gap: 7px;
 }
 
+.paletteToolGroup {
+  display: grid;
+  gap: 7px;
+}
+
+.paletteToolGroup > b {
+  color: #a8c7e8;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .paletteItem {
   display: grid;
   grid-template-columns: 72px 48px minmax(0, 1fr);
@@ -321,6 +386,20 @@ h3 {
 
 .paletteItem.used {
   border-color: rgba(34, 197, 94, 0.5);
+}
+
+.paletteItem.probeTool {
+  cursor: pointer;
+}
+
+.paletteItem.probeTool b {
+  color: #7dd3fc;
+}
+
+.paletteItem.probeTool.active {
+  border-color: #38bdf8;
+  background: rgba(8, 47, 73, 0.92);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18);
 }
 
 .paletteItem > span {
@@ -605,6 +684,67 @@ h3 {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.canvasKnowledgeButton {
+  position: absolute;
+  z-index: 16;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 11px;
+  overflow: hidden;
+  border: 1px solid rgba(96, 165, 250, 0.68);
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.9);
+  color: #dbeafe;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(125, 211, 252, 0.08);
+  cursor: pointer;
+  transition:
+    width 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.canvasKnowledgeButton:hover,
+.canvasKnowledgeButton:focus-visible {
+  width: 112px;
+  border-color: #7dd3fc;
+  background: rgba(8, 47, 73, 0.94);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 18px rgba(56, 189, 248, 0.15);
+}
+
+.canvasKnowledgeButton svg {
+  flex: 0 0 auto;
+}
+
+.canvasKnowledgeButton span {
+  max-width: 0;
+  overflow: hidden;
+  color: #e8f2ff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    max-width 160ms ease,
+    opacity 120ms ease;
+}
+
+.canvasKnowledgeButton:hover span,
+.canvasKnowledgeButton:focus-visible span {
+  max-width: 64px;
+  opacity: 1;
 }
 
 .stageDebriefOverlay {
@@ -1510,8 +1650,14 @@ h3 {
   .tensorRuntimeBackdrop,
   .tensorRuntimeBackdrop.closing,
   .tensorRuntimeModal,
-  .tensorRuntimeBackdrop.closing .tensorRuntimeModal {
+  .tensorRuntimeBackdrop.closing .tensorRuntimeModal,
+  .visualStage code {
     animation: none;
+  }
+
+  .visualStage code {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -2392,6 +2538,129 @@ h3 {
   box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
 }
 
+.stageIntroPanel {
+  display: grid;
+  gap: 16px;
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid rgba(49, 95, 148, 0.95);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.09), transparent 38%),
+    #081220;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+  animation: modalPanelIn 180ms ease-out both;
+}
+
+.stageIntroTop {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.stageIntroTop h2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 1.28rem;
+}
+
+.stageIntroTop h2 span,
+.stageIntroTop > code {
+  display: inline-grid;
+  place-items: center;
+  min-width: 56px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid #315f94;
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.stageIntroTop > code {
+  min-width: 72px;
+}
+
+.stageIntroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+  gap: 14px;
+}
+
+.stageIntroVisual,
+.stageIntroCopy {
+  min-height: 360px;
+  padding: 14px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #0a1524;
+}
+
+.stageIntroVisual {
+  display: grid;
+}
+
+.stageIntroSequence {
+  min-height: 100%;
+  align-content: center;
+}
+
+.stageIntroSequence code {
+  font-size: 0.86rem;
+}
+
+.stageIntroCopy {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.stageIntroCopy p {
+  margin: 0;
+  color: #d6e6f7;
+  line-height: 1.66;
+  white-space: pre-line;
+}
+
+.stageIntroTask {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 8px;
+  background: rgba(8, 47, 73, 0.28);
+}
+
+.stageIntroTask span {
+  color: #7dd3fc;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.stageIntroTask b {
+  color: #e8f2ff;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.stageIntroActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .knowledgePanel {
   display: grid;
   gap: 16px;
@@ -2449,20 +2718,6 @@ h3 {
   min-height: 342px;
 }
 
-.knowledgeVisual.interactive {
-  cursor: pointer;
-}
-
-.knowledgeVisual.interactive:hover {
-  border-color: #38bdf8;
-  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.18);
-}
-
-.knowledgeVisual.interactive:focus-visible {
-  outline: 2px solid #7dd3fc;
-  outline-offset: 3px;
-}
-
 .visualStage {
   display: grid;
   gap: 8px;
@@ -2491,6 +2746,13 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.visualStage code {
+  opacity: 0;
+  transform: translateY(-14px);
+  animation: briefingItemReveal 520ms cubic-bezier(0.2, 0.86, 0.2, 1) forwards;
+  animation-delay: calc(var(--reveal-index, 0) * 120ms);
+}
+
 .visualStage code.active {
   border-color: #38bdf8;
   background: rgba(14, 116, 144, 0.2);
@@ -2498,52 +2760,15 @@ h3 {
   box-shadow: 0 0 18px rgba(56, 189, 248, 0.12);
 }
 
-.lineClickGuide {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  width: auto;
-  height: 32px;
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
-.lineClickGuideBubble {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 6px 11px;
-  border: 1px solid rgba(125, 211, 252, 0.64);
-  border-radius: 999px;
-  background: rgba(7, 17, 31, 0.95);
-  color: #e0f2fe;
-  font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  font-size: 0.78rem;
-  font-weight: 900;
-  white-space: nowrap;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.28),
-    0 0 18px rgba(56, 189, 248, 0.16);
-  animation: guideBubblePulse 1.45s ease-in-out infinite;
-}
-
-.lineClickGuideBubble span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #7dd3fc;
-  box-shadow: 0 0 12px rgba(125, 211, 252, 0.72);
-}
-
-@keyframes guideBubblePulse {
-  0%,
-  100% {
-    transform: translateY(0);
+@keyframes briefingItemReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
   }
 
-  50% {
-    transform: translateX(-3px);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -2703,11 +2928,27 @@ h3 {
 
 @media (max-width: 1280px) {
   .workbenchGrid {
-    grid-template-columns: 220px minmax(680px, 1fr);
+    grid-template-columns: clamp(210px, 22vw, 260px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(260px, 36vh);
   }
 
   .inspector {
     grid-column: 1 / -1;
+    min-height: 0;
+  }
+
+  .rightStack {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.85fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .rightStack > .inspector {
+    grid-column: auto;
+  }
+
+  .levelControlPanel {
+    max-height: none;
   }
 
   .challengeLayout {
@@ -2720,6 +2961,16 @@ h3 {
 }
 
 @media (max-width: 920px) {
+  body {
+    overflow: auto;
+  }
+
+  .appShell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
   .topBar {
     align-items: flex-start;
     flex-direction: column;
@@ -2732,6 +2983,12 @@ h3 {
   .workbenchGrid {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(560px, auto) auto auto;
+    padding: 0 8px 8px;
+  }
+
+  .rightStack {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
   }
 
   .stageHeader {
@@ -2749,6 +3006,15 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .stageIntroGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stageIntroVisual,
+  .stageIntroCopy {
+    min-height: auto;
+  }
+
   .traceSteps {
     grid-template-columns: 1fr 1fr;
   }
@@ -2756,7 +3022,7 @@ h3 {
 
 @media (max-width: 620px) {
   .appShell {
-    padding: 12px;
+    padding: 0;
   }
 
   .modeSwitch,
@@ -2778,9 +3044,14 @@ h3 {
   }
 
   .knowledgePanel,
+  .stageIntroPanel,
   .missionModal,
   .completionModal {
     padding: 16px;
+  }
+
+  .stageIntroTop {
+    display: grid;
   }
 
   .modalAction {
@@ -2795,12 +3066,8 @@ h3 {
     justify-self: stretch;
   }
 
-  .lineClickGuide {
-    right: 8px;
+  .stageIntroActions .modalAction {
+    width: 100%;
   }
 
-  .lineClickGuideBubble {
-    min-height: 28px;
-    padding: 5px 9px;
-  }
 }

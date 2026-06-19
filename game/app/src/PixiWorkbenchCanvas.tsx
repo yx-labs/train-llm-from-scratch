@@ -8,6 +8,7 @@ const minCanvasScale = 0.42;
 const maxCanvasScale = 1.7;
 const worldBounds = new Rectangle(-2400, -1800, 5600, 4200);
 const repairTagDragMime = "application/x-llm-complete-repair-tag";
+const initialViewCenter = { x: 720, y: 390 };
 
 export type RepairSlotOverlay = {
   slotId: string;
@@ -63,7 +64,14 @@ export type CanvasStageKnowledge = {
     | "embedding_expansion"
     | "hidden_contract"
     | "consumer_contract"
-    | "hidden_tests";
+    | "hidden_tests"
+    | "dot_cell"
+    | "token_projection"
+    | "sequence_projection"
+    | "batch_projection"
+    | "weight_orientation"
+    | "linear_assembly"
+    | "matmul_gauntlet";
   carryForward?: string;
 };
 
@@ -296,8 +304,8 @@ function drawScene(
   if (!view.initialized) {
     const scale = Math.min((screenWidth - 28) / sceneSize.width, (screenHeight - 20) / sceneSize.height);
     view.scale = clamp(Math.max(scale, 0.74), minCanvasScale, maxCanvasScale);
-    view.x = snapCanvasPixel(screenWidth / 2 - 555 * view.scale);
-    view.y = snapCanvasPixel(screenHeight / 2 - 270 * view.scale);
+    view.x = snapCanvasPixel(screenWidth / 2 - initialViewCenter.x * view.scale);
+    view.y = snapCanvasPixel(screenHeight / 2 - initialViewCenter.y * view.scale);
     view.initialized = true;
   }
 
@@ -521,7 +529,12 @@ function drawScene(
       nodeHints.get(node.id),
       (event) => openContextMenu(event, { kind: "node", id: node.id }),
       showTooltip,
-      hideTooltip
+      hideTooltip,
+      {
+        knowledge: state.stageKnowledge,
+        slots: new Map(state.slotOverlays.map((slot) => [slot.slotId, slot])),
+        connections: new Map(state.connectionOverlays.map((connection) => [connection.id, connection]))
+      }
     );
   });
 
@@ -877,6 +890,27 @@ function drawStageVisual(layer: Container, visual: CanvasStageKnowledge["visual"
     case "hidden_tests":
       drawHiddenTestsVisual(layer, x + 14, y + 15);
       break;
+    case "dot_cell":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "[C]", "dot", "scalar");
+      break;
+    case "token_projection":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "[C]", "@ [C,O]", "[O]");
+      break;
+    case "sequence_projection":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "[T,C]", "@ [C,O]", "[T,O]");
+      break;
+    case "batch_projection":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "[B,T,C]", "@ [C,O]", "[B,T,O]");
+      break;
+    case "weight_orientation":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "stored [O,C]", "T(W)", "compute [C,O]");
+      break;
+    case "linear_assembly":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "MatMul", "+ bias off", "Linear");
+      break;
+    case "matmul_gauntlet":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "A/B/C", "hidden", "pass");
+      break;
   }
 }
 
@@ -1001,6 +1035,28 @@ function drawHiddenTestsVisual(layer: Container, x: number, y: number) {
   addText(layer, "same semantics, changing lengths", x + 105, y + 82, 8, 0x9db2ca, "800", 0.5);
 }
 
+function drawMatMulStageVisual(layer: Container, x: number, y: number, leftLabel: string, opLabel: string, rightLabel: string) {
+  const nodes = [
+    { label: leftLabel, x, color: 0x24608a },
+    { label: opLabel, x: x + 82, color: 0x304b6a },
+    { label: rightLabel, x: x + 164, color: 0x1f6f54 }
+  ];
+
+  nodes.forEach((item, index) => {
+    const box = new Graphics();
+    box.roundRect(item.x, y + 28, 58, 30, 6).fill({ color: item.color, alpha: 0.82 }).stroke({ width: 1, color: 0x7dd3fc, alpha: index === 1 ? 0.45 : 0.3 });
+    layer.addChild(box);
+    addText(layer, item.label, item.x + 29, y + 44, 8, 0xe8f2ff, "900", 0.5);
+  });
+
+  drawSmallArrow(layer, { x: x + 61, y: y + 43 }, { x: x + 78, y: y + 43 }, 0x60a5fa);
+  drawSmallArrow(layer, { x: x + 143, y: y + 43 }, { x: x + 160, y: y + 43 }, 0x60a5fa);
+  drawVectorGlyph(layer, x + 5, y + 3, 4, 0x7dd3fc);
+  drawMatrixGlyph(layer, x + 92, y, 3, 4, 6, 0xa78bfa);
+  drawVectorGlyph(layer, x + 174, y + 3, 4, 0x22c55e);
+  addText(layer, "consume C -> generate O", x + 105, y + 78, 9, 0x9db2ca, "800", 0.5);
+}
+
 function drawScalarGlyph(layer: Container, x: number, y: number, label: string) {
   const dot = new Graphics();
   dot.circle(x + 14, y, 12).fill({ color: 0x422b16, alpha: 0.96 }).stroke({ width: 1.4, color: 0xfbbf24, alpha: 0.9 });
@@ -1098,7 +1154,8 @@ function drawTensorNode(
   actionHint?: CanvasActionHint,
   onActionHint?: (event: FederatedPointerEvent) => void,
   showTooltip?: (text: string, point: Point) => void,
-  hideTooltip?: () => void
+  hideTooltip?: () => void,
+  stageContext?: StageNodeContext
 ) {
   const group = new Container({ label: `node-${node.id}` });
   group.eventMode = "static";
@@ -1122,7 +1179,9 @@ function drawTensorNode(
     onContextMenu?.(event);
   });
 
-  if (node.kind === "tensor" || node.kind === "attention") {
+  if (node.id === "generated_object_vector") {
+    drawVectorTensorShell(group, node, selected);
+  } else if (node.kind === "tensor" || node.kind === "attention") {
     drawCuboid(group, node, selected);
   } else {
     const shell = new Graphics();
@@ -1133,7 +1192,7 @@ function drawTensorNode(
     group.addChild(shell);
   }
 
-  drawNodeBodyVisual(group, node);
+  drawNodeBodyVisual(group, node, stageContext);
 
   drawPort(group, node.x - 9, node.y + node.h / 2, selected, "in");
   drawPort(group, node.x + node.w + 9, node.y + node.h / 2, selected, "out");
@@ -1144,7 +1203,9 @@ function drawTensorNode(
   const usesEmbeddedLabel = node.id === "tensor_inspector";
   if (!usesEmbeddedLabel) {
     addText(group, node.title, node.x + node.w / 2, node.y + 24, 15, 0xe8f2ff, "800", 0.5);
-    addText(group, `${node.dtype}${node.shape}`, node.x + node.w / 2, node.y + node.h - 18, 12, 0xb7c7dc, "700", 0.5);
+    if (!stageNodeHasReadout(node, stageContext)) {
+      addText(group, `${node.dtype}${node.shape}`, node.x + node.w / 2, node.y + node.h - 18, 12, 0xb7c7dc, "700", 0.5);
+    }
   }
 
   if (node.kind === "matrix") {
@@ -1178,33 +1239,43 @@ function drawTensorNode(
   layer.addChild(group);
 }
 
-function drawNodeBodyVisual(layer: Container, node: TensorNode) {
+function drawNodeBodyVisual(layer: Container, node: TensorNode, stageContext?: StageNodeContext) {
+  if (node.id === "generated_object_vector") {
+    drawVectorGlyph(layer, node.x + 40, node.y + 42, 4, 0x7dd3fc);
+    return;
+  }
+
   if (node.id === "raw_objects") {
     const y = node.y + 50;
     drawScalarGlyph(layer, node.x + 17, y + 5, "3.14");
     drawVectorGlyph(layer, node.x + 52, y - 6, 4, 0x7dd3fc);
     drawMatrixGlyph(layer, node.x + 104, y - 12, 2, 3, 7, 0x38bdf8);
     drawStackedMatrixGlyph(layer, node.x + 144, y - 11, 0x38bdf8);
+    drawStageSpecificNodeReadout(layer, node, stageContext);
     return;
   }
 
   if (node.id === "rank_scanner") {
     drawRankAxisSequence(layer, node.x + 20, node.y + 35);
+    drawStageSpecificNodeReadout(layer, node, stageContext);
     return;
   }
 
   if (node.id === "shape_caliper") {
     drawShapeCaliperVisual(layer, node.x + 20, node.y + 35);
+    drawStageSpecificNodeReadout(layer, node, stageContext);
     return;
   }
 
   if (node.id === "token_grid") {
     drawTokenGridVisual(layer, node.x + 14, node.y + 34);
+    drawStageSpecificNodeReadout(layer, node, stageContext);
     return;
   }
 
   if (node.id === "embedding_lookup") {
     drawEmbeddingExpansionVisual(layer, node.x + 17, node.y + 34);
+    drawStageSpecificNodeReadout(layer, node, stageContext);
     return;
   }
 
@@ -1213,8 +1284,191 @@ function drawNodeBodyVisual(layer: Container, node: TensorNode) {
     drawDimensionLine(layer, { x: node.x - 12, y: node.y + node.h + 8 }, { x: node.x - 12, y: node.y + 12 }, semanticKnown ? "B" : "A0", 0xfbbf24);
     drawDimensionLine(layer, { x: node.x + 12, y: node.y + node.h + 16 }, { x: node.x + node.w - 6, y: node.y + node.h + 16 }, semanticKnown ? "T" : "A1", 0x7dd3fc);
     drawDimensionLine(layer, { x: node.x + node.w + 8, y: node.y + 12 }, { x: node.x + node.w + 30, y: node.y - 8 }, semanticKnown ? "C" : "A2", 0x22c55e);
+    drawStageSpecificNodeReadout(layer, node, stageContext);
     return;
   }
+
+  drawStageSpecificNodeReadout(layer, node, stageContext);
+}
+
+function stageNodeHasReadout(node: TensorNode, context?: StageNodeContext) {
+  const visual = context?.knowledge?.visual;
+  if (!visual) return false;
+  if (visual === "rank_axes") return node.id === "rank_scanner";
+  if (visual === "shape_caliper") return node.id === "shape_caliper" || node.id === "shape_gate";
+  if (visual === "semantic_gap") return node.id === "semantic_inspector";
+  if (visual === "token_grid") return node.id === "token_grid" || node.id === "tokenizer";
+  if (visual === "embedding_expansion") return node.id === "embedding_lookup" || node.id === "hidden_tensor";
+  if (visual === "hidden_contract") return node.id === "hidden_tensor";
+  if (visual === "consumer_contract") return node.id === "batch_viewer" || node.id === "causal_mask" || node.id === "linear_probe" || node.id === "shape_tests";
+  if (visual === "hidden_tests") return node.id === "shape_tests";
+  return false;
+}
+
+function drawStageSpecificNodeReadout(layer: Container, node: TensorNode, context?: StageNodeContext) {
+  if (!context?.knowledge || !stageNodeHasReadout(node, context)) return;
+  const visual = context.knowledge.visual;
+
+  if (visual === "rank_axes" && node.id === "rank_scanner") {
+    drawReadoutPanel(layer, node.x + 14, node.y + 92, node.w - 28, 70, "Axis Count", [
+      readoutRow("scalar", slotText(context, "rank_scalar", "drop r0"), 0xfbbf24),
+      readoutRow("vector", slotText(context, "rank_vector", "drop r1"), 0x7dd3fc),
+      readoutRow("matrix", slotText(context, "rank_matrix", "drop r2"), 0x38bdf8),
+      readoutRow("3D block", slotText(context, "rank_block", "drop r3"), 0x22c55e)
+    ]);
+    return;
+  }
+
+  if (visual === "shape_caliper" && node.id === "shape_caliper") {
+    drawReadoutPanel(layer, node.x + 14, node.y + 118, node.w - 28, 58, "Caliper Readout", [
+      readoutRow("Axis 0", "length 2", 0xfbbf24),
+      readoutRow("Axis 1", "length 4", 0x7dd3fc),
+      readoutRow("Axis 2", "length 8", 0x22c55e)
+    ]);
+    return;
+  }
+
+  if (visual === "shape_caliper" && node.id === "shape_gate") {
+    const shape = `[${slotText(context, "shape_axis_0", "?")},${slotText(context, "shape_axis_1", "?")},${slotText(context, "shape_axis_2", "?")}]`;
+    drawReadoutPanel(layer, node.x + 12, node.y + 46, node.w - 24, 38, "Shape Contract", [readoutRow("axis order", shape, shape === "[2,4,8]" ? 0x22c55e : 0xfbbf24)]);
+    return;
+  }
+
+  if (visual === "semantic_gap" && node.id === "semantic_inspector") {
+    const marked = slotIsFilled(context, "semantic_unresolved");
+    drawReadoutPanel(layer, node.x + 16, node.y + 56, node.w - 32, 106, "Contract State", [
+      readoutRow("float32[2,4,8]", "size known", 0x7dd3fc),
+      readoutRow("Axis 0 / 1 / 2", marked ? "semantics unresolved" : "meaning unknown", marked ? 0x22c55e : 0xfbbf24),
+      readoutRow("Batch Viewer", "blocked without B", 0xef4444),
+      readoutRow("Causal Mask", "blocked without T", 0xef4444),
+      readoutRow("Linear", "blocked without C", 0xef4444)
+    ]);
+    return;
+  }
+
+  if (visual === "token_grid" && node.id === "tokenizer") {
+    drawReadoutPanel(layer, node.x + 12, node.y + 50, node.w - 24, 34, "Tokenizer Port", [
+      readoutRow("input", connectionIsConnected(context, "canvas_flow_text_tokenizer") ? "utf8[B] connected" : "drag line from Text", connectionIsConnected(context, "canvas_flow_text_tokenizer") ? 0x22c55e : 0xfbbf24)
+    ]);
+    return;
+  }
+
+  if (visual === "token_grid" && node.id === "token_grid") {
+    drawReadoutPanel(layer, node.x + 14, node.y + 118, node.w - 28, 48, "Grid Semantics", [
+      readoutRow("rows", slotText(context, "token_grid_b", "B?"), slotIsFilled(context, "token_grid_b") ? 0x22c55e : 0xfbbf24),
+      readoutRow("columns", slotText(context, "token_grid_t", "T?"), slotIsFilled(context, "token_grid_t") ? 0x22c55e : 0xfbbf24),
+      readoutRow("micro drill", `${slotText(context, "token_task_sample1", "B1?")} / ${slotText(context, "token_task_t2", "T2?")}`, slotIsFilled(context, "token_task_sample1") && slotIsFilled(context, "token_task_t2") ? 0x22c55e : 0x93c5fd)
+    ]);
+    return;
+  }
+
+  if (visual === "embedding_expansion" && node.id === "embedding_lookup") {
+    drawReadoutPanel(layer, node.x + 14, node.y + 100, node.w - 28, 48, "Lookup Trace", [
+      readoutRow("token_ids[0,2]", slotIsFilled(context, "embedding_probe") ? "9172 -> row 9172" : "inspect row", slotIsFilled(context, "embedding_probe") ? 0x22c55e : 0xfbbf24),
+      readoutRow("row vector", slotIsFilled(context, "embedding_autofill") ? "float32[C]" : "needs fill", slotIsFilled(context, "embedding_autofill") ? 0x22c55e : 0x93c5fd),
+      readoutRow("C", "feature channel", 0x22c55e)
+    ]);
+    return;
+  }
+
+  if (visual === "embedding_expansion" && node.id === "hidden_tensor") {
+    drawReadoutPanel(layer, node.x + 16, node.y + 76, node.w - 32, 54, "Expansion Output", [
+      readoutRow("[B,T]", connectionIsConnected(context, "canvas_flow_grid_embedding") ? "token positions kept" : "open", 0x7dd3fc),
+      readoutRow("+ C", slotIsFilled(context, "embedding_autofill") ? "vector per token" : "waiting", slotIsFilled(context, "embedding_autofill") ? 0x22c55e : 0xfbbf24),
+      readoutRow("hidden", connectionIsConnected(context, "canvas_flow_embedding_hidden") ? "[B,T,C]" : "[?,?,?]", connectionIsConnected(context, "canvas_flow_embedding_hidden") ? 0x22c55e : 0x9db2ca)
+    ]);
+    return;
+  }
+
+  if (visual === "hidden_contract" && node.id === "hidden_tensor") {
+    drawReadoutPanel(layer, node.x + 18, node.y + 82, node.w - 36, 78, "Probe Evidence -> Contract", [
+      readoutRow("Axis 0", `${slotText(context, "axis_0", "?")} / sample slices`, slotIsFilled(context, "axis_0") ? 0x22c55e : 0xfbbf24),
+      readoutRow("Axis 1", `${slotText(context, "axis_1", "?")} / token order`, slotIsFilled(context, "axis_1") ? 0x22c55e : 0x7dd3fc),
+      readoutRow("Axis 2", `${slotText(context, "axis_2", "?")} / feature values`, slotIsFilled(context, "axis_2") ? 0x22c55e : 0x22c55e),
+      readoutRow("contract", `hidden[${slotText(context, "axis_0", "?")},${slotText(context, "axis_1", "?")},${slotText(context, "axis_2", "?")}]`, 0xe8f2ff)
+    ]);
+    return;
+  }
+
+  if (visual === "consumer_contract") {
+    if (node.id === "batch_viewer") {
+      drawReadoutPanel(layer, node.x + 12, node.y + 54, node.w - 24, 34, "Consumer", [
+        readoutRow("expects", "B / samples", connectionIsConnected(context, "canvas_consumer_b") ? 0x22c55e : 0xfbbf24)
+      ]);
+      return;
+    }
+    if (node.id === "causal_mask") {
+      drawReadoutPanel(layer, node.x + 12, node.y + 54, node.w - 24, 34, "Consumer", [
+        readoutRow("expects", "T -> [T,T] mask", connectionIsConnected(context, "canvas_consumer_t") ? 0x22c55e : 0xfbbf24)
+      ]);
+      return;
+    }
+    if (node.id === "linear_probe") {
+      drawReadoutPanel(layer, node.x + 12, node.y + 54, node.w - 24, 34, "Consumer", [
+        readoutRow("expects", "C -> [C,O]", connectionIsConnected(context, "canvas_consumer_c") ? 0x22c55e : 0xfbbf24)
+      ]);
+      return;
+    }
+    if (node.id === "shape_tests") {
+      const ready = connectionIsConnected(context, "canvas_consumer_b") && connectionIsConnected(context, "canvas_consumer_t") && connectionIsConnected(context, "canvas_consumer_c");
+      drawReadoutPanel(layer, node.x + 12, node.y + 48, node.w - 24, 52, "Consumer Test", [
+        readoutRow("B/T/C ports", ready ? "accepted" : "waiting", ready ? 0x22c55e : 0xfbbf24),
+        readoutRow("next", "hidden tests", 0x93c5fd)
+      ]);
+      return;
+    }
+  }
+
+  if (visual === "hidden_tests" && node.id === "shape_tests") {
+    drawReadoutPanel(layer, node.x + 12, node.y + 48, node.w - 24, 54, "Hidden Cases", [
+      readoutRow("visible", "[2,4,8]", 0x7dd3fc),
+      readoutRow("variant A", "[1,16,4]", 0xfbbf24),
+      readoutRow("variant B", "[4,3,32]", 0x22c55e)
+    ]);
+  }
+}
+
+function readoutRow(label: string, value: string, color: number) {
+  return { label, value, color };
+}
+
+function drawReadoutPanel(
+  layer: Container,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  title: string,
+  rows: Array<{ label: string; value: string; color: number }>
+) {
+  const shell = new Graphics();
+  shell
+    .roundRect(x, y, width, height, 7)
+    .fill({ color: 0x06111f, alpha: 0.9 })
+    .stroke({ width: 1.1, color: 0x315f94, alpha: 0.7 });
+  shell.rect(x, y, 4, height).fill({ color: 0x38bdf8, alpha: 0.36 });
+  layer.addChild(shell);
+  addText(layer, title, x + 12, y + 12, 9, 0x93c5fd, "900", 0);
+  rows.forEach((row, index) => {
+    const rowY = y + 28 + index * 11;
+    addText(layer, row.label, x + 12, rowY, 8, 0x9db2ca, "800", 0);
+    addText(layer, row.value, x + width - 10, rowY, 8, row.color, "900", 1);
+  });
+}
+
+function slotText(context: StageNodeContext, slotId: string, fallback: string) {
+  const slot = context.slots.get(slotId);
+  if (!slot || slot.state === "empty") return fallback;
+  return slot.value;
+}
+
+function slotIsFilled(context: StageNodeContext, slotId: string) {
+  const slot = context.slots.get(slotId);
+  return Boolean(slot && slot.state !== "empty");
+}
+
+function connectionIsConnected(context: StageNodeContext, connectionId: string) {
+  return context.connections.get(connectionId)?.state === "connected";
 }
 
 type ConnectionPort = {
@@ -1222,6 +1476,12 @@ type ConnectionPort = {
   role: "source" | "target";
   point: Point;
   label: string;
+};
+
+type StageNodeContext = {
+  knowledge?: CanvasStageKnowledge;
+  slots: Map<string, RepairSlotOverlay>;
+  connections: Map<string, CanvasConnectionOverlay>;
 };
 
 type ConnectionPortMap = Map<string, { source: ConnectionPort; target: ConnectionPort }>;
@@ -1275,17 +1535,16 @@ function drawCanvasConnectionLines(
   ports: ConnectionPortMap
 ) {
   connections.forEach((connection) => {
+    if (connection.state !== "connected") return;
     const endpoints = ports.get(connection.id);
     if (!endpoints) return;
     const color = connectionColor(connection);
-    const alpha = connection.state === "connected" ? 0.9 : connection.enabled ? 0.48 : 0.24;
-    const width = connection.state === "connected" ? 3.2 : 1.8;
+    const alpha = 0.9;
+    const width = 3.2;
     drawCurvedConnection(edgeLayer, endpoints.source.point, endpoints.target.point, color, alpha, width);
 
-    if (connection.state === "connected") {
-      const midpoint = curvedMidpoint(endpoints.source.point, endpoints.target.point);
-      drawDataLabel(labelLayer, connection.label, midpoint.x, midpoint.y - 18, color);
-    }
+    const midpoint = curvedMidpoint(endpoints.source.point, endpoints.target.point);
+    drawDataLabel(labelLayer, connection.label, midpoint.x, midpoint.y - 18, color);
   });
 }
 
@@ -1625,7 +1884,6 @@ function drawTensorObjectDragChallenge(
 
   const slotById = new Map(slots.map((slot) => [slot.slotId, slot]));
   const acceptedItems = tensorObjectDragItems.filter((item) => isTensorObjectAccepted(slotById.get(item.slotId)));
-  const activeItem = [...tensorObjectDragItems].reverse().find((item) => isTensorObjectAccepted(slotById.get(item.slotId)));
   const dropRect = tensorInspectorDropRect(inspector);
   const target = new Graphics();
   target
@@ -1637,7 +1895,7 @@ function drawTensorObjectDragChallenge(
   addText(layer, "Single Tensor Inspector", inspector.x + inspector.w / 2, inspector.y + 31, 11, 0xbfdbfe, "900", 0.5);
 
   drawObjectBench(layer);
-  drawTensorObjectInspectorNote(layer, inspector, activeItem, acceptedItems.length);
+  drawTensorObjectInspectorNote(layer, inspector, acceptedItems.length);
   drawRecognitionLog(layer, inspector, acceptedItems);
 
   tensorObjectDragItems.forEach((item) => {
@@ -1677,22 +1935,24 @@ function drawObjectBench(layer: Container) {
   addText(layer, "candidates", x + 18, y + 38, 10, 0x9db2ca, "800", 0);
 }
 
-function drawTensorObjectInspectorNote(layer: Container, inspector: TensorNode, activeItem: TensorObjectDragItem | undefined, acceptedCount: number) {
+function drawTensorObjectInspectorNote(layer: Container, inspector: TensorNode, acceptedCount: number) {
   const x = inspector.x + 18;
   const y = inspector.y + 58;
   const width = inspector.w - 36;
   const height = 94;
-  const rows = activeItem ? tensorObjectStatusRows(activeItem) : ["port=idle", "input=none", "status=waiting"];
+  const rows = acceptedCount
+    ? ["port=object intake", "output=tensor nodes", "status=accepted"]
+    : ["port=idle", "input=drop object", "output=tensor node"];
 
   const shell = new Graphics();
   shell
     .roundRect(x, y, width, height, 9)
     .fill({ color: 0x06111f, alpha: 0.92 })
-    .stroke({ width: 1.1, color: activeItem ? 0x22c55e : 0x315f94, alpha: activeItem ? 0.68 : 0.58 });
+    .stroke({ width: 1.1, color: acceptedCount ? 0x22c55e : 0x315f94, alpha: acceptedCount ? 0.68 : 0.58 });
   layer.addChild(shell);
   addText(layer, "Port State", x + 12, y + 16, 10, 0x93c5fd, "900", 0);
   rows.forEach((row, index) => {
-    addText(layer, row, x + 12, y + 38 + index * 16, 11, index === 2 && activeItem ? 0xbbf7d0 : 0xdbeafe, "800", 0);
+    addText(layer, row, x + 12, y + 38 + index * 16, 11, index === 2 && acceptedCount ? 0xbbf7d0 : 0xdbeafe, "800", 0);
   });
   addText(layer, `checked ${acceptedCount}/4`, x + 12, y + height - 13, 10, acceptedCount === 4 ? 0xbbf7d0 : 0x9db2ca, "900", 0);
 }
@@ -1722,10 +1982,6 @@ function drawRecognitionLog(layer: Container, inspector: TensorNode, acceptedIte
     addText(layer, item.title, x + 32, rowY, 9, 0xe8f2ff, "900", 0);
     addText(layer, "accepted", x + 122, rowY, 8, 0x9db2ca, "800", 0);
   });
-}
-
-function tensorObjectStatusRows(item: TensorObjectDragItem) {
-  return [`input=${item.title.toLowerCase()}`, "object=tensor", "status=accepted"];
 }
 
 function drawTensorObjectCard(item: TensorObjectDragItem, accepted: boolean) {
@@ -1799,6 +2055,25 @@ function drawCuboid(layer: Container, node: TensorNode, selected: boolean) {
     .stroke({ width: selected ? 3 : 1.4, color: selected ? 0xfbbf24 : 0x7dd3fc, alpha: 0.92 });
 
   layer.addChild(top, side, front);
+}
+
+function drawVectorTensorShell(layer: Container, node: TensorNode, selected: boolean) {
+  const shell = new Graphics();
+  shell
+    .roundRect(node.x, node.y, node.w, node.h, 8)
+    .fill({ color: node.color, alpha: 0.9 })
+    .stroke({ width: selected ? 3 : 1.4, color: selected ? 0xfbbf24 : 0x7dd3fc, alpha: selected ? 1 : 0.88 });
+  layer.addChild(shell);
+
+  const axis = new Graphics();
+  const y = node.y + node.h - 24;
+  axis
+    .moveTo(node.x + 26, y)
+    .lineTo(node.x + node.w - 26, y)
+    .stroke({ width: 2, color: 0x7dd3fc, alpha: 0.42, cap: "round" });
+  axis.circle(node.x + 26, y, 3).fill({ color: 0x7dd3fc, alpha: 0.76 });
+  axis.circle(node.x + node.w - 26, y, 3).fill({ color: 0x7dd3fc, alpha: 0.76 });
+  layer.addChild(axis);
 }
 
 function drawPort(layer: Container, x: number, y: number, selected: boolean, direction: "in" | "out") {
@@ -2026,7 +2301,7 @@ function makeText(text: string, fontSize: number, fill: number, fontWeight: Font
     autoGenerateMipmaps: true,
     style: {
       fill,
-      fontFamily: "Fira Code, Consolas, ui-monospace, monospace",
+      fontFamily: 'Fira Code, Consolas, "Microsoft YaHei", "Segoe UI", ui-monospace, monospace',
       fontSize,
       fontWeight,
       letterSpacing: 0
