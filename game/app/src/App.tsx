@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
-import { AlertTriangle, BookOpen, Boxes, CheckCircle2, Circle, Cpu, Eye, Maximize2, Minimize2, Pause, Play, RotateCcw, Search, Wrench } from "lucide-react";
+import { AlertTriangle, BookOpen, Boxes, CheckCircle2, ChevronDown, Circle, Cpu, Eye, Maximize2, Minimize2, Pause, Play, RotateCcw, Search, Wrench } from "lucide-react";
 import { bootcampLevels, evaluateBootcampLevel } from "./bootcampLevels";
 import {
   PixiWorkbenchCanvas,
@@ -741,6 +741,9 @@ export function App() {
   const [stageIntroSeen, setStageIntroSeen] = useState<Record<string, Record<string, boolean>>>(() => filterBootcampRecord(initialProgress.stageIntroSeen));
   const [missionStarted, setMissionStarted] = useState<Record<string, boolean>>(() => filterBootcampRecord(initialProgress.missionStarted));
   const [completionDismissed, setCompletionDismissed] = useState<Record<string, boolean>>(() => filterBootcampRecord(initialProgress.completionDismissed));
+  const [expandedLevelIds, setExpandedLevelIds] = useState<Record<string, boolean>>(() => ({
+    [initialSelectedLevel.id]: supportsStageRail(initialSelectedLevel) && !Boolean(initialProgress.results?.[initialSelectedLevel.id]?.passed)
+  }));
   const [nodePositions, setNodePositions] = useState<Record<string, NodePositionMap>>({});
   const [stageKnowledgePositions, setStageKnowledgePositions] = useState<Record<string, StageKnowledgePositionMap>>({});
   const [pendingStageDebrief, setPendingStageDebrief] = useState<Record<string, LevelPhase | undefined>>({});
@@ -846,8 +849,15 @@ export function App() {
   }, [selectedLevelId, repairStates, results, introSeen, stageIntroSeen, missionStarted, completionDismissed]);
 
   function selectLevel(level: BootcampLevel) {
+    const alreadySelected = selectedLevelId === level.id;
     setSelectedLevelId(level.id);
     setSelectedId(level.defaultSelectedNodeId);
+    if (supportsStageRail(level)) {
+      setExpandedLevelIds((current) => ({
+        ...current,
+        [level.id]: alreadySelected ? !(current[level.id] ?? !results[level.id]?.passed) : !results[level.id]?.passed
+      }));
+    }
     if (results[level.id]?.passed) {
       setCompletionDismissed((current) => ({ ...current, [level.id]: true }));
     }
@@ -1138,6 +1148,9 @@ export function App() {
       delete next[activeLevel.id];
       return next;
     });
+    if (supportsStageRail(activeLevel)) {
+      setExpandedLevelIds((current) => ({ ...current, [activeLevel.id]: true }));
+    }
     setTensorObjectDetail(null);
     setTensorRunOutputs({});
     setSelectedId(activeLevel.defaultSelectedNodeId);
@@ -1202,10 +1215,17 @@ export function App() {
             {bootcampLevels.map((level) => {
               const result = results[level.id];
               const statusClass = result ? (result.passed ? "pass" : "fail") : "pending";
-              const showNestedChallenges = supportsStageRail(level) && selectedLevelId === level.id;
+              const hasNestedChallenges = supportsStageRail(level);
+              const selected = selectedLevelId === level.id;
+              const showNestedChallenges = hasNestedChallenges && selected && Boolean(expandedLevelIds[level.id]);
               return (
                 <div key={level.id} className={`levelGroup ${showNestedChallenges ? "expanded" : ""}`}>
-                  <button className={`levelItem ${selectedLevelId === level.id ? "active" : ""} ${statusClass}`} onClick={() => selectLevel(level)}>
+                  <button
+                    className={`levelItem ${selected ? "active" : ""} ${statusClass} ${hasNestedChallenges ? "collapsible" : ""}`}
+                    aria-expanded={hasNestedChallenges ? showNestedChallenges : undefined}
+                    title={hasNestedChallenges ? `${level.title}: ${showNestedChallenges ? "收起阶段列表" : "展开阶段列表"}` : level.title}
+                    onClick={() => selectLevel(level)}
+                  >
                     <span className="levelId">{level.id}</span>
                     <span>
                       <b>{level.title}</b>
@@ -1213,6 +1233,13 @@ export function App() {
                       <small>Tool: {repairKindLabel(level.repair.kind)}</small>
                       <small>Reward: {level.unlocks[0]}</small>
                     </span>
+                    {hasNestedChallenges ? (
+                      <span className={`levelExpandIcon ${showNestedChallenges ? "open" : ""}`} aria-hidden="true">
+                        <ChevronDown size={16} />
+                      </span>
+                    ) : (
+                      <span className="levelExpandIcon placeholder" aria-hidden="true" />
+                    )}
                     <StateIcon state={result ? (result.passed ? "pass" : "fail") : "warn"} />
                   </button>
                   {showNestedChallenges ? (
