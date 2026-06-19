@@ -1147,10 +1147,17 @@ h3 {
   border: 1px solid #263b55;
   border-radius: 7px;
   background: rgba(10, 21, 36, 0.86);
+  cursor: pointer;
 }
 
 .taskRow.active {
   border-color: rgba(251, 191, 36, 0.62);
+}
+
+.taskRow:hover,
+.taskRow:focus-visible {
+  border-color: rgba(147, 197, 253, 0.72);
+  outline: none;
 }
 
 .taskRow.pass {
@@ -1161,6 +1168,11 @@ h3 {
 .taskRow.fail {
   border-color: rgba(239, 68, 68, 0.48);
   background: rgba(69, 10, 10, 0.32);
+}
+
+.taskRow.hintTarget {
+  border-color: rgba(251, 191, 36, 0.9);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.24), 0 0 22px rgba(251, 191, 36, 0.16);
 }
 
 .taskRow input {

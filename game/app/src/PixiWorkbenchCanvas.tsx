@@ -49,6 +49,15 @@ export type CanvasActionHint = {
   pulse?: boolean;
 };
 
+export type CanvasTaskHint = {
+  id: number;
+  taskId: string;
+  slotId?: string;
+  nodeId?: string;
+  title: string;
+  detail: string;
+};
+
 export type CanvasStageKnowledge = {
   code: string;
   title: string;
@@ -84,6 +93,7 @@ type PixiWorkbenchCanvasProps = {
   slotOverlays?: RepairSlotOverlay[];
   connectionOverlays?: CanvasConnectionOverlay[];
   actionHints?: CanvasActionHint[];
+  taskHint?: CanvasTaskHint;
   stageKnowledge?: CanvasStageKnowledge;
   stageKnowledgePosition?: Point;
   onSlotSelect?: (slotId: string) => void;
@@ -118,6 +128,7 @@ export function PixiWorkbenchCanvas({
   slotOverlays = [],
   connectionOverlays = [],
   actionHints = [],
+  taskHint,
   stageKnowledge,
   stageKnowledgePosition,
   onSlotSelect,
@@ -141,6 +152,7 @@ export function PixiWorkbenchCanvas({
     slotOverlays,
     connectionOverlays,
     actionHints,
+    taskHint,
     stageKnowledge,
     stageKnowledgePosition,
     onSlotSelect,
@@ -162,6 +174,7 @@ export function PixiWorkbenchCanvas({
       slotOverlays,
       connectionOverlays,
       actionHints,
+      taskHint,
       stageKnowledge,
       stageKnowledgePosition,
       onSlotSelect,
@@ -185,6 +198,7 @@ export function PixiWorkbenchCanvas({
     slotOverlays,
     connectionOverlays,
     actionHints,
+    taskHint,
     stageKnowledge,
     stageKnowledgePosition,
     onSlotSelect,
@@ -278,6 +292,7 @@ function drawScene(
     slotOverlays: RepairSlotOverlay[];
     connectionOverlays: CanvasConnectionOverlay[];
     actionHints: CanvasActionHint[];
+    taskHint?: CanvasTaskHint;
     stageKnowledge?: CanvasStageKnowledge;
     stageKnowledgePosition?: Point;
     onSlotSelect?: (slotId: string) => void;
@@ -501,6 +516,9 @@ function drawScene(
       hideTooltip
     );
     drawCanvasConnectionPorts(overlayLayer, state.connectionOverlays, currentConnectionPorts, connectionPortHandlers, showTooltip, hideTooltip);
+    if (state.taskHint) {
+      drawCanvasTaskHint(overlayLayer, state.taskHint, currentNodeLookup, currentSlotBounds, state.stageKnowledge);
+    }
     if (state.mode === "train") {
       drawTrainOverlay(overlayLayer);
     }
@@ -1693,6 +1711,82 @@ function findRepairSlotAtPoint(point: Point, bounds: Map<string, Rectangle>) {
     if (rect.contains(point.x, point.y)) return slotId;
   }
   return undefined;
+}
+
+function drawCanvasTaskHint(
+  layer: Container,
+  hint: CanvasTaskHint,
+  nodeLookup: Map<string, TensorNode>,
+  slotBounds: Map<string, Rectangle>,
+  stageKnowledge?: CanvasStageKnowledge
+) {
+  const rect = resolveTaskHintRect(hint, nodeLookup, slotBounds, stageKnowledge);
+  if (!rect) return;
+
+  const color = 0xfbbf24;
+  const outer = new Graphics();
+  outer
+    .roundRect(rect.x - 12, rect.y - 12, rect.width + 24, rect.height + 24, 14)
+    .fill({ color, alpha: 0.08 })
+    .stroke({ width: 3, color, alpha: 0.94 });
+  outer
+    .roundRect(rect.x - 20, rect.y - 20, rect.width + 40, rect.height + 40, 18)
+    .stroke({ width: 1.4, color, alpha: 0.38 });
+  layer.addChild(outer);
+
+  const calloutWidth = 292;
+  const calloutHeight = 76;
+  const placeLeft = rect.x + rect.width + calloutWidth + 44 > worldBounds.x + worldBounds.width;
+  const calloutX = placeLeft ? rect.x - calloutWidth - 24 : rect.x + rect.width + 24;
+  const calloutY = Math.max(worldBounds.y + 24, rect.y - 16);
+  const pointerStart = {
+    x: placeLeft ? rect.x - 6 : rect.x + rect.width + 6,
+    y: rect.y + rect.height / 2
+  };
+  const pointerEnd = {
+    x: placeLeft ? calloutX + calloutWidth : calloutX,
+    y: calloutY + calloutHeight / 2
+  };
+
+  drawSmallArrow(layer, pointerStart, pointerEnd, color);
+
+  const card = new Graphics();
+  card
+    .roundRect(calloutX, calloutY, calloutWidth, calloutHeight, 10)
+    .fill({ color: 0x07111f, alpha: 0.96 })
+    .stroke({ width: 1.6, color, alpha: 0.86 });
+  layer.addChild(card);
+  addText(layer, "Operation Hint", calloutX + 14, calloutY + 17, 10, 0xfde68a, "900", 0);
+  addText(layer, compactCanvasText(hint.title, 31), calloutX + 14, calloutY + 38, 12, 0xe8f2ff, "900", 0);
+  addText(layer, compactCanvasText(hint.detail, 48), calloutX + 14, calloutY + 59, 10, 0xb7c7dc, "800", 0);
+}
+
+function resolveTaskHintRect(
+  hint: CanvasTaskHint,
+  nodeLookup: Map<string, TensorNode>,
+  slotBounds: Map<string, Rectangle>,
+  stageKnowledge?: CanvasStageKnowledge
+) {
+  if (hint.slotId && stageKnowledge?.visual === "tensor_objects") {
+    const item = tensorObjectDragItems.find((candidate) => candidate.slotId === hint.slotId);
+    if (item) return new Rectangle(item.x, item.y, item.width, item.height);
+  }
+
+  if (hint.slotId) {
+    const slotRect = slotBounds.get(hint.slotId);
+    if (slotRect) return slotRect;
+  }
+
+  if (hint.nodeId) {
+    const node = nodeLookup.get(hint.nodeId);
+    if (node) return new Rectangle(node.x - 8, node.y - 8, node.w + 16, node.h + 16);
+  }
+
+  return undefined;
+}
+
+function compactCanvasText(text: string, maxLength: number) {
+  return text.length <= maxLength ? text : `${text.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
 function findNearestConnectableConnectionStart(

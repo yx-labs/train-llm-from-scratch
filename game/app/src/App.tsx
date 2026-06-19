@@ -7,6 +7,7 @@ import {
   type CanvasConnectionOverlay,
   type CanvasContextTarget,
   type CanvasStageKnowledge,
+  type CanvasTaskHint,
   type RepairSlotOverlay
 } from "./PixiWorkbenchCanvas";
 import { modeLabels } from "./sceneData";
@@ -752,6 +753,7 @@ export function App() {
   const [tensorObjectDetail, setTensorObjectDetail] = useState<TensorObjectDetailState | null>(null);
   const [tensorRunOutputs, setTensorRunOutputs] = useState<Record<string, string>>({});
   const [canvasMenu, setCanvasMenu] = useState<CanvasContextTarget | null>(null);
+  const [canvasTaskHint, setCanvasTaskHint] = useState<CanvasTaskHint | undefined>();
 
   const activeLevel = useMemo(
     () => bootcampLevels.find((level) => level.id === selectedLevelId) ?? bootcampLevels[0],
@@ -823,6 +825,7 @@ export function App() {
   useEffect(() => {
     setCanvasMenu(null);
     setStageIntroRecallOpen(false);
+    setCanvasTaskHint(undefined);
   }, [activeLevel.id, levelPhase]);
 
   useEffect(() => {
@@ -977,6 +980,29 @@ export function App() {
   function runCanvasTests() {
     runTests();
     setCanvasMenu(null);
+  }
+
+  function requestTaskHint(taskId: string) {
+    const slot = taskHintSlotForTask(activeLevel, levelPhase, activeRepairState, taskId);
+    if (!slot) return;
+
+    const operation = buildTaskHintOperation(activeLevel, levelPhase, activeRepairState, slot);
+    updateActiveRepairState((state) => ({
+      ...state,
+      selectedSlotId: slot.id,
+      activeTagId: operation.activeTagId,
+      activeProbeId: operation.activeProbeId
+    }));
+    setSelectedId(slot.focusNodeId);
+    setPlaying(true);
+    setCanvasTaskHint({
+      id: Date.now(),
+      taskId,
+      slotId: slot.id,
+      nodeId: slot.focusNodeId,
+      title: slot.label,
+      detail: operation.detail
+    });
   }
 
   function moveCanvasNode(nodeId: string, x: number, y: number) {
@@ -1291,6 +1317,7 @@ export function App() {
             slotOverlays={slotOverlays}
             connectionOverlays={connectionOverlays}
             actionHints={actionHints}
+            taskHint={canvasTaskHint}
             stageKnowledge={stageKnowledge}
             stageKnowledgePosition={stageKnowledgePosition}
             onSlotSelect={activateSlot}
@@ -1364,7 +1391,9 @@ export function App() {
             tensorObjectDetailSlotId={tensorObjectDetail?.slotId}
             tensorRunOutputs={tensorRunOutputs}
             taskItems={inspectorTasks}
+            hintedTaskId={canvasTaskHint?.taskId}
             result={levelResult}
+            onTaskHint={requestTaskHint}
             onOpenTensorObjectDetail={openTensorObjectDetail}
             onRunTensorObjectShowcase={runTensorObjectShowcase}
           />
@@ -2488,6 +2517,71 @@ function buildInspectorTasks(level: BootcampLevel, state: LevelRepairState, phas
   return tasks;
 }
 
+function taskHintSlotForTask(level: BootcampLevel, phase: LevelPhase, state: LevelRepairState, taskId: string) {
+  const slots = visibleSlotsForPhase(level, phase);
+  const directSlot = slots.find((slot) => slot.id === taskId);
+  if (directSlot) return directSlot;
+
+  if (taskId === "probe_evidence") {
+    return (
+      slots.find((slot) => !state.observations.some((observation) => observation.slotId === slot.id)) ??
+      slots.find((slot) => !areAssignmentsCorrect(level, state.assignments, [slot.id])) ??
+      slots[0]
+    );
+  }
+
+  return undefined;
+}
+
+function buildTaskHintOperation(level: BootcampLevel, phase: LevelPhase, state: LevelRepairState, slot: RepairSlot) {
+  const correctTags = slot.correctTagIds.map((tagId) => level.repair.tags.find((tag) => tag.id === tagId)).filter(Boolean) as RepairTag[];
+  const firstCorrectTag = correctTags[0];
+  const tagSummary = correctTags.map((tag) => tag.shortLabel).join(" / ");
+  const assignedTagId = state.assignments[slot.id];
+  const passed = Boolean(assignedTagId && slot.correctTagIds.includes(assignedTagId));
+  const observed = state.observations.some((observation) => observation.slotId === slot.id);
+  const probeId = level.id === "0-1" && phase === "hidden_contract_repair" && !observed ? defaultProbeForSlot(level, phase, slot) : undefined;
+  const probe = probeId ? level.repair.probes.find((item) => item.id === probeId) : undefined;
+
+  if (probe) {
+    return {
+      activeProbeId: probe.id,
+      activeTagId: undefined,
+      detail: `Probe here with ${probe.label}; then choose ${tagSummary}.`
+    };
+  }
+
+  if (passed) {
+    return {
+      activeProbeId: undefined,
+      activeTagId: undefined,
+      detail: `${tagSummary || slot.expected} is already placed here.`
+    };
+  }
+
+  if (level.id === "0-1" && phase === "tensor_object" && firstCorrectTag) {
+    return {
+      activeProbeId: undefined,
+      activeTagId: firstCorrectTag.id,
+      detail: `Drag ${firstCorrectTag.shortLabel} into Tensor Inspector.`
+    };
+  }
+
+  if (firstCorrectTag?.category === "data" || firstCorrectTag?.category === "consumer") {
+    return {
+      activeProbeId: undefined,
+      activeTagId: firstCorrectTag.id,
+      detail: `Connect ${tagSummary} to this slot.`
+    };
+  }
+
+  return {
+    activeProbeId: undefined,
+    activeTagId: firstCorrectTag?.id,
+    detail: firstCorrectTag ? `Pick ${tagSummary}; click this slot.` : `Place ${slot.expected} in this slot.`
+  };
+}
+
 function activeToolLabel(level: BootcampLevel, state: LevelRepairState) {
   const tag = level.repair.tags.find((item) => item.id === state.activeTagId);
   if (tag) return `tag ${tag.shortLabel}`;
@@ -3376,7 +3470,9 @@ function TensorInspector({
   tensorObjectDetailSlotId,
   tensorRunOutputs,
   taskItems,
+  hintedTaskId,
   result,
+  onTaskHint,
   onOpenTensorObjectDetail,
   onRunTensorObjectShowcase
 }: {
@@ -3387,7 +3483,9 @@ function TensorInspector({
   tensorObjectDetailSlotId?: string;
   tensorRunOutputs: Record<string, string>;
   taskItems: InspectorTaskItem[];
+  hintedTaskId?: string;
   result?: BootcampResult;
+  onTaskHint: (taskId: string) => void;
   onOpenTensorObjectDetail: (slotId: string) => void;
   onRunTensorObjectShowcase: (showcase: TensorObjectShowcase) => void;
 }) {
@@ -3417,13 +3515,26 @@ function TensorInspector({
           </div>
           <div className="taskRows">
             {taskItems.map((item) => (
-              <label key={item.id} className={`taskRow ${item.state} ${item.active ? "active" : ""}`}>
-                <input type="checkbox" checked={item.state === "pass"} readOnly />
+              <div
+                key={item.id}
+                className={`taskRow ${item.state} ${item.active ? "active" : ""} ${hintedTaskId === item.id ? "hintTarget" : ""}`}
+                role="button"
+                tabIndex={0}
+                title="Double-click to highlight the matching canvas operation"
+                onDoubleClick={() => onTaskHint(item.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onTaskHint(item.id);
+                  }
+                }}
+              >
+                <input type="checkbox" checked={item.state === "pass"} readOnly tabIndex={-1} aria-hidden="true" />
                 <span>
                   <b>{item.label}</b>
                   <small>{item.value}</small>
                 </span>
-              </label>
+              </div>
             ))}
           </div>
         </section>
