@@ -762,7 +762,9 @@ export function App() {
   const latestObservation = activeRepairState.observations[0];
   const stageKnowledge = useMemo(() => buildCanvasStageKnowledge(activeLevel, levelPhase), [activeLevel, levelPhase]);
   const stageKnowledgePosition = stageKnowledge ? stageKnowledgePositions[activeLevel.id]?.[stageKnowledge.code] : undefined;
-  const showCompletionModal = Boolean(levelResult?.passed && activeLevel.id === "0-1" && !completionDismissed[activeLevel.id]);
+  const activeLevelIndex = useMemo(() => bootcampLevels.findIndex((level) => level.id === activeLevel.id), [activeLevel.id]);
+  const nextLevel = activeLevelIndex >= 0 ? bootcampLevels[activeLevelIndex + 1] : undefined;
+  const showCompletionModal = Boolean(levelResult?.passed && !completionDismissed[activeLevel.id]);
   const activeStageIntro = !pendingDebriefPhase ? stageIntroForLevelPhase(activeLevel, levelPhase) : undefined;
   const pendingDebriefKnowledge = pendingDebriefPhase ? stageKnowledgeForLevelPhase(activeLevel, pendingDebriefPhase) : undefined;
   const pendingDebriefNextLabel = nextStageLabel(activeLevel, pendingDebriefPhase);
@@ -818,6 +820,13 @@ export function App() {
     setSelectedLevelId(level.id);
     setSelectedId(level.defaultSelectedNodeId);
     setPlaying(true);
+  }
+
+  function continueAfterCompletion() {
+    setCompletionDismissed((current) => ({ ...current, [activeLevel.id]: true }));
+    if (nextLevel) {
+      selectLevel(nextLevel);
+    }
   }
 
   function updateActiveRepairState(updater: (state: LevelRepairState) => LevelRepairState) {
@@ -1264,6 +1273,14 @@ export function App() {
               }}
             />
           ) : null}
+          {levelResult?.passed ? (
+            <LevelCompletePrompt
+              level={activeLevel}
+              result={levelResult}
+              nextLevel={nextLevel}
+              onContinue={continueAfterCompletion}
+            />
+          ) : null}
         </section>
 
         <aside className="rightStack">
@@ -1348,7 +1365,8 @@ export function App() {
         <CompletionOverlay
           level={activeLevel}
           result={levelResult}
-          onClose={() => setCompletionDismissed((current) => ({ ...current, [activeLevel.id]: true }))}
+          nextLevel={nextLevel}
+          onContinue={continueAfterCompletion}
         />
       ) : null}
 
@@ -2666,6 +2684,31 @@ function StageDebriefOverlay({
   );
 }
 
+function LevelCompletePrompt({
+  level,
+  result,
+  nextLevel,
+  onContinue
+}: {
+  level: BootcampLevel;
+  result: BootcampResult;
+  nextLevel?: BootcampLevel;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="stageDebriefPromptLayer" aria-live="polite">
+      <button className="stageDebriefPrompt levelCompletePrompt" onClick={onContinue}>
+        <CheckCircle2 size={18} />
+        <span>
+          <b>{level.id} {level.title} 完成</b>
+          <small>{nextLevel ? `进入 ${nextLevel.id} ${nextLevel.title}` : result.summary}</small>
+        </span>
+        <code>{nextLevel ? "下一关" : "完成"}</code>
+      </button>
+    </div>
+  );
+}
+
 function StageIntroOverlay({ intro, actionLabel = "进入画布", onStart }: { intro: Chapter01StageIntro; actionLabel?: string; onStart: () => void }) {
   return (
     <div className="modalBackdrop stageIntroBackdrop" role="dialog" aria-modal="true" aria-label={`${intro.code} stage briefing`}>
@@ -3153,11 +3196,13 @@ function MissionOverlay({ level, onStart }: { level: BootcampLevel; onStart: () 
 function CompletionOverlay({
   level,
   result,
-  onClose
+  nextLevel,
+  onContinue
 }: {
   level: BootcampLevel;
   result?: BootcampResult;
-  onClose: () => void;
+  nextLevel?: BootcampLevel;
+  onContinue: () => void;
 }) {
   if (!result) return null;
 
@@ -3166,7 +3211,7 @@ function CompletionOverlay({
       <section className="completionModal">
         <CheckCircle2 size={28} />
         <p className="eyebrow">Contract Restored</p>
-        <h2>hidden[B,T,C] accepted</h2>
+        <h2>{level.id} {level.title} accepted</h2>
         <p>{result.summary}</p>
         <div className="scoreStrip">
           <code>Rank {result.score.rank}</code>
@@ -3183,8 +3228,8 @@ function CompletionOverlay({
             ))}
           </div>
         </div>
-        <button className="runButton modalAction" onClick={onClose}>
-          Continue
+        <button className="runButton modalAction" onClick={onContinue}>
+          {nextLevel ? `进入 ${nextLevel.id}` : "Continue"}
         </button>
       </section>
     </div>
