@@ -1,5 +1,7 @@
 import type { BootcampAnswerMap, BootcampLevel, BootcampResult, CheckState, TensorNode } from "./workbenchTypes";
 import { matMulGateLevel } from "./chapter02MatMulGateLevel";
+import { transposeTrapLevel } from "./chapter03TransposeTrapLevel";
+import { broadcastAddLevel } from "./chapter04BroadcastAddLevel";
 
 type NodeSpec = Omit<TensorNode, "stats" | "sample" | "checks"> & {
   stats?: TensorNode["stats"];
@@ -1248,8 +1250,9 @@ const bootcampLevelDefinitions: BootcampLevel[] = [
       { id: "02_step_out", title: "Output", state: "warn", detail: "label O", selectNodeId: "linear_out" }
     ]
   },
+  transposeTrapLevel,
   {
-    id: "0-3",
+    id: "0-3-legacy",
     title: "Transpose Trap",
     subtitle: "Repair QK^T",
     objective: "在 K 路径上插入 Transpose Switch 并交换最后两轴，生成 scores[B,H,T,T]。",
@@ -1762,7 +1765,10 @@ const bootcampLevelDefinitions: BootcampLevel[] = [
   }
 ];
 
-export const bootcampLevels: BootcampLevel[] = bootcampLevelDefinitions.filter((level) => level.id !== "0-2-legacy");
+export const bootcampLevels: BootcampLevel[] = [
+  ...bootcampLevelDefinitions.filter((level) => level.id !== "0-2-legacy" && level.id !== "0-3-legacy" && level.id !== "0-4"),
+  broadcastAddLevel
+];
 
 export function evaluateBootcampLevel(level: BootcampLevel, assignments: BootcampAnswerMap, metrics: EvaluateMetrics): BootcampResult {
   const tagsById = new Map(level.repair.tags.map((tag) => [tag.id, tag]));

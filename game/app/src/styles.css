@@ -978,6 +978,19 @@ h3 {
     0 0 0 1px rgba(125, 211, 252, 0.08);
 }
 
+.paletteActions {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(96, 165, 250, 0.18);
+}
+
+.paletteRunButton {
+  width: 100%;
+  justify-content: center;
+}
+
 .pixiHost {
   min-width: 0;
   min-height: 520px;

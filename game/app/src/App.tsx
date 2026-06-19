@@ -106,6 +106,25 @@ type LevelPhase =
   | "matmul_orientation_trap"
   | "matmul_linear_assembly"
   | "matmul_gauntlet"
+  | "transpose_matrix_flip"
+  | "transpose_inner_dim_repair"
+  | "transpose_higher_rank_axis_swap"
+  | "transpose_single_head_qk"
+  | "transpose_multi_head_trap"
+  | "transpose_trap_debugger"
+  | "transpose_gauntlet"
+  | "broadcast_add_cell"
+  | "broadcast_same_shape_add"
+  | "broadcast_rule_lab"
+  | "broadcast_bias_add"
+  | "broadcast_position_add"
+  | "broadcast_mask_add"
+  | "broadcast_trap_debugger"
+  | "broadcast_bonus_unsqueeze"
+  | "broadcast_bonus_no_copy"
+  | "broadcast_bonus_residual"
+  | "broadcast_bonus_mask_value"
+  | "broadcast_gauntlet"
   | "data_flow_repair"
   | "tensor_generated"
   | "axis_probe"
@@ -117,6 +136,11 @@ type LevelPhase =
 
 const repairTagDragMime = "application/x-llm-complete-repair-tag";
 const progressStorageKey = "llm-complete:bootcamp-progress:v1";
+const bootcampLevelTransitions: Partial<Record<string, string>> = {
+  "0-1": "0-2",
+  "0-2": "0-3",
+  "0-3": "0-4"
+};
 
 const modeIcons: Record<WorkbenchMode, JSX.Element> = {
   build: <Wrench size={17} />,
@@ -327,6 +351,232 @@ const chapter02Challenges: Chapter01ChallengeDef[] = [
 
 const chapter02ChallengeByPhase = new Map(chapter02Challenges.map((challenge) => [challenge.phase, challenge]));
 
+const chapter03Challenges: Chapter01ChallengeDef[] = [
+  {
+    phase: "transpose_matrix_flip",
+    code: "0-3A",
+    title: "Matrix Flip",
+    brief: "用 Transpose Switch 把 matrix[R,C] 变成 matrix^T[C,R]，并验证 A[i,j]=A^T[j,i]。",
+    slotIds: ["matrix_flip_switch", "matrix_flip_shape", "matrix_flip_index"],
+    nodeIds: ["matrix_plate", "transpose_2d", "matrix_t_plate", "index_checker"],
+    edgeIds: ["e_03a_matrix_switch", "e_03a_switch_out", "e_03a_out_index"],
+    tagIds: ["op_transpose_2d", "op_relabel_only", "shape_cr", "shape_rc", "index_mirror", "index_shuffle"],
+    tagCategories: ["operation", "contract"]
+  },
+  {
+    phase: "transpose_inner_dim_repair",
+    code: "0-3B",
+    title: "Inner-Dim Repair",
+    brief: "识别 B[P,N] 的方向错误，转置 B 得到 [N,P]，让 A[M,N] @ B^T[N,P] 通过 reference。",
+    slotIds: ["inner_dim_fault", "inner_dim_fix", "inner_dim_output", "inner_dim_numeric"],
+    nodeIds: ["matmul_a", "matmul_b_bad", "transpose_b_repair", "matmul_repair_gate", "matmul_repair_out", "reference_checker_03"],
+    edgeIds: ["e_03b_a_matmul", "e_03b_b_transpose", "e_03b_transpose_matmul", "e_03b_matmul_out", "e_03b_out_ref"],
+    tagIds: ["b_orientation_fault", "a_orientation_fault", "transpose_b", "transpose_a", "shape_mp", "shape_np", "reference_allclose_03b"],
+    tagCategories: ["operation", "contract"]
+  },
+  {
+    phase: "transpose_higher_rank_axis_swap",
+    code: "0-3C",
+    title: "Higher-Rank Axis Swap",
+    brief: "把 swap(-2,-1) 扩展到 [B,T,D] 和 [B,H,T,D]，证明 B/H 是携带轴。",
+    slotIds: ["rank3_swap_axes", "rank3_carry_axis", "rank4_carry_axes", "no_full_reverse"],
+    nodeIds: ["rank3_tensor", "rank4_tensor", "axis_swap_switch", "carry_axis_lock", "higher_rank_checker"],
+    edgeIds: ["e_03c_rank3_switch", "e_03c_rank4_switch", "e_03c_switch_lock", "e_03c_lock_checker"],
+    tagIds: ["swap_last_two", "reverse_all_axes", "preserve_b_03c", "preserve_bh_03c", "swap_ht_wrong", "not_full_reverse"],
+    tagCategories: ["operation", "axis", "contract"]
+  },
+  {
+    phase: "transpose_single_head_qk",
+    code: "0-3D",
+    title: "Single-Head QK Score",
+    brief: "在单头 Q[T,D] 与 K[T,D] 之间插入 K^T，生成 token-to-token scores[T,T]。",
+    slotIds: ["single_k_transpose", "single_score_shape", "single_score_semantics"],
+    nodeIds: ["q_single", "k_single", "k_single_transpose", "single_qk_matmul", "single_scores"],
+    edgeIds: ["e_03d_q_matmul", "e_03d_k_transpose", "e_03d_transpose_matmul", "e_03d_matmul_scores"],
+    tagIds: ["transpose_k_single", "transpose_q_single", "scores_tt_single", "scores_dd_single", "query_key_axes", "feature_feature_axes"],
+    tagCategories: ["operation", "axis", "contract"]
+  },
+  {
+    phase: "transpose_multi_head_trap",
+    code: "0-3E",
+    title: "Multi-Head Transpose Trap",
+    brief: "对 K[B,H,T,D] 只交换最后两轴，不移动 B/H，得到 scores[B,H,T,T]。",
+    slotIds: ["multi_k_transpose", "multi_carry_axes", "multi_score_shape"],
+    nodeIds: ["q_heads", "k_heads", "k_heads_transpose", "multi_qk_matmul", "multi_scores"],
+    edgeIds: ["e_03e_q_matmul", "e_03e_k_transpose", "e_03e_transpose_matmul", "e_03e_matmul_scores"],
+    tagIds: ["transpose_k_multi", "transpose_q_multi", "preserve_bh_03e", "move_bh_wrong", "scores_bhtt", "scores_bhdd"],
+    tagCategories: ["operation", "axis", "contract"]
+  },
+  {
+    phase: "transpose_trap_debugger",
+    code: "0-3F",
+    title: "Trap Debugger",
+    brief: "调试操作数顺序、T==D 数值陷阱、轴语义错误和不完整 patch。",
+    slotIds: ["debug_operand_order", "debug_numeric_trap", "debug_axis_contract", "debug_patch"],
+    nodeIds: ["faulty_board", "trace_inspector", "cell_source_checker", "trap_patch", "trap_reference"],
+    edgeIds: ["e_03f_fault_trace", "e_03f_trace_cell", "e_03f_cell_patch", "e_03f_patch_ref"],
+    tagIds: ["debug_operand_order", "debug_shape_only", "debug_numeric_cell", "debug_axis_contract", "debug_patch_rules"],
+    tagCategories: ["operation", "axis", "contract"]
+  },
+  {
+    phase: "transpose_gauntlet",
+    code: "0-3X",
+    title: "Transpose Gauntlet",
+    brief: "运行标准、携带轴、T==D 和操作数顺序隐藏测试，证明 QK^T 合同可泛化。",
+    slotIds: ["gauntlet_standard", "gauntlet_carry", "gauntlet_td_equal", "gauntlet_operand_order"],
+    nodeIds: ["gauntlet_cases", "qk_contract_terminal", "hidden_reference", "gauntlet_result"],
+    edgeIds: ["e_03x_cases_contract", "e_03x_contract_ref", "e_03x_ref_result"],
+    tagIds: ["case_standard", "case_carry_axes", "case_td_equal", "case_operand_order"],
+    tagCategories: ["contract"]
+  }
+];
+
+const chapter03ChallengeByPhase = new Map(chapter03Challenges.map((challenge) => [challenge.phase, challenge]));
+
+const chapter04Challenges: Chapter01ChallengeDef[] = [
+  {
+    phase: "broadcast_add_cell",
+    code: "0-4A",
+    title: "Add Cell",
+    brief: "连接两个 scalar cell，并用 Cell Trace 证明输出是 A + B。",
+    slotIds: ["cell_left_input", "cell_right_input", "cell_trace_exact"],
+    nodeIds: ["scalar_a", "scalar_b", "add_gate_cell", "output_cell", "cell_trace"],
+    edgeIds: ["e_04a_a_gate", "e_04a_b_gate", "e_04a_gate_out", "e_04a_out_trace"],
+    tagIds: ["wire_scalar_a", "wire_scalar_b", "manual_output", "cell_trace_exact"],
+    tagCategories: ["data", "operation"]
+  },
+  {
+    phase: "broadcast_same_shape_add",
+    code: "0-4B",
+    title: "Same-Shape Add",
+    brief: "修复 [T,C] + [T,C]，确认输出 shape 不变且 cell 来源同坐标。",
+    slotIds: ["same_left_shape", "same_right_shape", "same_output_shape", "same_trace_cell"],
+    nodeIds: ["same_a", "same_b", "same_add_gate", "same_out", "same_trace"],
+    edgeIds: ["e_04b_a_gate", "e_04b_b_gate", "e_04b_gate_out", "e_04b_out_trace"],
+    tagIds: ["same_shape_tc", "same_shape_ct", "same_output_tc", "same_trace_cell"],
+    tagCategories: ["contract", "operation"]
+  },
+  {
+    phase: "broadcast_rule_lab",
+    code: "0-4C",
+    title: "Broadcast Rule Lab",
+    brief: "完成 [C]、[T,C]、[1,T,1] 三类 broadcast plan 与 Ghost Expansion。",
+    slotIds: ["rule_vector_c", "rule_matrix_tc", "rule_singleton", "rule_logical_view"],
+    nodeIds: ["target_btc", "vector_c", "matrix_tc", "singleton_scale", "broadcast_rail_lab", "ghost_expansion", "plan_checker"],
+    edgeIds: [
+      "e_04c_target_rail",
+      "e_04c_vector_rail",
+      "e_04c_matrix_rail",
+      "e_04c_singleton_rail",
+      "e_04c_rail_ghost",
+      "e_04c_rail_plan"
+    ],
+    tagIds: ["align_c_right", "align_c_to_t", "insert_missing_b", "insert_missing_c", "expand_singleton_bt", "logical_view", "materialized_repeat"],
+    tagCategories: ["rail", "rank", "operation"]
+  },
+  {
+    phase: "broadcast_bias_add",
+    code: "0-4D",
+    title: "Bias Add",
+    brief: "把 bias[O] 对齐到 projected[B,T,O] 的 O 轴，并沿 B/T 广播。",
+    slotIds: ["bias_axis_o", "bias_expand_bt", "bias_trace"],
+    nodeIds: ["projected_bto", "bias_o", "bias_rail", "bias_add_gate", "bias_out", "bias_reference"],
+    edgeIds: ["e_04d_projected_rail", "e_04d_bias_rail", "e_04d_rail_gate", "e_04d_gate_out", "e_04d_out_ref"],
+    tagIds: ["axis_o", "axis_t", "expand_bt", "bias_cell_trace"],
+    tagCategories: ["axis", "rank", "operation"]
+  },
+  {
+    phase: "broadcast_position_add",
+    code: "0-4E",
+    title: "Position Add",
+    brief: "把 pos_emb[T,C] 对齐 T/C，沿 B 广播，不能退化成 bias[C]。",
+    slotIds: ["position_align_tc", "position_broadcast_b", "position_keep_t"],
+    nodeIds: ["tok_emb", "pos_sheet", "position_rail", "position_add_gate", "hidden_out", "position_trace"],
+    edgeIds: ["e_04e_tok_rail", "e_04e_pos_rail", "e_04e_rail_gate", "e_04e_gate_hidden", "e_04e_hidden_trace"],
+    tagIds: ["align_tc", "align_c_only", "broadcast_b", "preserve_position_t"],
+    tagCategories: ["axis", "rank", "semantic"]
+  },
+  {
+    phase: "broadcast_mask_add",
+    code: "0-4F",
+    title: "Mask Add",
+    brief: "把 mask[1,1,Tq,Tk] 加到 scores[B,H,Tq,Tk]，对齐 Tq/Tk 并沿 B/H 广播。",
+    slotIds: ["mask_tqtk_axes", "mask_expand_bh", "mask_additive", "mask_trace"],
+    nodeIds: ["scores_tensor", "mask_plate", "mask_rail", "mask_add_gate", "masked_scores", "illegal_cell_checker"],
+    edgeIds: ["e_04f_scores_rail", "e_04f_mask_rail", "e_04f_rail_gate", "e_04f_gate_masked", "e_04f_masked_check"],
+    tagIds: ["align_tqtk", "swap_tqtk", "expand_bh", "add_negative_mask", "multiply_mask", "mask_cell_trace"],
+    tagCategories: ["axis", "rank", "operation"]
+  },
+  {
+    phase: "broadcast_trap_debugger",
+    code: "0-4G",
+    title: "Broadcast Trap Debugger",
+    brief: "调试右对齐、B/T 等尺寸陷阱、pos-as-bias 和 materialized repeat。",
+    slotIds: ["trap_right_align", "trap_bt_swap", "trap_pos_bias", "trap_no_repeat"],
+    nodeIds: ["trap_cases", "trap_inspector", "semantic_warning", "trace_probe_04", "trap_patch", "trap_reference_04"],
+    edgeIds: ["e_04g_cases_inspector", "e_04g_inspector_warning", "e_04g_warning_trace", "e_04g_trace_patch", "e_04g_patch_ref"],
+    tagIds: ["debug_right_align", "debug_bt_swap", "debug_pos_bias", "debug_no_repeat", "materialized_repeat"],
+    tagCategories: ["operation", "semantic"]
+  },
+  {
+    phase: "broadcast_bonus_unsqueeze",
+    code: "Bonus A",
+    title: "Unsqueeze Lab",
+    brief: "插入长度为 1 的缺失轴，证明 [T,C] -> [1,T,C] 不改变值。",
+    slotIds: ["bonus_unsqueeze_axis", "bonus_unsqueeze_values"],
+    nodeIds: ["target_btc", "matrix_tc", "broadcast_rail_lab", "ghost_expansion", "plan_checker"],
+    edgeIds: ["e_04c_target_rail", "e_04c_matrix_rail", "e_04c_rail_ghost", "e_04c_rail_plan"],
+    tagIds: ["unsqueeze_leading_b", "unsqueeze_wrong_tail", "unsqueeze_keep_values"],
+    tagCategories: ["rank", "semantic"]
+  },
+  {
+    phase: "broadcast_bonus_no_copy",
+    code: "Bonus B",
+    title: "No-Copy Broadcast",
+    brief: "用 logical view 和 source reuse 证明 broadcast 不是 materialized repeat。",
+    slotIds: ["bonus_no_copy_view", "bonus_no_copy_stride"],
+    nodeIds: ["target_btc", "matrix_tc", "broadcast_rail_lab", "ghost_expansion", "plan_checker"],
+    edgeIds: ["e_04c_target_rail", "e_04c_matrix_rail", "e_04c_rail_ghost", "e_04c_rail_plan"],
+    tagIds: ["view_no_copy", "repeat_full_copy", "stride_zero_view"],
+    tagCategories: ["operation", "semantic"]
+  },
+  {
+    phase: "broadcast_bonus_residual",
+    code: "Bonus C",
+    title: "Residual Add Preview",
+    brief: "预览 Transformer Block residual add，确认 residual 分支应为同 shape 相加。",
+    slotIds: ["bonus_residual_same", "bonus_residual_trace"],
+    nodeIds: ["same_a", "same_b", "same_add_gate", "same_out", "same_trace"],
+    edgeIds: ["e_04b_a_gate", "e_04b_b_gate", "e_04b_gate_out", "e_04b_out_trace"],
+    tagIds: ["residual_same_shape", "residual_broadcast_wrong", "residual_preview_trace"],
+    tagCategories: ["contract", "operation"]
+  },
+  {
+    phase: "broadcast_bonus_mask_value",
+    code: "Bonus D",
+    title: "Mask Value Experiment",
+    brief: "验证为什么 additive mask 要用很大的负数，而不是 0。",
+    slotIds: ["bonus_mask_value", "bonus_mask_softmax"],
+    nodeIds: ["scores_tensor", "mask_plate", "mask_rail", "mask_add_gate", "masked_scores", "illegal_cell_checker"],
+    edgeIds: ["e_04f_scores_rail", "e_04f_mask_rail", "e_04f_rail_gate", "e_04f_gate_masked", "e_04f_masked_check"],
+    tagIds: ["mask_value_large_negative", "mask_value_zero_wrong", "mask_softmax_probe"],
+    tagCategories: ["operation", "semantic"]
+  },
+  {
+    phase: "broadcast_gauntlet",
+    code: "0-4X",
+    title: "Broadcast Gauntlet",
+    brief: "运行 bias、position、singleton、mask、equal-dim 和 semantic trace 隐藏测试。",
+    slotIds: ["gauntlet_bias", "gauntlet_position", "gauntlet_singleton", "gauntlet_mask", "gauntlet_equal_dim", "gauntlet_semantic_trace"],
+    nodeIds: ["broadcast_gauntlet_cases", "broadcast_contract_terminal", "hidden_broadcast_reference", "broadcast_gauntlet_result"],
+    edgeIds: ["e_04x_cases_contract", "e_04x_contract_ref", "e_04x_ref_result"],
+    tagIds: ["case_bias", "case_position", "case_singleton", "case_mask", "case_equal_dim", "case_semantic_trace"],
+    tagCategories: ["contract"]
+  }
+];
+
+const chapter04ChallengeByPhase = new Map(chapter04Challenges.map((challenge) => [challenge.phase, challenge]));
+
 const chapter01StageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
   tensor_object: {
     code: "0-1A",
@@ -442,6 +692,145 @@ const chapter02StageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
     body: "最后测试不会只检查一个可见 shape。\n\n它会覆盖标准方向、存储方向反转，以及防止靠最大维度猜 C/O 的隐藏 case。\n\n正确策略是按轴角色推理：消费 C，生成 O，保留 B/T。",
     visualLines: ["Case A: standard", "Case B: stored [O,C]", "Case C: no size guess", "all hidden cases pass"],
     taskPrompt: "完成三个隐藏测试槽位，然后运行最终验证。"
+  }
+};
+
+const chapter03StageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
+  transpose_matrix_flip: {
+    code: "0-3A",
+    title: "Matrix Flip：二维转置先看索引",
+    body: "Transpose 不是把 shape 标签改一下。\n\n对二维矩阵来说，它会交换行轴和列轴，并且每个值都要移动到镜像坐标。\n\n如果 A[i,j] 没有出现在 A^T[j,i]，那就不是有效转置。",
+    visualLines: ["A[R,C]", "Transpose", "A^T[C,R]", "A[i,j] = A^T[j,i]"],
+    taskPrompt: "配置 2D Transpose Switch，修复输出 shape，并通过 index mapping 检查。"
+  },
+  transpose_inner_dim_repair: {
+    code: "0-3B",
+    title: "Inner-Dim Repair：转置可以修复 MatMul 方向",
+    body: "0-2 告诉我们 MatMul 的内维度必须对齐。\n\n如果 A 是 [M,N]，但 B 以 [P,N] 存储，直接相乘会让内维度不匹配。\n\n把 B 转置成 [N,P] 后，N 才能和 N 相遇。",
+    visualLines: ["A[M,N]", "B[P,N]", "T(B) -> [N,P]", "A @ B^T -> [M,P]"],
+    taskPrompt: "识别 B 的方向错误，转置 B，并让输出通过 shape 和 reference allclose。"
+  },
+  transpose_higher_rank_axis_swap: {
+    code: "0-3C",
+    title: "Higher-Rank Axis Swap：只交换最后两轴",
+    body: "高阶 tensor 里有一些轴只是携带维度。\n\n在 QK^T 相关场景里，B 和 H 是并行层，真正要交换的是最后两轴 T 和 D。\n\nswap(-2,-1) 不是 reverse all axes。",
+    visualLines: ["K[B,T,D] -> K[B,D,T]", "K[B,H,T,D] -> K[B,H,D,T]", "keep B/H", "swap T/D"],
+    taskPrompt: "配置 last-two-axis swap，保护 B/H 携带轴，并明确拒绝全轴反转。"
+  },
+  transpose_single_head_qk: {
+    code: "0-3D",
+    title: "Single-Head QK Score：为什么输出是 T x T",
+    body: "Q 和 K 都是一张 token vector 表。\n\nQ 的每一行是一个 query token，K 转置后每一列是一个 key token。\n\n所以 Q[T,D] @ K^T[D,T] 会生成 scores[T,T]。",
+    visualLines: ["Q[T,D]", "K[T,D] -> K^T[D,T]", "scores[T,T]", "rows=query / cols=key"],
+    taskPrompt: "把 K 转置后接入 QK MatMul，并标出 score board 的行列语义。"
+  },
+  transpose_multi_head_trap: {
+    code: "0-3E",
+    title: "Multi-Head Transpose Trap：真实 attention 的形状",
+    body: "多头 attention 不是把所有轴都混在一起。\n\n每个 B/H 层里单独执行 [T,D] @ [D,T]。\n\n因此 K[B,H,T,D] 只交换最后两轴，输出 scores[B,H,T,T]。",
+    visualLines: ["Q[B,H,T,D]", "K[B,H,T,D]", "K^T[B,H,D,T]", "scores[B,H,T,T]"],
+    taskPrompt: "只转置 K 的 T/D 轴，保留 B/H，并修复多头 score stack。"
+  },
+  transpose_trap_debugger: {
+    code: "0-3F",
+    title: "Trap Debugger：shape 通过不代表正确",
+    body: "不是所有 transpose bug 都会报 shape 错。\n\n当 T 和 D 相等时，错误线路也可能输出一个看起来正确的方阵。\n\n调试时先看轴合同，再检查一个 score cell 的来源。",
+    visualLines: ["check operand order", "check axes", "trace scores[tq,tk]", "then allclose"],
+    taskPrompt: "诊断操作数顺序、T==D 数值陷阱、轴语义错误，并记录完整 patch。"
+  },
+  transpose_gauntlet: {
+    code: "0-3X",
+    title: "Transpose Gauntlet：合同必须能泛化",
+    body: "最终测试不会只复用可见形状。\n\n它会改变 B/H/T/D，包含 T==D 数值陷阱，并检查操作数顺序。\n\n正确策略是固定合同：Q[...,T,D] @ K[...,D,T] -> scores[...,T,T]。",
+    visualLines: ["Case A: standard", "Case B: carry axes", "Case C: T==D", "Case D: operand order"],
+    taskPrompt: "完成四个隐藏 case 槽位，然后运行最终 Transpose Gauntlet。"
+  }
+};
+
+const chapter04StageIntros: Partial<Record<LevelPhase, Chapter01StageIntro>> = {
+  broadcast_add_cell: {
+    code: "0-4A",
+    title: "Add Cell：加法的最小单位",
+    body: "Add 的最小单位是一个 cell。\n\n两个 numeric cell 进入 Add Gate，输出 cell 必须由它们计算得到，而不是手动填写。",
+    visualLines: ["A = 2.0", "B = 5.0", "A + B -> 7.0", "trace source cells"],
+    taskPrompt: "连接两个 scalar 输入，运行 Cell Trace，证明输出来源。"
+  },
+  broadcast_same_shape_add: {
+    code: "0-4B",
+    title: "Same-Shape Add：同坐标相加",
+    body: "如果两个 tensor shape 完全相同，Add Gate 会逐位置相加。\n\n输出 shape 不会改变，每个 out[t,c] 都来自同坐标的 A[t,c] 和 B[t,c]。",
+    visualLines: ["A[T,C]", "+ B[T,C]", "-> Out[T,C]", "out[1,2] = A[1,2] + B[1,2]"],
+    taskPrompt: "修复同形状加法，并追踪一个输出 cell。"
+  },
+  broadcast_rule_lab: {
+    code: "0-4C",
+    title: "Broadcast Rule Lab：缺失轴和 1 轴",
+    body: "Broadcast 会把小张量对齐到目标 shape。\n\n缺失轴可看作长度 1；长度为 1 的轴可以逻辑扩展，但语义轴仍必须正确。",
+    visualLines: ["[C] -> [1,1,C]", "[T,C] -> [1,T,C]", "[1,T,1] -> [B,T,C]", "logical view, no copy"],
+    taskPrompt: "完成三个 broadcast plan，并使用 Ghost Expansion 表示逻辑视图。"
+  },
+  broadcast_bias_add: {
+    code: "0-4D",
+    title: "Bias Add：一条偏置加到每个 token",
+    body: "Linear bias 属于输出 feature 轴。\n\nprojected[B,T,O] + bias[O] 会把 bias 逻辑扩展成 [1,1,O]，沿 B 和 T 复用。",
+    visualLines: ["projected[B,T,O]", "+ bias[O]", "view [1,1,O]", "out[b,t,o] += bias[o]"],
+    taskPrompt: "把 Bias Strip 挂到 O 轴，并证明它沿 B/T 广播。"
+  },
+  broadcast_position_add: {
+    code: "0-4E",
+    title: "Position Add：位置表不是 bias",
+    body: "pos_emb[T,C] 同时拥有 token 位置轴和 channel 轴。\n\n它只缺 B 轴，所以沿 batch 广播；如果丢掉 T，它就变成了错误的 bias[C]。",
+    visualLines: ["tok_emb[B,T,C]", "+ pos_emb[T,C]", "view [1,T,C]", "keep T variation"],
+    taskPrompt: "对齐 pos_emb 的 T/C，并用 trace 证明位置信息没有丢失。"
+  },
+  broadcast_mask_add: {
+    code: "0-4F",
+    title: "Mask Add：把未来位置变成不可能",
+    body: "Attention scores 有 query token 和 key token 两个 T 轴。\n\nmask[1,1,Tq,Tk] 沿 B/H 广播，并把 future key cell 加上很大的负数。",
+    visualLines: ["scores[B,H,Tq,Tk]", "+ mask[1,1,Tq,Tk]", "Tq/Tk aligned", "future cell -> -1e9"],
+    taskPrompt: "对齐 mask 的 Tq/Tk，沿 B/H 广播，并选择 additive mask。"
+  },
+  broadcast_trap_debugger: {
+    code: "0-4G",
+    title: "Broadcast Trap Debugger：shape 通过也可能错",
+    body: "可 broadcast 不等于语义正确。\n\n等尺寸轴、pos-as-bias 和真实 repeat 都会让表面测试变得危险。Cell Trace 是最后判断依据。",
+    visualLines: ["rank", "axis alignment", "semantic warning", "cell trace", "no repeat"],
+    taskPrompt: "按调试顺序修复三类 broadcast trap。"
+  },
+  broadcast_bonus_unsqueeze: {
+    code: "Bonus A",
+    title: "Unsqueeze Lab：插入长度为 1 的轴",
+    body: "Unsqueeze 不改变 tensor 的值。\n\n它只是插入一个长度为 1 的轴，让 [T,C] 可以作为 [1,T,C] 参与后续 broadcast。",
+    visualLines: ["pos[T,C]", "unsqueeze B", "view[1,T,C]", "values unchanged"],
+    taskPrompt: "选择正确的 singleton 轴插入位置，并证明值没有被改写。"
+  },
+  broadcast_bonus_no_copy: {
+    code: "Bonus B",
+    title: "No-Copy Broadcast：逻辑扩展",
+    body: "Broadcast view 会在访问时复用源值。\n\n它不应该把小 tensor 真实复制成完整目标 shape；否则数值可能对，但内存模型错。",
+    visualLines: ["small storage", "logical view", "source reuse", "no repeat buffer"],
+    taskPrompt: "标记 no-copy broadcast view，并证明扩展 cell 复用同一个来源。"
+  },
+  broadcast_bonus_residual: {
+    code: "Bonus C",
+    title: "Residual Add Preview：残差预览",
+    body: "Transformer Block 里的 residual add 通常不依赖 broadcast。\n\n两条分支应当已经是相同 hidden shape，然后逐坐标相加。",
+    visualLines: ["branch A[B,T,C]", "+ branch B[B,T,C]", "same-coordinate", "hidden[B,T,C]"],
+    taskPrompt: "确认 residual 分支同 shape，并 trace 一个 residual 输出 cell。"
+  },
+  broadcast_bonus_mask_value: {
+    code: "Bonus D",
+    title: "Mask Value Experiment：为什么是很大的负数",
+    body: "Causal mask 在 softmax 前加入 scores。\n\n非法位置加 0 不会被压制；加一个很大的负数，softmax 后概率才会接近 0。",
+    visualLines: ["future score", "+ -1e9", "softmax", "prob ~= 0"],
+    taskPrompt: "选择 large negative additive mask，并验证 softmax 后的非法位置概率。"
+  },
+  broadcast_gauntlet: {
+    code: "0-4X",
+    title: "Broadcast Gauntlet：泛化测试",
+    body: "最终测试会更换 B/T/C/O/H 的尺寸，并加入 equal-dimension trap。\n\n你需要证明自己掌握的是 broadcast contract，而不是某个固定形状。",
+    visualLines: ["bias", "position", "singleton", "mask", "equal dims", "semantic trace"],
+    taskPrompt: "配置全部隐藏测试 case，运行最终 Broadcast Gauntlet。"
   }
 };
 
@@ -627,6 +1016,221 @@ const chapter02StageKnowledge: Partial<Record<LevelPhase, Chapter01StageKnowledg
   }
 };
 
+const chapter03StageKnowledge: Partial<Record<LevelPhase, Chapter01StageKnowledge>> = {
+  transpose_matrix_flip: {
+    code: "0-3A",
+    title: "Matrix Flip",
+    concept: "Transpose = swap axes + preserve mirrored values.",
+    tool: "2D Transpose Switch",
+    mission: "repair [R,C] -> [C,R] and A[i,j] -> A^T[j,i].",
+    visual: "transpose_matrix_flip",
+    inspectorNotes: ["二维 transpose 交换行轴和列轴。", "shape 通过后还要验证 index mapping。", "只改标签会被数值检查抓住。"],
+    failureLesson: ["Matrix flip failed。", "检查输出 shape 是否是 [C,R]。", "确认 A[i,j] 的值移动到了 A^T[j,i]。"],
+    debrief: "0-3A 完成：你已经证明 transpose 不是改标签，而是带有坐标映射的轴交换。"
+  },
+  transpose_inner_dim_repair: {
+    code: "0-3B",
+    title: "Inner-Dim Repair",
+    concept: "A[M,N] needs right operand [N,P]; T(B) repairs stored [P,N].",
+    tool: "Transpose B + MatMul Gate",
+    mission: "repair B orientation, output [M,P], then allclose reference.",
+    visual: "transpose_inner_dim",
+    inspectorNotes: ["A 的最后一轴 N 已经在正确位置。", "B 存成 [P,N] 时需要转成 [N,P]。", "输出 [M,P] 还必须数值 allclose。"],
+    failureLesson: ["Inner dim repair failed。", "故障在 B 的方向，不在 A。", "N 被 MatMul 消费，不能留在输出里。"],
+    debrief: "0-3B 完成：你已经把 0-2 的内维度规则和 0-3A 的转置规则连接起来。"
+  },
+  transpose_higher_rank_axis_swap: {
+    code: "0-3C",
+    title: "Higher-Rank Axis Swap",
+    concept: "swap(-2,-1) touches only T/D; prefix axes are carried.",
+    tool: "Axis Swap Switch + Axis Lock",
+    mission: "repair rank-3 and rank-4 tensors without moving B/H.",
+    visual: "transpose_higher_rank",
+    inspectorNotes: ["-1 是最后一轴 D。", "-2 是倒数第二轴 T。", "B/H 只是并行携带轴，不参与 swap。"],
+    failureLesson: ["Higher-rank swap failed。", "不要 reverse all axes。", "检查 B/H 是否仍然在前缀位置。"],
+    debrief: "0-3C 完成：你已经掌握高阶 tensor 中只交换最后两轴，同时保护携带轴。"
+  },
+  transpose_single_head_qk: {
+    code: "0-3D",
+    title: "Single-Head QK Score",
+    concept: "Q[T,D] @ K^T[D,T] creates token-to-token scores[T,T].",
+    tool: "K^T Switch + Score Board",
+    mission: "transpose K, build [T,T], and label query/key axes.",
+    visual: "transpose_single_qk",
+    inspectorNotes: ["Q 的 token 轴成为 score 行。", "K 转置后的 token 轴成为 score 列。", "输出不是 feature-to-feature 的 D x D。"],
+    failureLesson: ["Single-head QK failed。", "不要转置 Q。", "score board 的两个 T 分别是 query token 和 key token。"],
+    debrief: "0-3D 完成：你已经从单头 Q/K 看清 QK^T 为什么输出 T x T。"
+  },
+  transpose_multi_head_trap: {
+    code: "0-3E",
+    title: "Multi-Head Transpose Trap",
+    concept: "Inside every B/H layer: [T,D] @ [D,T] -> [T,T].",
+    tool: "Multi-Head K^T Switch",
+    mission: "only swap K last axes, preserve B/H, produce scores[B,H,T,T].",
+    visual: "transpose_multi_qk",
+    inspectorNotes: ["B 是 batch carry axis。", "H 是 head carry axis。", "每个 B/H 层里都有一个 T x T score board。"],
+    failureLesson: ["Multi-head QK failed。", "检查是否移动了 B/H。", "K 应为 [B,H,D,T]，scores 应为 [B,H,T,T]。"],
+    debrief: "0-3E 完成：你已经修复真实多头 QK^T 的方向陷阱。"
+  },
+  transpose_trap_debugger: {
+    code: "0-3F",
+    title: "Trap Debugger",
+    concept: "Debug order: operand order -> axis contract -> cell source -> allclose.",
+    tool: "Trace Inspector + Cell Source Checker",
+    mission: "diagnose order, T==D numeric trap, axis contract, and patch rules.",
+    visual: "transpose_debugger",
+    inspectorNotes: ["Q 必须在左边。", "T==D 时 shape 会欺骗你。", "scores[tq,tk] 必须来自 q_tq dot k_tk。"],
+    failureLesson: ["Trap debugger failed。", "不要只看输出 shape。", "按操作数、轴合同、单格来源、reference 的顺序排查。"],
+    debrief: "0-3F 完成：你已经能调试 shape 通过但数值或语义错误的 transpose 陷阱。"
+  },
+  transpose_gauntlet: {
+    code: "0-3X",
+    title: "Transpose Gauntlet",
+    concept: "QK^T contract generalizes across sizes, carry axes, and hidden traps.",
+    tool: "Hidden Transpose Tests",
+    mission: "pass standard, carry-axis, T==D, and operand-order cases.",
+    visual: "transpose_gauntlet",
+    inspectorNotes: ["Case A 检查标准形状。", "Case B 检查携带轴。", "Case C 检查 T==D 数值陷阱。", "Case D 检查操作数顺序。"],
+    failureLesson: ["Hidden transpose case failed。", "回到 Q[...,T,D] @ K[...,D,T] -> scores[...,T,T]。", "不要用固定尺寸或输出 shape 猜答案。"],
+    debrief: "0-3 完成：你已经掌握 QK^T 中 K 的 T/D 轴交换、B/H 携带轴和 T==D 数值陷阱。"
+  }
+};
+
+const chapter04StageKnowledge: Partial<Record<LevelPhase, Chapter01StageKnowledge>> = {
+  broadcast_add_cell: {
+    code: "0-4A",
+    title: "Add Cell",
+    concept: "Elementwise Add 的最小证明是一个输出 cell 的来源。",
+    tool: "Add Gate + Cell Trace",
+    mission: "连接 A/B 两个 scalar，并 trace 出 7.0。",
+    visual: "broadcast_add_cell",
+    inspectorNotes: ["Add Gate 需要两个 numeric 输入。", "输出 cell 必须由输入 cell 计算得到。", "手填结果会被 reference 检查拒绝。"],
+    failureLesson: ["Add Cell failed。", "检查两个输入是否都接入 Add Gate。", "用 Cell Trace 证明 out[] = A[] + B[]。"],
+    debrief: "0-4A 完成：你已经把 Add 的本质落实到单个 cell 的来源证明。"
+  },
+  broadcast_same_shape_add: {
+    code: "0-4B",
+    title: "Same-Shape Add",
+    concept: "同 shape 张量逐坐标相加，输出 shape 不改变。",
+    tool: "Tensor Add Grid",
+    mission: "修复 [T,C] + [T,C] -> [T,C]。",
+    visual: "broadcast_same_shape",
+    inspectorNotes: ["同 shape 输入可以直接逐元素对齐。", "T/C 轴顺序不能交换。", "Residual Add 通常就是 same-shape add。"],
+    failureLesson: ["Same-shape add failed。", "检查两个输入是否都是 [T,C]。", "输出不应改变 shape 或交换坐标。"],
+    debrief: "0-4B 完成：你已经从单个 cell 扩展到整张同 shape tensor 的逐元素加法。"
+  },
+  broadcast_rule_lab: {
+    code: "0-4C",
+    title: "Broadcast Rule Lab",
+    concept: "缺失轴和 singleton 轴可以形成 logical broadcast view。",
+    tool: "Broadcast Rail + Ghost Expansion",
+    mission: "配置 [C]、[T,C]、[1,T,1] 三种 broadcast plan。",
+    visual: "broadcast_rule",
+    inspectorNotes: ["[C] 右对齐到 C。", "[T,C] 缺少的是 B。", "[1,T,1] 可沿 B/C 扩展。", "Ghost Expansion 表示逻辑视图，不是真复制。"],
+    failureLesson: ["Broadcast plan failed。", "先补 rank，再检查轴长度，再看语义。", "不要把 C 对齐到 T，也不要真实 repeat。"],
+    debrief: "0-4C 完成：你已经掌握缺失轴、长度 1 轴和 logical broadcast view。"
+  },
+  broadcast_bias_add: {
+    code: "0-4D",
+    title: "Bias Add",
+    concept: "bias[O] 沿 B/T 广播，给每个输出通道加偏移。",
+    tool: "Bias Strip + Broadcast Add Gate",
+    mission: "把 bias[O] 对齐到 projected[B,T,O] 的 O 轴。",
+    visual: "broadcast_bias",
+    inspectorNotes: ["Bias 属于 output feature 轴 O。", "B 和 T 是广播轴。", "cell trace 应该读取 bias[o]。"],
+    failureLesson: ["Bias alignment failed。", "Bias 不应对齐到 T 或 B。", "检查 out[b,t,o] 是否使用 bias[o]。"],
+    debrief: "0-4D 完成：你已经把 0-2 中锁定的 Linear bias 加法补上了。"
+  },
+  broadcast_position_add: {
+    code: "0-4E",
+    title: "Position Add",
+    concept: "pos_emb[T,C] 沿 B 广播，但必须保留 T 位置信息。",
+    tool: "Position Sheet + Cell Trace",
+    mission: "对齐 T/C，沿 B 广播，并拒绝 pos-as-bias。",
+    visual: "broadcast_position",
+    inspectorNotes: ["pos_emb 有一行对应每个 token 位置。", "缺失轴是 B，不是 T。", "如果只剩 [C]，位置差异就丢失了。"],
+    failureLesson: ["Position add failed。", "检查 pos_emb 的 T 轴是否仍在。", "用 trace 确认 hidden[b,t,c] 使用 pos_emb[t,c]。"],
+    debrief: "0-4E 完成：你已经理解 token embedding 如何通过 position embedding 获得位置信息。"
+  },
+  broadcast_mask_add: {
+    code: "0-4F",
+    title: "Mask Add",
+    concept: "causal mask 通过加法把 future-token score 变成极小值。",
+    tool: "Mask Plate + Illegal Cell Checker",
+    mission: "对齐 Tq/Tk，沿 B/H 广播，并使用 additive negative mask。",
+    visual: "broadcast_mask",
+    inspectorNotes: ["scores 有 query token 和 key token 两个 T 轴。", "mask 的 B/H 是 singleton。", "乘法 mask 不是本阶段目标。"],
+    failureLesson: ["Mask add failed。", "检查 Tq/Tk 是否交换。", "未来 cell 应该接收很大的负数，而不是被乘 0。"],
+    debrief: "0-4F 完成：你已经把 0-3 的 QK score board 接到了 attention mask 前置步骤。"
+  },
+  broadcast_trap_debugger: {
+    code: "0-4G",
+    title: "Broadcast Trap Debugger",
+    concept: "shape-valid broadcast 仍可能 semantic-invalid。",
+    tool: "Semantic Warning Lens + Cell Trace Probe",
+    mission: "识别 right-align、B/T swap、pos-as-bias 和 materialized repeat。",
+    visual: "broadcast_debugger",
+    inspectorNotes: ["先看 raw broadcast 是否可行。", "再看 axis semantics 是否匹配。", "最后用 cell trace 和 reference 判断。"],
+    failureLesson: ["Broadcast trap missed。", "不要只看 shape。", "等尺寸轴必须靠语义和 cell source 判断。"],
+    debrief: "0-4G 完成：你已经能调试可广播但语义错误的陷阱。"
+  },
+  broadcast_bonus_unsqueeze: {
+    code: "Bonus A",
+    title: "Unsqueeze Lab",
+    concept: "Unsqueeze inserts a singleton axis; it does not edit values.",
+    tool: "Axis Alignment Ruler",
+    mission: "turn [T,C] into [1,T,C] and preserve source values.",
+    visual: "broadcast_rule",
+    inspectorNotes: ["缺失 B 轴应插到 T/C 前面。", "值不应被复制、重排或改写。", "view[0,t,c] 对应原 tensor[t,c]。"],
+    failureLesson: ["Unsqueeze failed。", "重新确认 singleton 轴的位置。", "不要把 unsqueeze 当成 repeat 或 transpose。"],
+    debrief: "Bonus A 完成：你已经掌握插入长度为 1 的轴来准备 broadcast。"
+  },
+  broadcast_bonus_no_copy: {
+    code: "Bonus B",
+    title: "No-Copy Broadcast",
+    concept: "Broadcast view presents a larger shape while reusing source storage.",
+    tool: "Ghost Expansion",
+    mission: "prove logical broadcast view and source reuse instead of materialized repeat.",
+    visual: "broadcast_rule",
+    inspectorNotes: ["真实存储保持小 tensor。", "扩展 cell 通过 source mapping 复用来源。", "repeat 是效率警告。"],
+    failureLesson: ["No-copy broadcast failed。", "把 materialized repeat 替换为 logical view。", "用 source reuse 证明没有全量复制。"],
+    debrief: "Bonus B 完成：你已经理解 broadcast view 与真实 repeat 的区别。"
+  },
+  broadcast_bonus_residual: {
+    code: "Bonus C",
+    title: "Residual Add Preview",
+    concept: "Residual add is normally same-shape elementwise addition.",
+    tool: "Residual Add Preview",
+    mission: "verify residual branches share [B,T,C] and trace one output cell.",
+    visual: "broadcast_same_shape",
+    inspectorNotes: ["Residual 分支应该同 shape。", "不要用 broadcast 掩盖分支 shape 错误。", "out[b,t,c] 同时来自两条分支。"],
+    failureLesson: ["Residual preview failed。", "回到 same-shape add 的 cell contract。", "不要把 residual branch 当 bias strip。"],
+    debrief: "Bonus C 完成：你已经把 same-shape add 连接到了 Transformer residual 场景。"
+  },
+  broadcast_bonus_mask_value: {
+    code: "Bonus D",
+    title: "Mask Value Experiment",
+    concept: "A large negative additive mask makes illegal logits vanish after softmax.",
+    tool: "Mask Value Probe",
+    mission: "choose a large negative mask value and verify the softmax effect.",
+    visual: "broadcast_mask",
+    inspectorNotes: ["0 不会阻止 future key。", "-1e9 这类大负数会让概率接近 0。", "mask value 实验解释 0-4F 的数值选择。"],
+    failureLesson: ["Mask value experiment failed。", "确认 mask 是 additive 且在 softmax 前。", "观察非法 cell 的 softmax 概率。"],
+    debrief: "Bonus D 完成：你已经理解为什么 attention mask 使用很大的负数。"
+  },
+  broadcast_gauntlet: {
+    code: "0-4X",
+    title: "Broadcast Gauntlet",
+    concept: "Broadcast contract 必须跨尺寸、场景和语义陷阱泛化。",
+    tool: "Hidden Broadcast Tests",
+    mission: "通过 bias、position、singleton、mask、equal-dim 和 semantic trace case。",
+    visual: "broadcast_gauntlet",
+    inspectorNotes: ["隐藏测试会改变 B/T/C/O/H。", "equal-dim trap 会让 shape 证据失效。", "semantic trace 是最终证明。"],
+    failureLesson: ["Broadcast gauntlet failed。", "回到 rank -> alignment -> singleton -> semantics -> cell trace。", "不要依赖固定维度数字。"],
+    debrief: "0-4 完成：你已经掌握 Broadcast Add 在 LLM 中的 bias、position、mask 和 semantic-debug 用法。"
+  }
+};
+
 const chapter01PhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x: number; y: number }>>> = {
   tensor_object: {
     tensor_inspector: { x: 548, y: 278 },
@@ -728,6 +1332,99 @@ const chapter02PhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x
   }
 };
 
+const chapter04PhaseNodePositions: Partial<Record<LevelPhase, Record<string, { x: number; y: number }>>> = {
+  broadcast_add_cell: {
+    scalar_a: { x: 210, y: 220 },
+    scalar_b: { x: 210, y: 414 },
+    add_gate_cell: { x: 520, y: 318 },
+    output_cell: { x: 820, y: 320 },
+    cell_trace: { x: 1084, y: 320 }
+  },
+  broadcast_same_shape_add: {
+    same_a: { x: 190, y: 210 },
+    same_b: { x: 190, y: 420 },
+    same_add_gate: { x: 536, y: 316 },
+    same_out: { x: 844, y: 292 },
+    same_trace: { x: 1142, y: 316 }
+  },
+  broadcast_rule_lab: {
+    target_btc: { x: 132, y: 196 },
+    vector_c: { x: 126, y: 434 },
+    matrix_tc: { x: 374, y: 434 },
+    singleton_scale: { x: 626, y: 434 },
+    broadcast_rail_lab: { x: 812, y: 304 },
+    ghost_expansion: { x: 1126, y: 206 },
+    plan_checker: { x: 1126, y: 388 }
+  },
+  broadcast_bias_add: {
+    projected_bto: { x: 158, y: 276 },
+    bias_o: { x: 454, y: 446 },
+    bias_rail: { x: 704, y: 320 },
+    bias_add_gate: { x: 984, y: 320 },
+    bias_out: { x: 1250, y: 286 },
+    bias_reference: { x: 1250, y: 462 }
+  },
+  broadcast_position_add: {
+    tok_emb: { x: 144, y: 282 },
+    pos_sheet: { x: 456, y: 440 },
+    position_rail: { x: 742, y: 322 },
+    position_add_gate: { x: 1022, y: 322 },
+    hidden_out: { x: 1288, y: 286 },
+    position_trace: { x: 1288, y: 462 }
+  },
+  broadcast_mask_add: {
+    scores_tensor: { x: 144, y: 244 },
+    mask_plate: { x: 468, y: 454 },
+    mask_rail: { x: 742, y: 326 },
+    mask_add_gate: { x: 1018, y: 326 },
+    masked_scores: { x: 1282, y: 286 },
+    illegal_cell_checker: { x: 1282, y: 468 }
+  },
+  broadcast_trap_debugger: {
+    trap_cases: { x: 126, y: 284 },
+    trap_inspector: { x: 398, y: 264 },
+    semantic_warning: { x: 666, y: 264 },
+    trace_probe_04: { x: 934, y: 264 },
+    trap_patch: { x: 680, y: 456 },
+    trap_reference_04: { x: 1138, y: 368 }
+  },
+  broadcast_bonus_unsqueeze: {
+    target_btc: { x: 210, y: 212 },
+    matrix_tc: { x: 210, y: 436 },
+    broadcast_rail_lab: { x: 572, y: 316 },
+    ghost_expansion: { x: 904, y: 220 },
+    plan_checker: { x: 904, y: 408 }
+  },
+  broadcast_bonus_no_copy: {
+    target_btc: { x: 210, y: 212 },
+    matrix_tc: { x: 210, y: 436 },
+    broadcast_rail_lab: { x: 572, y: 316 },
+    ghost_expansion: { x: 904, y: 220 },
+    plan_checker: { x: 904, y: 408 }
+  },
+  broadcast_bonus_residual: {
+    same_a: { x: 190, y: 210 },
+    same_b: { x: 190, y: 420 },
+    same_add_gate: { x: 536, y: 316 },
+    same_out: { x: 844, y: 292 },
+    same_trace: { x: 1142, y: 316 }
+  },
+  broadcast_bonus_mask_value: {
+    scores_tensor: { x: 144, y: 244 },
+    mask_plate: { x: 468, y: 454 },
+    mask_rail: { x: 742, y: 326 },
+    mask_add_gate: { x: 1018, y: 326 },
+    masked_scores: { x: 1282, y: 286 },
+    illegal_cell_checker: { x: 1282, y: 468 }
+  },
+  broadcast_gauntlet: {
+    broadcast_gauntlet_cases: { x: 220, y: 292 },
+    broadcast_contract_terminal: { x: 566, y: 292 },
+    hidden_broadcast_reference: { x: 916, y: 292 },
+    broadcast_gauntlet_result: { x: 1242, y: 292 }
+  }
+};
+
 export function App() {
   const [initialProgress] = useState<BootcampProgressSave>(() => readBootcampProgressSave());
   const initialSelectedLevelId = resolveSavedLevelId(initialProgress.selectedLevelId);
@@ -783,8 +1480,7 @@ export function App() {
   const latestObservation = activeRepairState.observations[0];
   const stageKnowledge = useMemo(() => buildCanvasStageKnowledge(activeLevel, levelPhase), [activeLevel, levelPhase]);
   const stageKnowledgePosition = stageKnowledge ? stageKnowledgePositions[activeLevel.id]?.[stageKnowledge.code] : undefined;
-  const activeLevelIndex = useMemo(() => bootcampLevels.findIndex((level) => level.id === activeLevel.id), [activeLevel.id]);
-  const nextLevel = activeLevelIndex >= 0 ? bootcampLevels[activeLevelIndex + 1] : undefined;
+  const nextLevel = useMemo(() => nextBootcampLevelAfter(activeLevel), [activeLevel]);
   const showCompletionModal = Boolean(levelResult?.passed && !completionDismissed[activeLevel.id]);
   const activeStageIntro = !pendingDebriefPhase ? stageIntroForLevelPhase(activeLevel, levelPhase) : undefined;
   const pendingDebriefKnowledge = pendingDebriefPhase ? stageKnowledgeForLevelPhase(activeLevel, pendingDebriefPhase) : undefined;
@@ -797,7 +1493,7 @@ export function App() {
       !stageIntroSeen[activeLevel.id]?.[levelPhase]
   );
   const showCanvasPalette = shouldShowCanvasPalette(activeLevel, levelPhase) && !showKnowledgeIntro && !showMissionModal && !levelResult?.passed;
-  const showRightRepairConsole = activeLevel.id !== "0-1" && activeLevel.id !== "0-2";
+  const showCanvasRunButton = shouldShowCanvasRunButton(activeLevel, levelPhase);
   const slotOverlays = useMemo(
     () => buildSlotOverlays(activeLevel, activeRepairState, levelPhase),
     [activeLevel, activeRepairState.assignments, activeRepairState.selectedSlotId, levelPhase]
@@ -910,9 +1606,6 @@ export function App() {
 
   function assignTagToSlot(slot: RepairSlot, tagId: string) {
     const nextAssignments = { ...activeRepairState.assignments };
-    for (const [slotId, assignedTagId] of Object.entries(nextAssignments)) {
-      if (assignedTagId === tagId) delete nextAssignments[slotId];
-    }
     nextAssignments[slot.id] = tagId;
     const assignedCorrectly = slot.correctTagIds.includes(tagId);
     const shouldOpenTensorObjectDetail = activeLevel.id === "0-1" && levelPhase === "tensor_object" && assignedCorrectly && Boolean(tensorObjectShowcases[slot.id]);
@@ -923,9 +1616,6 @@ export function App() {
 
     updateActiveRepairState((state) => {
       const assignments = { ...state.assignments };
-      for (const [slotId, assignedTagId] of Object.entries(assignments)) {
-        if (assignedTagId === tagId) delete assignments[slotId];
-      }
       assignments[slot.id] = tagId;
       return { ...state, assignments, selectedSlotId: slot.id, activeTagId: undefined };
     });
@@ -1106,7 +1796,7 @@ export function App() {
   }
 
   function getCanvasMenuActions(target: CanvasContextTarget | null): CanvasMenuAction[] {
-    if (!target || (activeLevel.id !== "0-1" && activeLevel.id !== "0-2")) return [];
+    if (!target || (activeLevel.id !== "0-1" && activeLevel.id !== "0-2" && activeLevel.id !== "0-3" && activeLevel.id !== "0-4")) return [];
 
     const actions: CanvasMenuAction[] = [];
     const targetSlot = target.kind === "slot" ? activeLevel.repair.slots.find((slot) => slot.id === target.id) : undefined;
@@ -1133,6 +1823,28 @@ export function App() {
           id: "run_matmul_tests",
           label: "Run MatMul Gauntlet",
           detail: "Execute reference and hidden MatMul cases.",
+          onSelect: runCanvasTests
+        });
+      }
+    }
+
+    if (activeLevel.id === "0-3" && ((target.kind === "node" && target.id === "gauntlet_result") || target.kind === "canvas")) {
+      if (levelPhase === "transpose_gauntlet") {
+        actions.push({
+          id: "run_transpose_tests",
+          label: "Run Transpose Gauntlet",
+          detail: "Execute reference and hidden QK^T cases.",
+          onSelect: runCanvasTests
+        });
+      }
+    }
+
+    if (activeLevel.id === "0-4" && ((target.kind === "node" && target.id === "broadcast_gauntlet_result") || target.kind === "canvas")) {
+      if (levelPhase === "broadcast_gauntlet") {
+        actions.push({
+          id: "run_broadcast_tests",
+          label: "Run Broadcast Gauntlet",
+          detail: "Execute reference and hidden Broadcast Add cases.",
           onSelect: runCanvasTests
         });
       }
@@ -1342,7 +2054,15 @@ export function App() {
           ) : null}
           {showCanvasPalette ? (
             <div className="canvasPaletteLayer">
-              <BlueprintPalette level={activeLevel} repairState={activeRepairState} phase={levelPhase} onSelectTag={selectTag} onSelectProbe={selectProbe} />
+              <BlueprintPalette
+                level={activeLevel}
+                repairState={activeRepairState}
+                phase={levelPhase}
+                runLabel={canvasRunTestLabel(activeLevel, levelPhase)}
+                onSelectTag={selectTag}
+                onSelectProbe={selectProbe}
+                onRunTests={showCanvasRunButton ? runTests : undefined}
+              />
             </div>
           ) : null}
           <CanvasContextMenu target={canvasMenu} actions={getCanvasMenuActions(canvasMenu)} onClose={() => setCanvasMenu(null)} />
@@ -1397,29 +2117,8 @@ export function App() {
             onOpenTensorObjectDetail={openTensorObjectDetail}
             onRunTensorObjectShowcase={runTensorObjectShowcase}
           />
-          {showRightRepairConsole ? (
-            <section className="panel levelControlPanel">
-              <div className="panelHeader">
-                <Wrench size={18} />
-                <h2>Repair Console</h2>
-              </div>
-              <RepairConsole
-                level={activeLevel}
-                repairState={activeRepairState}
-                phase={levelPhase}
-                onSelectTag={selectTag}
-                onSelectProbe={selectProbe}
-                onActivateSlot={activateSlot}
-                onAssignTag={assignTagToSlot}
-              />
-              <div className="consoleActions">
-                <button className="runButton" onClick={runTests}>
-                  <Play size={16} />
-                  Run Contract Tests
-                </button>
-              </div>
-              <ResultPanel result={levelResult} activeLevel={activeLevel} />
-            </section>
+          {levelResult ? (
+            <ResultPanel result={levelResult} activeLevel={activeLevel} />
           ) : null}
         </aside>
       </section>
@@ -1500,15 +2199,32 @@ function readBootcampProgressSave(): BootcampProgressSave {
     if (!raw) return { version: 1 };
     const parsed = JSON.parse(raw) as Partial<BootcampProgressSave>;
     if (parsed.version !== 1) return { version: 1 };
+    const repairStates = parsed.repairStates ? { ...parsed.repairStates } : undefined;
+    const results = parsed.results ? { ...parsed.results } : undefined;
+    const introSeen = parsed.introSeen ? { ...parsed.introSeen } : undefined;
+    const stageIntroSeen = parsed.stageIntroSeen ? { ...parsed.stageIntroSeen } : undefined;
+    const missionStarted = parsed.missionStarted ? { ...parsed.missionStarted } : undefined;
+    const completionDismissed = parsed.completionDismissed ? { ...parsed.completionDismissed } : undefined;
+    const savedTransposeResult = results?.["0-3"];
+    const hasCurrentTransposeGauntlet =
+      savedTransposeResult?.checks.some((check) => check.id === "transpose_gauntlet_cases") ?? false;
+    if (savedTransposeResult && !hasCurrentTransposeGauntlet) {
+      delete results?.["0-3"];
+      delete repairStates?.["0-3"];
+      delete introSeen?.["0-3"];
+      delete stageIntroSeen?.["0-3"];
+      delete missionStarted?.["0-3"];
+      delete completionDismissed?.["0-3"];
+    }
     return {
       version: 1,
       selectedLevelId: parsed.selectedLevelId,
-      repairStates: parsed.repairStates,
-      results: parsed.results,
-      introSeen: parsed.introSeen,
-      stageIntroSeen: parsed.stageIntroSeen,
-      missionStarted: parsed.missionStarted,
-      completionDismissed: parsed.completionDismissed
+      repairStates,
+      results,
+      introSeen,
+      stageIntroSeen,
+      missionStarted,
+      completionDismissed
     };
   } catch {
     return { version: 1 };
@@ -1540,6 +2256,17 @@ function resolveSavedLevelId(levelId: string | undefined) {
   return bootcampLevels.some((level) => level.id === levelId) ? levelId : bootcampLevels[0].id;
 }
 
+function nextBootcampLevelAfter(level: BootcampLevel) {
+  const explicitNextId = bootcampLevelTransitions[level.id];
+  if (explicitNextId) {
+    const explicitNext = bootcampLevels.find((candidate) => candidate.id === explicitNextId);
+    if (explicitNext) return explicitNext;
+  }
+
+  const levelIndex = bootcampLevels.findIndex((candidate) => candidate.id === level.id);
+  return levelIndex >= 0 ? bootcampLevels[levelIndex + 1] : undefined;
+}
+
 function filterBootcampRecord<T>(record: Record<string, T> | undefined): Record<string, T> {
   if (!record || typeof record !== "object") return {};
   const validIds = new Set(bootcampLevels.map((level) => level.id));
@@ -1566,6 +2293,29 @@ function deriveLevelPhase(
       if (!areSlotsCorrect(level, repairState, chapter02SlotIds("matmul_orientation_trap"))) return "matmul_orientation_trap";
       if (!areSlotsCorrect(level, repairState, chapter02SlotIds("matmul_linear_assembly"))) return "matmul_linear_assembly";
       return "matmul_gauntlet";
+    }
+    if (level.id === "0-3") {
+      if (!areSlotsCorrect(level, repairState, chapter03SlotIds("transpose_matrix_flip"))) return "transpose_matrix_flip";
+      if (!areSlotsCorrect(level, repairState, chapter03SlotIds("transpose_inner_dim_repair"))) return "transpose_inner_dim_repair";
+      if (!areSlotsCorrect(level, repairState, chapter03SlotIds("transpose_higher_rank_axis_swap"))) return "transpose_higher_rank_axis_swap";
+      if (!areSlotsCorrect(level, repairState, chapter03SlotIds("transpose_single_head_qk"))) return "transpose_single_head_qk";
+      if (!areSlotsCorrect(level, repairState, chapter03SlotIds("transpose_multi_head_trap"))) return "transpose_multi_head_trap";
+      if (!areSlotsCorrect(level, repairState, chapter03SlotIds("transpose_trap_debugger"))) return "transpose_trap_debugger";
+      return "transpose_gauntlet";
+    }
+    if (level.id === "0-4") {
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_add_cell"))) return "broadcast_add_cell";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_same_shape_add"))) return "broadcast_same_shape_add";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_rule_lab"))) return "broadcast_rule_lab";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_bias_add"))) return "broadcast_bias_add";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_position_add"))) return "broadcast_position_add";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_mask_add"))) return "broadcast_mask_add";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_trap_debugger"))) return "broadcast_trap_debugger";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_bonus_unsqueeze"))) return "broadcast_bonus_unsqueeze";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_bonus_no_copy"))) return "broadcast_bonus_no_copy";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_bonus_residual"))) return "broadcast_bonus_residual";
+      if (!areSlotsCorrect(level, repairState, chapter04SlotIds("broadcast_bonus_mask_value"))) return "broadcast_bonus_mask_value";
+      return "broadcast_gauntlet";
     }
     return result ? "visible_testing" : "axis_tagging";
   }
@@ -1597,13 +2347,31 @@ function areAssignmentsCorrect(level: BootcampLevel, assignments: BootcampAnswer
 }
 
 function supportsStageRail(level: BootcampLevel) {
-  return level.id === "0-1" || level.id === "0-2";
+  return level.id === "0-1" || level.id === "0-2" || level.id === "0-3" || level.id === "0-4";
 }
 
 function shouldShowCanvasPalette(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-1") return phase !== "tensor_object" && Boolean(chapter01ChallengeByPhase.get(phase));
   if (level.id === "0-2") return Boolean(chapter02ChallengeByPhase.get(phase));
-  return false;
+  if (level.id === "0-3") return Boolean(chapter03ChallengeByPhase.get(phase));
+  if (level.id === "0-4") return Boolean(chapter04ChallengeByPhase.get(phase));
+  return visibleSlotsForPhase(level, phase).length > 0 && visibleTagsForPhase(level, phase).length > 0;
+}
+
+function shouldShowCanvasRunButton(level: BootcampLevel, phase: LevelPhase) {
+  if (level.id === "0-1") return phase === "hidden_test_gauntlet";
+  if (level.id === "0-2") return phase === "matmul_gauntlet";
+  if (level.id === "0-3") return phase === "transpose_gauntlet";
+  if (level.id === "0-4") return phase === "broadcast_gauntlet";
+  return true;
+}
+
+function canvasRunTestLabel(level: BootcampLevel, phase: LevelPhase) {
+  if (level.id === "0-1" && phase === "hidden_test_gauntlet") return "Run Hidden Test Gauntlet";
+  if (level.id === "0-2" && phase === "matmul_gauntlet") return "Run MatMul Gauntlet";
+  if (level.id === "0-3" && phase === "transpose_gauntlet") return "Run Transpose Gauntlet";
+  if (level.id === "0-4" && phase === "broadcast_gauntlet") return "Run Broadcast Gauntlet";
+  return "Run Contract Tests";
 }
 
 function supportsStageDebrief(level: BootcampLevel) {
@@ -1613,24 +2381,32 @@ function supportsStageDebrief(level: BootcampLevel) {
 function challengesForLevel(level: BootcampLevel) {
   if (level.id === "0-1") return chapter01Challenges;
   if (level.id === "0-2") return chapter02Challenges;
+  if (level.id === "0-3") return chapter03Challenges;
+  if (level.id === "0-4") return chapter04Challenges;
   return [];
 }
 
 function challengeForLevelPhase(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-1") return chapter01ChallengeForPhase(phase);
   if (level.id === "0-2") return chapter02ChallengeForPhase(phase);
+  if (level.id === "0-3") return chapter03ChallengeForPhase(phase);
+  if (level.id === "0-4") return chapter04ChallengeForPhase(phase);
   return undefined;
 }
 
 function stageIntroForLevelPhase(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-1") return chapter01StageIntros[phase];
   if (level.id === "0-2") return chapter02StageIntros[phase];
+  if (level.id === "0-3") return chapter03StageIntros[phase];
+  if (level.id === "0-4") return chapter04StageIntros[phase];
   return undefined;
 }
 
 function stageKnowledgeForLevelPhase(level: BootcampLevel, phase: LevelPhase) {
   if (level.id === "0-1") return chapter01StageKnowledge[phase];
   if (level.id === "0-2") return chapter02StageKnowledge[phase];
+  if (level.id === "0-3") return chapter03StageKnowledge[phase];
+  if (level.id === "0-4") return chapter04StageKnowledge[phase];
   return undefined;
 }
 
@@ -1638,6 +2414,14 @@ function stageReadyForDebrief(level: BootcampLevel, phase: LevelPhase, assignmen
   if (level.id === "0-1") return chapter01StageReadyForDebrief(level, phase, assignments, observations);
   if (level.id === "0-2") {
     const challenge = chapter02ChallengeForPhase(phase);
+    return Boolean(challenge?.slotIds.length && areAssignmentsCorrect(level, assignments, challenge.slotIds));
+  }
+  if (level.id === "0-3") {
+    const challenge = chapter03ChallengeForPhase(phase);
+    return Boolean(challenge?.slotIds.length && areAssignmentsCorrect(level, assignments, challenge.slotIds));
+  }
+  if (level.id === "0-4") {
+    const challenge = chapter04ChallengeForPhase(phase);
     return Boolean(challenge?.slotIds.length && areAssignmentsCorrect(level, assignments, challenge.slotIds));
   }
   return false;
@@ -1669,6 +2453,14 @@ function chapter02SlotIds(phase: LevelPhase) {
   return chapter02ChallengeByPhase.get(phase)?.slotIds ?? [];
 }
 
+function chapter03SlotIds(phase: LevelPhase) {
+  return chapter03ChallengeByPhase.get(phase)?.slotIds ?? [];
+}
+
+function chapter04SlotIds(phase: LevelPhase) {
+  return chapter04ChallengeByPhase.get(phase)?.slotIds ?? [];
+}
+
 function chapter01ChallengeForPhase(phase: LevelPhase) {
   if (phase === "knowledge_intro" || phase === "mission_modal") return chapter01Challenges[0];
   if (phase === "completed") return chapter01ChallengeByPhase.get("hidden_test_gauntlet");
@@ -1681,9 +2473,22 @@ function chapter02ChallengeForPhase(phase: LevelPhase) {
   return chapter02ChallengeByPhase.get(phase);
 }
 
+function chapter03ChallengeForPhase(phase: LevelPhase) {
+  if (phase === "knowledge_intro" || phase === "mission_modal") return chapter03Challenges[0];
+  if (phase === "completed") return chapter03ChallengeByPhase.get("transpose_gauntlet");
+  return chapter03ChallengeByPhase.get(phase);
+}
+
+function chapter04ChallengeForPhase(phase: LevelPhase) {
+  if (phase === "knowledge_intro" || phase === "mission_modal") return chapter04Challenges[0];
+  if (phase === "completed") return chapter04ChallengeByPhase.get("broadcast_gauntlet");
+  return chapter04ChallengeByPhase.get(phase);
+}
+
 function buildCanvasStageKnowledge(level: BootcampLevel, phase: LevelPhase): Chapter01StageKnowledge | undefined {
-  if (level.id !== "0-1" && level.id !== "0-2") return undefined;
-  const finalPhase = level.id === "0-1" ? "hidden_test_gauntlet" : "matmul_gauntlet";
+  if (level.id !== "0-1" && level.id !== "0-2" && level.id !== "0-3" && level.id !== "0-4") return undefined;
+  const finalPhase =
+    level.id === "0-1" ? "hidden_test_gauntlet" : level.id === "0-2" ? "matmul_gauntlet" : level.id === "0-3" ? "transpose_gauntlet" : "broadcast_gauntlet";
   const normalizedPhase = phase === "completed" ? finalPhase : phase;
   const knowledge = stageKnowledgeForLevelPhase(level, normalizedPhase);
   if (!knowledge) return undefined;
@@ -1714,6 +2519,25 @@ function phaseLabel(phase: LevelPhase) {
     matmul_orientation_trap: "0-2E Weight Orientation",
     matmul_linear_assembly: "0-2F Linear Assembly",
     matmul_gauntlet: "0-2X MatMul Gauntlet",
+    transpose_matrix_flip: "0-3A Matrix Flip",
+    transpose_inner_dim_repair: "0-3B Inner-Dim Repair",
+    transpose_higher_rank_axis_swap: "0-3C Higher-Rank Axis Swap",
+    transpose_single_head_qk: "0-3D Single-Head QK",
+    transpose_multi_head_trap: "0-3E Multi-Head Trap",
+    transpose_trap_debugger: "0-3F Trap Debugger",
+    transpose_gauntlet: "0-3X Transpose Gauntlet",
+    broadcast_add_cell: "0-4A Add Cell",
+    broadcast_same_shape_add: "0-4B Same-Shape Add",
+    broadcast_rule_lab: "0-4C Broadcast Rule Lab",
+    broadcast_bias_add: "0-4D Bias Add",
+    broadcast_position_add: "0-4E Position Add",
+    broadcast_mask_add: "0-4F Mask Add",
+    broadcast_trap_debugger: "0-4G Broadcast Trap Debugger",
+    broadcast_bonus_unsqueeze: "Bonus A Unsqueeze Lab",
+    broadcast_bonus_no_copy: "Bonus B No-Copy Broadcast",
+    broadcast_bonus_residual: "Bonus C Residual Add",
+    broadcast_bonus_mask_value: "Bonus D Mask Value",
+    broadcast_gauntlet: "0-4X Broadcast Gauntlet",
     data_flow_repair: "Restore Data Flow",
     tensor_generated: "Tensor Generated",
     axis_probe: "Probe Axes",
@@ -1727,8 +2551,9 @@ function phaseLabel(phase: LevelPhase) {
 }
 
 function visibleTagsForPhase(level: BootcampLevel, phase: LevelPhase): RepairTag[] {
-  if (level.id === "0-2") {
-    const challenge = chapter02ChallengeForPhase(phase);
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+    const challenge =
+      level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
     if (!challenge) return level.repair.tags;
     if (challenge.tagIds?.length) {
       const tagIds = new Set(challenge.tagIds);
@@ -1745,12 +2570,14 @@ function visibleTagsForPhase(level: BootcampLevel, phase: LevelPhase): RepairTag
 }
 
 function visiblePaletteTagsForPhase(level: BootcampLevel, phase: LevelPhase): RepairTag[] {
+  if (level.id === "0-4") return visibleTagsForPhase(level, phase);
   return visibleTagsForPhase(level, phase).filter((tag) => tag.category !== "data" && tag.category !== "consumer");
 }
 
 function visibleSlotsForPhase(level: BootcampLevel, phase: LevelPhase): RepairSlot[] {
-  if (level.id === "0-2") {
-    const challenge = chapter02ChallengeForPhase(phase);
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+    const challenge =
+      level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
     if (!challenge) return [];
     const slotIds = new Set(challenge.slotIds);
     return level.repair.slots.filter((slot) => slotIds.has(slot.id));
@@ -1772,6 +2599,30 @@ function visibleProbesForPhase(level: BootcampLevel, phase: LevelPhase) {
           : ["shape_probe"];
     return level.repair.probes.filter((probe) => probeIds.includes(probe.id));
   }
+  if (level.id === "0-3") {
+    const probeIds =
+      phase === "transpose_matrix_flip" || phase === "transpose_higher_rank_axis_swap"
+        ? ["transpose_probe"]
+        : phase === "transpose_inner_dim_repair"
+          ? ["matmul_probe"]
+          : phase === "transpose_single_head_qk" || phase === "transpose_multi_head_trap"
+            ? ["qk_probe"]
+            : ["debug_probe"];
+    return level.repair.probes.filter((probe) => probeIds.includes(probe.id));
+  }
+  if (level.id === "0-4") {
+    const probeIds =
+      phase === "broadcast_add_cell" || phase === "broadcast_same_shape_add" || phase === "broadcast_bonus_residual"
+        ? ["add_probe"]
+        : phase === "broadcast_rule_lab" || phase === "broadcast_bonus_unsqueeze"
+          ? ["broadcast_probe"]
+        : phase === "broadcast_bias_add" || phase === "broadcast_position_add"
+          ? ["llm_broadcast_probe"]
+          : phase === "broadcast_mask_add" || phase === "broadcast_bonus_mask_value"
+            ? ["mask_probe"]
+            : ["trap_probe"];
+    return level.repair.probes.filter((probe) => probeIds.includes(probe.id));
+  }
   if (level.id !== "0-1") return level.repair.probes;
   return phase === "hidden_contract_repair" ? level.repair.probes : [];
 }
@@ -1781,6 +2632,12 @@ function defaultProbeForSlot(level: BootcampLevel, phase: LevelPhase, slot: Repa
     if (phase === "matmul_orientation_trap") return "orientation_probe";
     if (phase === "matmul_linear_assembly" || phase === "matmul_gauntlet") return "reference_probe";
     return "shape_probe";
+  }
+  if (level.id === "0-3") {
+    return visibleProbesForPhase(level, phase)[0]?.id;
+  }
+  if (level.id === "0-4") {
+    return visibleProbesForPhase(level, phase)[0]?.id;
   }
   if (level.id !== "0-1" || phase !== "hidden_contract_repair") return undefined;
   const probeBySlot: Record<string, string> = {
@@ -1804,14 +2661,18 @@ function applyNodePositions(nodes: TensorNode[], positions?: NodePositionMap): T
 }
 
 function filterDisplayNodesForPhase(level: BootcampLevel, nodes: TensorNode[], phase: LevelPhase): TensorNode[] {
-  if (level.id === "0-2") {
-    const challenge = chapter02ChallengeForPhase(phase);
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+    const challenge =
+      level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
     if (!challenge) return nodes;
     const visibleIds = new Set(challenge.nodeIds);
-    const phasePositions = chapter02PhaseNodePositions[phase] ?? {};
+    const phasePositions = level.id === "0-2" ? chapter02PhaseNodePositions[phase] ?? {} : level.id === "0-4" ? chapter04PhaseNodePositions[phase] ?? {} : {};
     return nodes
       .filter((node) => visibleIds.has(node.id))
-      .map((node) => sizeChapter02PhaseNode(phasePositions[node.id] ? { ...node, ...phasePositions[node.id] } : node, phase));
+      .map((node) => {
+        const positioned = phasePositions[node.id] ? { ...node, ...phasePositions[node.id] } : node;
+        return level.id === "0-2" ? sizeChapter02PhaseNode(positioned, phase) : level.id === "0-3" ? sizeChapter03PhaseNode(positioned, phase) : sizeChapter04PhaseNode(positioned, phase);
+      });
   }
   if (level.id !== "0-1") return nodes;
   const challenge = chapter01ChallengeForPhase(phase);
@@ -1883,6 +2744,83 @@ function sizeChapter02PhaseNode(node: TensorNode, phase: LevelPhase): TensorNode
   return node;
 }
 
+function sizeChapter03PhaseNode(node: TensorNode, phase: LevelPhase): TensorNode {
+  if (phase === "transpose_matrix_flip") {
+    if (node.id === "matrix_plate" || node.id === "matrix_t_plate") return { ...node, w: 232, h: 142 };
+    if (node.id === "transpose_2d") return { ...node, w: 224, h: 102 };
+  }
+
+  if (phase === "transpose_inner_dim_repair") {
+    if (node.id === "matmul_a" || node.id === "matmul_b_bad") return { ...node, w: 210, h: 124 };
+    if (node.id === "transpose_b_repair" || node.id === "matmul_repair_gate") return { ...node, w: 220, h: 104 };
+    if (node.id === "matmul_repair_out" || node.id === "reference_checker_03") return { ...node, w: 232, h: 112 };
+  }
+
+  if (phase === "transpose_higher_rank_axis_swap") {
+    if (node.id === "rank3_tensor" || node.id === "rank4_tensor") return { ...node, w: 234, h: 126 };
+    if (node.id === "axis_swap_switch" || node.id === "carry_axis_lock") return { ...node, w: 238, h: 112 };
+  }
+
+  if (phase === "transpose_single_head_qk" || phase === "transpose_multi_head_trap") {
+    if (node.kind === "tensor" || node.kind === "attention") return { ...node, w: 228, h: 128 };
+    if (node.kind === "operation") return { ...node, w: 222, h: 104 };
+  }
+
+  if (phase === "transpose_trap_debugger") {
+    if (node.id === "faulty_board") return { ...node, w: 244, h: 146 };
+    if (node.kind === "operation") return { ...node, w: 238, h: 114 };
+  }
+
+  if (phase === "transpose_gauntlet") {
+    if (node.id === "qk_contract_terminal") return { ...node, w: 274, h: 120 };
+    return { ...node, w: 238, h: 122 };
+  }
+
+  return node;
+}
+
+function sizeChapter04PhaseNode(node: TensorNode, phase: LevelPhase): TensorNode {
+  if (phase === "broadcast_add_cell") {
+    if (node.id === "scalar_a" || node.id === "scalar_b") return { ...node, w: 164, h: 84 };
+    if (node.id === "add_gate_cell" || node.id === "cell_trace") return { ...node, w: 206, h: 104 };
+    if (node.id === "output_cell") return { ...node, w: 190, h: 100 };
+  }
+
+  if (phase === "broadcast_same_shape_add" || phase === "broadcast_bonus_residual") {
+    if (node.id === "same_a" || node.id === "same_b") return { ...node, w: 232, h: 132 };
+    if (node.id === "same_add_gate") return { ...node, w: 226, h: 106 };
+    if (node.id === "same_out") return { ...node, w: 244, h: 140 };
+    if (node.id === "same_trace") return { ...node, w: 204, h: 108 };
+  }
+
+  if (phase === "broadcast_rule_lab" || phase === "broadcast_bonus_unsqueeze" || phase === "broadcast_bonus_no_copy") {
+    if (node.id === "target_btc") return { ...node, w: 236, h: 136 };
+    if (node.id === "vector_c" || node.id === "matrix_tc" || node.id === "singleton_scale") return { ...node, w: 196, h: 92 };
+    if (node.id === "broadcast_rail_lab") return { ...node, w: 250, h: 124 };
+    if (node.id === "ghost_expansion" || node.id === "plan_checker") return { ...node, w: 224, h: 104 };
+  }
+
+  if (phase === "broadcast_bias_add" || phase === "broadcast_position_add" || phase === "broadcast_mask_add" || phase === "broadcast_bonus_mask_value") {
+    if (node.kind === "tensor" || node.kind === "attention") return { ...node, w: 238, h: 136 };
+    if (node.kind === "parameter" || node.kind === "mask") return { ...node, w: 210, h: 94 };
+    if (node.kind === "operation") return { ...node, w: 238, h: 112 };
+    if (node.kind === "scalar") return { ...node, w: 224, h: 100 };
+  }
+
+  if (phase === "broadcast_trap_debugger") {
+    if (node.id === "trap_cases") return { ...node, w: 234, h: 132 };
+    if (node.kind === "operation") return { ...node, w: 236, h: 110 };
+    if (node.kind === "scalar") return { ...node, w: 226, h: 104 };
+  }
+
+  if (phase === "broadcast_gauntlet") {
+    if (node.id === "broadcast_contract_terminal") return { ...node, w: 286, h: 128 };
+    return { ...node, w: 246, h: 124 };
+  }
+
+  return node;
+}
+
 function sizeChapter01PhaseNode(node: TensorNode, phase: LevelPhase): TensorNode {
   if (phase === "rank_scanner") {
     if (node.id === "raw_objects") return { ...node, w: 178, h: 106 };
@@ -1939,8 +2877,9 @@ const manualConnectionEdgeIds = new Set([
 ]);
 
 function filterDisplayEdgesForPhase(level: BootcampLevel, edges: BootcampLevel["edges"], nodes: TensorNode[], phase: LevelPhase) {
-  if (level.id === "0-2") {
-    const challenge = chapter02ChallengeForPhase(phase);
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+    const challenge =
+      level.id === "0-2" ? chapter02ChallengeForPhase(phase) : level.id === "0-3" ? chapter03ChallengeForPhase(phase) : chapter04ChallengeForPhase(phase);
     if (!challenge) return edges;
     const visibleNodeIds = new Set(nodes.map((node) => node.id));
     const visibleEdgeIds = new Set(challenge.edgeIds);
@@ -2072,15 +3011,18 @@ function buildCanvasConnections(level: BootcampLevel, repairState: LevelRepairSt
 }
 
 function buildCanvasActionHints(level: BootcampLevel, repairState: LevelRepairState, phase: LevelPhase): CanvasActionHint[] {
-  if (level.id === "0-2") {
+  if (level.id === "0-2" || level.id === "0-3" || level.id === "0-4") {
+    const finalGauntletPhase = level.id === "0-2" ? "matmul_gauntlet" : level.id === "0-3" ? "transpose_gauntlet" : "broadcast_gauntlet";
+    const finalGauntletNodeId = level.id === "0-2" ? "matmul_tests" : level.id === "0-3" ? "gauntlet_result" : "broadcast_gauntlet_result";
+    const gauntletLabel = level.id === "0-2" ? "MatMul" : level.id === "0-3" ? "Transpose" : "Broadcast";
     const hints: CanvasActionHint[] =
-      phase === "matmul_gauntlet"
+      phase === finalGauntletPhase
         ? [
             {
               kind: "node",
-              id: "matmul_tests",
+              id: finalGauntletNodeId,
               icon: "run",
-              tooltip: "Click or right-click: run the final MatMul Gauntlet",
+              tooltip: `Click or right-click: run the final ${gauntletLabel} Gauntlet`,
               pulse: true
             }
           ]
@@ -2368,27 +3310,347 @@ function buildDisplayNodes(level: BootcampLevel, assignments: BootcampAnswerMap)
   }
 
   if (level.id === "0-3") {
-    const switchOn = assignments.k_switch === "switch_transpose";
-    const swapOk = assignments.swap_axes === "swap_td";
-    const scores = tagLabel("score_board");
-    patchNode("transpose_k", {
-      shape: switchOn && swapOk ? "[B,H,D,T]" : switchOn ? "wrong swap" : "off",
-      subtitle: switchOn && swapOk ? "configured" : "not configured"
+    const slotCorrect = (slotId: string) => {
+      const slot = level.repair.slots.find((item) => item.id === slotId);
+      return slot ? slot.correctTagIds.includes(assignments[slotId]) : false;
+    };
+    const slotsCorrect = (slotIds: string[]) => slotIds.every(slotCorrect);
+    const matrixReady = slotsCorrect(chapter03SlotIds("transpose_matrix_flip"));
+    const innerReady = slotsCorrect(chapter03SlotIds("transpose_inner_dim_repair"));
+    const higherRankReady = slotsCorrect(chapter03SlotIds("transpose_higher_rank_axis_swap"));
+    const singleReady = slotsCorrect(chapter03SlotIds("transpose_single_head_qk"));
+    const multiReady = slotsCorrect(chapter03SlotIds("transpose_multi_head_trap"));
+    const debugReady = slotsCorrect(chapter03SlotIds("transpose_trap_debugger"));
+    const gauntletReady = slotsCorrect(chapter03SlotIds("transpose_gauntlet"));
+
+    patchNode("transpose_2d", {
+      shape: slotCorrect("matrix_flip_switch") ? "[R,C] -> [C,R]" : "[R,C] -> ?",
+      subtitle: slotCorrect("matrix_flip_switch") ? "2D transpose configured" : "2D switch off",
+      checks: [check("matrix flip", matrixReady ? "pass" : "warn", matrixReady ? "shape and mirrored index mapping pass" : "configure real transpose, output shape, and index mapping")]
     });
-    patchNode("qk_matmul", { shape: switchOn && swapOk ? "[T,D]@[D,T]" : "[T,D]@[?,?]", subtitle: switchOn && swapOk ? "inner dims locked" : "blocked" });
-    patchNode("scores_tensor", { shape: scores === "T,T" ? "[B,H,T,T]" : "[B,H,?,?]", subtitle: scores === "T,T" ? "score board repaired" : "attention board" });
+    patchNode("matrix_t_plate", {
+      shape: slotCorrect("matrix_flip_shape") ? "[C,R]" : "[?,?]",
+      subtitle: matrixReady ? "values mirrored" : "waiting for values",
+      checks: [
+        check("shape", slotCorrect("matrix_flip_shape") ? "pass" : "warn", slotCorrect("matrix_flip_shape") ? "flipped shape is [C,R]" : "set output shape to [C,R]"),
+        check("index", slotCorrect("matrix_flip_index") ? "pass" : "warn", slotCorrect("matrix_flip_index") ? "A[i,j] maps to A^T[j,i]" : "prove value movement, not relabeling")
+      ]
+    });
+    patchNode("index_checker", {
+      subtitle: matrixReady ? "passed" : "A[i,j] -> A^T[j,i]",
+      checks: [check("numeric mapping", matrixReady ? "pass" : "warn", matrixReady ? "all visible cells mirror correctly" : "index mirror still incomplete")]
+    });
+
+    patchNode("matmul_b_bad", {
+      subtitle: slotCorrect("inner_dim_fault") ? "fault identified" : "stored wrong way",
+      checks: [check("orientation", slotCorrect("inner_dim_fault") ? "pass" : "warn", slotCorrect("inner_dim_fault") ? "B is stored as [P,N]" : "identify whether A or B faces the wrong way")]
+    });
+    patchNode("transpose_b_repair", {
+      shape: slotCorrect("inner_dim_fix") ? "[P,N] -> [N,P]" : "[P,N] -> ?",
+      subtitle: slotCorrect("inner_dim_fix") ? "T(B) inserted" : "repair inner dim",
+      checks: [check("repair", slotCorrect("inner_dim_fix") ? "pass" : "warn", slotCorrect("inner_dim_fix") ? "B^T exposes N for the inner dimension" : "transpose B, not A")]
+    });
+    patchNode("matmul_repair_gate", {
+      shape: slotCorrect("inner_dim_fix") ? "[M,N]@[N,P]" : "[M,N]@[?,?]",
+      subtitle: innerReady ? "inner dims locked" : "inner dim blocked",
+      checks: [check("inner dims", innerReady ? "pass" : "warn", innerReady ? "N aligns with N and output can form" : "repair right operand orientation")]
+    });
+    patchNode("matmul_repair_out", {
+      shape: slotCorrect("inner_dim_output") ? "[M,P]" : "[?,?]",
+      subtitle: innerReady ? "reference ready" : "waiting for reference",
+      checks: [check("output", slotCorrect("inner_dim_output") ? "pass" : "warn", slotCorrect("inner_dim_output") ? "N is consumed; P is generated" : "set output contract to [M,P]")]
+    });
+    patchNode("reference_checker_03", {
+      subtitle: innerReady ? "allclose armed" : "allclose gate",
+      checks: [check("numeric", slotCorrect("inner_dim_numeric") ? "pass" : "warn", slotCorrect("inner_dim_numeric") ? "A @ B.T matches reference" : "shape is not enough; attach allclose")]
+    });
+
+    patchNode("axis_swap_switch", {
+      shape: slotCorrect("rank3_swap_axes") ? "swap(-2,-1)" : "last-two axes",
+      subtitle: higherRankReady ? "T/D swap locked" : "swap(-2,-1) not set",
+      checks: [check("axis config", higherRankReady ? "pass" : "warn", higherRankReady ? "last two axes swap while prefix axes stay fixed" : "configure swap(-2,-1) and reject reverse all axes")]
+    });
+    patchNode("carry_axis_lock", {
+      subtitle: slotCorrect("rank4_carry_axes") ? "B/H protected" : "carry axes protected",
+      checks: [
+        check("B axis", slotCorrect("rank3_carry_axis") ? "pass" : "warn", slotCorrect("rank3_carry_axis") ? "B remains fixed in rank-3 case" : "preserve B in [B,T,D]"),
+        check("B/H axes", slotCorrect("rank4_carry_axes") ? "pass" : "warn", slotCorrect("rank4_carry_axes") ? "B/H remain fixed in rank-4 case" : "preserve B/H in [B,H,T,D]")
+      ]
+    });
+    patchNode("higher_rank_checker", {
+      subtitle: higherRankReady ? "rank cases pass" : "rank 3 + rank 4",
+      checks: [check("not reverse", slotCorrect("no_full_reverse") ? "pass" : "warn", slotCorrect("no_full_reverse") ? "full axis reversal rejected" : "mark transpose trap as last-two-axis swap only")]
+    });
+
+    patchNode("k_single_transpose", {
+      shape: slotCorrect("single_k_transpose") ? "[T,D] -> [D,T]" : "[T,D] -> ?",
+      subtitle: slotCorrect("single_k_transpose") ? "K^T configured" : "not configured",
+      checks: [check("K transpose", slotCorrect("single_k_transpose") ? "pass" : "warn", slotCorrect("single_k_transpose") ? "K token axis becomes columns" : "transpose K, not Q")]
+    });
+    patchNode("single_qk_matmul", {
+      shape: slotCorrect("single_k_transpose") ? "[T,D]@[D,T]" : "[T,D]@[?,?]",
+      subtitle: singleReady ? "inner dims locked" : "blocked",
+      checks: [check("single QK", singleReady ? "pass" : "warn", singleReady ? "single-head score contract passes" : "build [T,D] @ [D,T]")]
+    });
+    patchNode("single_scores", {
+      shape: slotCorrect("single_score_shape") ? "[T,T]" : "[?,?]",
+      subtitle: singleReady ? "query x key board" : "token x token",
+      checks: [
+        check("shape", slotCorrect("single_score_shape") ? "pass" : "warn", slotCorrect("single_score_shape") ? "scores shape is [T,T]" : "target score board is [T,T]"),
+        check("semantics", slotCorrect("single_score_semantics") ? "pass" : "warn", slotCorrect("single_score_semantics") ? "rows=query tokens, cols=key tokens" : "label the two T axes")
+      ]
+    });
+
+    patchNode("k_heads_transpose", {
+      shape: slotCorrect("multi_k_transpose") ? "[B,H,D,T]" : "off",
+      subtitle: slotCorrect("multi_k_transpose") ? "K last axes swapped" : "not configured",
+      checks: [
+        check("K transpose", slotCorrect("multi_k_transpose") ? "pass" : "warn", slotCorrect("multi_k_transpose") ? "K becomes [B,H,D,T]" : "transpose K's last two axes"),
+        check("carry axes", slotCorrect("multi_carry_axes") ? "pass" : "warn", slotCorrect("multi_carry_axes") ? "B/H stay fixed" : "do not move B/H")
+      ]
+    });
+    patchNode("multi_qk_matmul", {
+      shape: slotCorrect("multi_k_transpose") && slotCorrect("multi_carry_axes") ? "[T,D]@[D,T]" : "[T,D]@[?,?]",
+      subtitle: multiReady ? "per-head inner dims locked" : "blocked",
+      checks: [check("multi QK", multiReady ? "pass" : "warn", multiReady ? "every B/H layer produces a T x T board" : "preserve B/H and transpose K")]
+    });
+    patchNode("multi_scores", {
+      shape: slotCorrect("multi_score_shape") ? "[B,H,T,T]" : "[B,H,?,?]",
+      subtitle: multiReady ? "score stack repaired" : "attention board stack",
+      checks: [check("score stack", slotCorrect("multi_score_shape") ? "pass" : "warn", slotCorrect("multi_score_shape") ? "scores[B,H,T,T]" : "target is [B,H,T,T]")]
+    });
+
+    patchNode("trace_inspector", {
+      subtitle: slotCorrect("debug_operand_order") && slotCorrect("debug_axis_contract") ? "axis contract checked" : "axis contract first",
+      checks: [
+        check("operand order", slotCorrect("debug_operand_order") ? "pass" : "warn", slotCorrect("debug_operand_order") ? "Q stays left, K^T stays right" : "check operand order first"),
+        check("axis contract", slotCorrect("debug_axis_contract") ? "pass" : "warn", slotCorrect("debug_axis_contract") ? "semantic axes inspected before sizes" : "inspect axis semantics")
+      ]
+    });
+    patchNode("cell_source_checker", {
+      subtitle: slotCorrect("debug_numeric_trap") ? "cell source traced" : "scores[tq,tk]",
+      checks: [check("numeric trap", slotCorrect("debug_numeric_trap") ? "pass" : "warn", slotCorrect("debug_numeric_trap") ? "T==D trap handled by provenance" : "trace one score cell")]
+    });
+    patchNode("trap_patch", {
+      subtitle: slotCorrect("debug_patch") ? "patch complete" : "waiting",
+      checks: [check("patch rules", slotCorrect("debug_patch") ? "pass" : "warn", slotCorrect("debug_patch") ? "order, K^T, and carry axes are fixed" : "record all required fixes")]
+    });
+    patchNode("trap_reference", {
+      subtitle: debugReady ? "debug allclose ready" : "debug allclose",
+      checks: [check("allclose", debugReady ? "pass" : "warn", debugReady ? "debug cases can run reference checks" : "finish debugger patch")]
+    });
+
+    patchNode("gauntlet_cases", {
+      subtitle: gauntletReady ? "4 hidden cases armed" : "hidden QK boards",
+      checks: [
+        check("A", slotCorrect("gauntlet_standard") ? "pass" : "warn", slotCorrect("gauntlet_standard") ? "standard case armed" : "arm standard QK^T case"),
+        check("B", slotCorrect("gauntlet_carry") ? "pass" : "warn", slotCorrect("gauntlet_carry") ? "carry-axis case armed" : "arm carry-axis variant")
+      ]
+    });
+    patchNode("hidden_reference", {
+      subtitle: slotCorrect("gauntlet_td_equal") ? "T==D trap covered" : "allclose + shape",
+      checks: [check("T==D", slotCorrect("gauntlet_td_equal") ? "pass" : "warn", slotCorrect("gauntlet_td_equal") ? "equal-size numeric trap covered" : "arm T==D hidden test")]
+    });
+    patchNode("gauntlet_result", {
+      subtitle: gauntletReady ? "ready to run" : "run final tests",
+      checks: [check("operand order", slotCorrect("gauntlet_operand_order") ? "pass" : "warn", slotCorrect("gauntlet_operand_order") ? "operand-order trap covered" : "arm operand-order hidden test")]
+    });
   }
 
   if (level.id === "0-4") {
-    const pos = tagLabel("pos_rail");
-    const bias = tagLabel("bias_rail");
-    const rule = tagLabel("broadcast_rule_slot");
-    const repaired = pos === "[T,C]" && bias === "[C]" && rule === "right";
-    patchNode("broadcast_rule", {
-      shape: repaired ? "[B,T,C]+[T,C]+[C]" : `[B,T,C]+${pos}+${bias}`,
-      subtitle: repaired ? "rail aligned" : "not aligned"
+    const slotCorrect = (slotId: string) => {
+      const slot = level.repair.slots.find((item) => item.id === slotId);
+      return slot ? slot.correctTagIds.includes(assignments[slotId]) : false;
+    };
+    const slotState = (slotId: string): CheckState => (slotCorrect(slotId) ? "pass" : assignments[slotId] ? "fail" : "warn");
+    const slotCheck = (slotId: string, label: string, passDetail: string, pendingDetail: string) =>
+      check(label, slotState(slotId), slotCorrect(slotId) ? passDetail : pendingDetail);
+    const slotsCorrect = (slotIds: string[]) => slotIds.every(slotCorrect);
+    const addReady = slotsCorrect(chapter04SlotIds("broadcast_add_cell"));
+    const sameReady = slotsCorrect(chapter04SlotIds("broadcast_same_shape_add"));
+    const ruleReady = slotsCorrect(chapter04SlotIds("broadcast_rule_lab"));
+    const biasReady = slotsCorrect(chapter04SlotIds("broadcast_bias_add"));
+    const positionReady = slotsCorrect(chapter04SlotIds("broadcast_position_add"));
+    const maskReady = slotsCorrect(chapter04SlotIds("broadcast_mask_add"));
+    const trapReady = slotsCorrect(chapter04SlotIds("broadcast_trap_debugger"));
+    const gauntletReady = slotsCorrect(chapter04SlotIds("broadcast_gauntlet"));
+
+    patchNode("scalar_a", {
+      subtitle: slotCorrect("cell_left_input") ? "connected to Add left" : "left cell",
+      checks: [slotCheck("cell_left_input", "A input", "Scalar A feeds the Add Gate.", "connect Scalar A into Add Gate")]
     });
-    patchNode("biased_out", { subtitle: repaired ? "broadcast repaired" : "broadcast sum" });
+    patchNode("scalar_b", {
+      subtitle: slotCorrect("cell_right_input") ? "connected to Add right" : "right cell",
+      checks: [slotCheck("cell_right_input", "B input", "Scalar B feeds the Add Gate.", "connect Scalar B into Add Gate")]
+    });
+    patchNode("add_gate_cell", {
+      subtitle: addReady ? "cell add locked" : "cell inputs open",
+      checks: [
+        slotCheck("cell_left_input", "left", "A[] connected", "left input missing"),
+        slotCheck("cell_right_input", "right", "B[] connected", "right input missing")
+      ]
+    });
+    patchNode("output_cell", {
+      subtitle: addReady ? "7.0 computed" : "waiting for trace",
+      sample: addReady ? ["out[] = 2.0 + 5.0", "computed by Add Gate"] : ["expected: 7.0", "must be computed, not typed manually"],
+      checks: [slotCheck("cell_trace_exact", "trace", "output source cells verified", "trace the output source cells")]
+    });
+    patchNode("cell_trace", {
+      subtitle: slotCorrect("cell_trace_exact") ? "source proof captured" : "source proof",
+      checks: [slotCheck("cell_trace_exact", "cell trace", "out[] <- A[] + B[]", "prove output source cells")]
+    });
+
+    patchNode("same_add_gate", {
+      subtitle: sameReady ? "same-shape add locked" : "same-shape gate",
+      shape: slotCorrect("same_left_shape") && slotCorrect("same_right_shape") ? "[T,C]+[T,C]" : "[?,?]+[?,?]",
+      checks: [
+        slotCheck("same_left_shape", "left shape", "left input is [T,C]", "set left operand to [T,C]"),
+        slotCheck("same_right_shape", "right shape", "right input is [T,C]", "set right operand to [T,C]")
+      ]
+    });
+    patchNode("same_out", {
+      subtitle: slotCorrect("same_output_shape") ? "shape preserved" : "waiting",
+      shape: slotCorrect("same_output_shape") ? "[T,C]" : "[?,?]",
+      checks: [slotCheck("same_output_shape", "output", "elementwise add preserves [T,C]", "output shape must remain [T,C]")]
+    });
+    patchNode("same_trace", {
+      subtitle: slotCorrect("same_trace_cell") ? "matching coordinates traced" : "cell provenance",
+      checks: [slotCheck("same_trace_cell", "grid trace", "out[t,c] uses matching source cells", "trace one output cell")]
+    });
+
+    patchNode("broadcast_rail_lab", {
+      subtitle: ruleReady ? "broadcast plans locked" : "plan incomplete",
+      shape: ruleReady ? "[B,T,C] compatible" : "[B][T][C]",
+      checks: [
+        slotCheck("rule_vector_c", "[C]", "[C] right-aligns under C", "right-align [C] to channel axis"),
+        slotCheck("rule_matrix_tc", "[T,C]", "missing B axis inserted", "insert leading singleton B"),
+        slotCheck("rule_singleton", "[1,T,1]", "singleton axes expand", "expand only length-1 axes")
+      ]
+    });
+    patchNode("ghost_expansion", {
+      subtitle: slotCorrect("rule_logical_view") ? "logical view, no copy" : "logical view",
+      checks: [slotCheck("rule_logical_view", "memory", "broadcast stays logical", "use Ghost Expansion instead of repeat")]
+    });
+    patchNode("plan_checker", {
+      subtitle: ruleReady ? "3 cases pass" : "3 cases",
+      checks: [check("broadcast lab", ruleReady ? "pass" : "warn", ruleReady ? "all broadcast rule lab cases pass" : "finish [C], [T,C], singleton, and logical view")]
+    });
+
+    patchNode("bias_o", {
+      subtitle: slotCorrect("bias_axis_o") ? "mounted on O axis" : "channel offsets",
+      checks: [slotCheck("bias axis", "O axis", "bias belongs to O", "align bias to output feature axis O")]
+    });
+    patchNode("bias_rail", {
+      subtitle: biasReady ? "B/T broadcast locked" : "O axis not mounted",
+      shape: slotCorrect("bias_expand_bt") ? "[1,1,O] -> [B,T,O]" : "[B,T,O] + [O]",
+      checks: [
+        slotCheck("bias_axis_o", "axis", "bias aligned to O", "mount bias on O axis"),
+        slotCheck("bias_expand_bt", "expand", "bias expands over B/T", "broadcast over B and T")
+      ]
+    });
+    patchNode("bias_add_gate", {
+      subtitle: biasReady ? "additive bias ready" : "bias add",
+      checks: [check("operation", biasReady ? "pass" : "warn", biasReady ? "projected[b,t,o] + bias[o]" : "finish bias axis, expansion, and trace")]
+    });
+    patchNode("bias_out", {
+      subtitle: biasReady ? "reference-ready output" : "waiting",
+      checks: [check("output", biasReady ? "pass" : "warn", biasReady ? "output stays [B,T,O]" : "bias broadcast contract incomplete")]
+    });
+    patchNode("bias_reference", {
+      subtitle: slotCorrect("bias_trace") ? "allclose trace armed" : "allclose",
+      checks: [slotCheck("bias_trace", "cell trace", "out[b,t,o] uses bias[o]", "trace the output bias source")]
+    });
+
+    patchNode("pos_sheet", {
+      subtitle: slotCorrect("position_align_tc") ? "T/C axes locked" : "T by C",
+      checks: [slotCheck("position_align_tc", "axes", "pos_emb owns T and C", "align position sheet to T and C")]
+    });
+    patchNode("position_rail", {
+      subtitle: positionReady ? "B broadcast locked" : "T/C not locked",
+      shape: slotCorrect("position_broadcast_b") ? "[1,T,C] -> [B,T,C]" : "[B,T,C] + [T,C]",
+      checks: [
+        slotCheck("position_align_tc", "T/C", "position axes preserved", "preserve T/C axes"),
+        slotCheck("position_broadcast_b", "B", "B is the only missing axis", "broadcast over B only")
+      ]
+    });
+    patchNode("position_add_gate", {
+      subtitle: positionReady ? "position add ready" : "position add",
+      checks: [check("operation", positionReady ? "pass" : "warn", positionReady ? "hidden[b,t,c] uses pos_emb[t,c]" : "finish position axes, B broadcast, and trace")]
+    });
+    patchNode("hidden_out", {
+      subtitle: positionReady ? "T variation preserved" : "waiting",
+      checks: [check("output", positionReady ? "pass" : "warn", positionReady ? "hidden stays [B,T,C]" : "position broadcast incomplete")]
+    });
+    patchNode("position_trace", {
+      subtitle: slotCorrect("position_keep_t") ? "not bias[C]" : "not bias",
+      checks: [slotCheck("position_keep_t", "semantic trace", "position-specific values retained", "prove pos_emb did not collapse into bias")]
+    });
+
+    patchNode("mask_rail", {
+      subtitle: maskReady ? "Tq/Tk + B/H locked" : "query/key alignment",
+      shape: slotCorrect("mask_expand_bh") ? "[1,1,Tq,Tk] -> [B,H,Tq,Tk]" : "[B,H,Tq,Tk] + mask",
+      checks: [
+        slotCheck("mask_tqtk_axes", "Tq/Tk", "mask axes match score axes", "align query/key token axes"),
+        slotCheck("mask_expand_bh", "B/H", "mask broadcasts over B/H", "broadcast singleton B/H axes")
+      ]
+    });
+    patchNode("mask_add_gate", {
+      subtitle: slotCorrect("mask_additive") ? "additive pre-softmax" : "mask add",
+      checks: [slotCheck("mask_additive", "operation", "scores + negative mask", "use additive negative mask, not multiplication")]
+    });
+    patchNode("masked_scores", {
+      subtitle: maskReady ? "future cells blocked" : "waiting",
+      checks: [check("masked scores", maskReady ? "pass" : "warn", maskReady ? "illegal future cells receive -1e9" : "mask broadcast contract incomplete")]
+    });
+    patchNode("illegal_cell_checker", {
+      subtitle: slotCorrect("mask_trace") ? "future cell traced" : "future cell",
+      checks: [slotCheck("mask_trace", "illegal cell", "future attention cell is blocked", "trace q,k orientation on one future cell")]
+    });
+
+    patchNode("trap_inspector", {
+      subtitle: slotCorrect("trap_right_align") ? "right alignment checked" : "debug order",
+      checks: [slotCheck("trap_right_align", "right align", "raw broadcast alignment checked", "start from rank and trailing-axis alignment")]
+    });
+    patchNode("semantic_warning", {
+      subtitle: slotCorrect("trap_bt_swap") ? "B/T trap caught" : "semantic trap",
+      checks: [slotCheck("trap_bt_swap", "B/T swap", "equal sizes no longer hide semantics", "catch B/T semantic swaps")]
+    });
+    patchNode("trace_probe_04", {
+      subtitle: slotCorrect("trap_pos_bias") ? "pos-as-bias caught" : "cell source",
+      checks: [slotCheck("trap_pos_bias", "pos bias", "position sheet did not collapse", "trace pos_emb[T,C] versus bias[C]")]
+    });
+    patchNode("trap_patch", {
+      subtitle: slotCorrect("trap_no_repeat") ? "logical patch" : "repair rules",
+      checks: [slotCheck("trap_no_repeat", "no repeat", "logical broadcast view preserved", "avoid materialized repeat")]
+    });
+    patchNode("trap_reference_04", {
+      subtitle: trapReady ? "debug reference ready" : "reference",
+      checks: [check("trap debugger", trapReady ? "pass" : "warn", trapReady ? "right-align, semantic traps, trace, and no-repeat checks pass" : "finish every trap debugger repair")]
+    });
+
+    patchNode("broadcast_gauntlet_cases", {
+      subtitle: gauntletReady ? "6 hidden cases armed" : "hidden cases",
+      checks: [
+        slotCheck("gauntlet_bias", "A", "bias hidden case armed", "arm bias hidden case"),
+        slotCheck("gauntlet_position", "B", "position hidden case armed", "arm position hidden case"),
+        slotCheck("gauntlet_singleton", "C", "singleton hidden case armed", "arm singleton hidden case")
+      ]
+    });
+    patchNode("broadcast_contract_terminal", {
+      subtitle: gauntletReady ? "contract generalized" : "contract terminal",
+      checks: [
+        slotCheck("gauntlet_mask", "D", "mask hidden case armed", "arm mask hidden case"),
+        slotCheck("gauntlet_equal_dim", "E", "equal-dim trap covered", "arm equal-dimension trap")
+      ]
+    });
+    patchNode("hidden_broadcast_reference", {
+      subtitle: gauntletReady ? "reference allclose armed" : "hidden reference",
+      checks: [slotCheck("gauntlet_semantic_trace", "F", "semantic trace armed", "arm semantic trace case")]
+    });
+    patchNode("broadcast_gauntlet_result", {
+      subtitle: gauntletReady ? "ready to run" : "run final tests",
+      checks: [check("hidden tests", gauntletReady ? "pass" : "warn", gauntletReady ? "Broadcast Gauntlet can run" : "complete all six hidden case slots")]
+    });
   }
 
   return nodes;
@@ -2664,7 +3926,10 @@ function ObjectiveTracker({
           done:
             challenge.phase === "hidden_contract_repair"
               ? areSlotsCorrect(level, repairState, challenge.slotIds) && repairState.observations.length >= 3
-              : challenge.phase === "hidden_test_gauntlet" || challenge.phase === "matmul_gauntlet"
+              : challenge.phase === "hidden_test_gauntlet" ||
+                  challenge.phase === "matmul_gauntlet" ||
+                  challenge.phase === "transpose_gauntlet" ||
+                  challenge.phase === "broadcast_gauntlet"
                 ? Boolean(result?.passed)
                 : areSlotsCorrect(level, repairState, challenge.slotIds),
           active: phase === challenge.phase
@@ -2700,14 +3965,18 @@ function BlueprintPalette({
   level,
   repairState,
   phase,
+  runLabel,
   onSelectTag,
-  onSelectProbe
+  onSelectProbe,
+  onRunTests
 }: {
   level: BootcampLevel;
   repairState: LevelRepairState;
   phase: LevelPhase;
+  runLabel: string;
   onSelectTag: (tagId: string) => void;
   onSelectProbe: (probeId: string) => void;
+  onRunTests?: () => void;
 }) {
   const tags = visiblePaletteTagsForPhase(level, phase);
   const probes = visibleProbesForPhase(level, phase);
@@ -2782,6 +4051,14 @@ function BlueprintPalette({
           ))}
         </div>
       ) : null}
+      {onRunTests ? (
+        <div className="paletteActions">
+          <button className="runButton paletteRunButton" type="button" onClick={onRunTests}>
+            <Play size={16} />
+            {runLabel}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2813,7 +4090,10 @@ function ChapterChallengeRail({
         const done =
           challenge.phase === "hidden_contract_repair"
             ? areSlotsCorrect(level, repairState, challenge.slotIds) && chapter01ProbeEvidenceReady(repairState.observations)
-            : challenge.phase === "hidden_test_gauntlet" || challenge.phase === "matmul_gauntlet"
+            : challenge.phase === "hidden_test_gauntlet" ||
+                challenge.phase === "matmul_gauntlet" ||
+                challenge.phase === "transpose_gauntlet" ||
+                challenge.phase === "broadcast_gauntlet"
               ? Boolean(result?.passed)
               : areSlotsCorrect(level, repairState, challenge.slotIds);
         return (

@@ -80,7 +80,22 @@ export type CanvasStageKnowledge = {
     | "batch_projection"
     | "weight_orientation"
     | "linear_assembly"
-    | "matmul_gauntlet";
+    | "matmul_gauntlet"
+    | "transpose_matrix_flip"
+    | "transpose_inner_dim"
+    | "transpose_higher_rank"
+    | "transpose_single_qk"
+    | "transpose_multi_qk"
+    | "transpose_debugger"
+    | "transpose_gauntlet"
+    | "broadcast_add_cell"
+    | "broadcast_same_shape"
+    | "broadcast_rule"
+    | "broadcast_bias"
+    | "broadcast_position"
+    | "broadcast_mask"
+    | "broadcast_debugger"
+    | "broadcast_gauntlet";
   carryForward?: string;
 };
 
@@ -929,6 +944,51 @@ function drawStageVisual(layer: Container, visual: CanvasStageKnowledge["visual"
     case "matmul_gauntlet":
       drawMatMulStageVisual(layer, x + 14, y + 15, "A/B/C", "hidden", "pass");
       break;
+    case "transpose_matrix_flip":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "A[R,C]", "T", "A^T[C,R]");
+      break;
+    case "transpose_inner_dim":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "A[M,N]", "T(B)", "[M,P]");
+      break;
+    case "transpose_higher_rank":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "[B,H,T,D]", "-2<->-1", "[B,H,D,T]");
+      break;
+    case "transpose_single_qk":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "Q[T,D]", "K^T", "scores[T,T]");
+      break;
+    case "transpose_multi_qk":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "Q[B,H,T,D]", "K^T", "[B,H,T,T]");
+      break;
+    case "transpose_debugger":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "axis", "cell trace", "allclose");
+      break;
+    case "transpose_gauntlet":
+      drawMatMulStageVisual(layer, x + 14, y + 15, "T==D", "hidden", "pass");
+      break;
+    case "broadcast_add_cell":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "A[]", "+ B[]", "out[]", "one cell, two sources");
+      break;
+    case "broadcast_same_shape":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "[T,C]", "+ [T,C]", "[T,C]", "same coordinates");
+      break;
+    case "broadcast_rule":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "[C]", "view", "[B,T,C]", "right-align + singleton axes");
+      break;
+    case "broadcast_bias":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "bias[O]", "*B/*T", "[B,T,O]", "feature-axis offset");
+      break;
+    case "broadcast_position":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "pos[T,C]", "*B", "[B,T,C]", "keep token position");
+      break;
+    case "broadcast_mask":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "mask", "+ -1e9", "scores", "Tq/Tk aligned");
+      break;
+    case "broadcast_debugger":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "shape", "trace", "semantic", "shape-valid traps");
+      break;
+    case "broadcast_gauntlet":
+      drawBroadcastStageVisual(layer, x + 14, y + 15, "A-F", "hidden", "pass", "generalize contract");
+      break;
   }
 }
 
@@ -1073,6 +1133,37 @@ function drawMatMulStageVisual(layer: Container, x: number, y: number, leftLabel
   drawMatrixGlyph(layer, x + 92, y, 3, 4, 6, 0xa78bfa);
   drawVectorGlyph(layer, x + 174, y + 3, 4, 0x22c55e);
   addText(layer, "consume C -> generate O", x + 105, y + 78, 9, 0x9db2ca, "800", 0.5);
+}
+
+function drawBroadcastStageVisual(layer: Container, x: number, y: number, leftLabel: string, opLabel: string, rightLabel: string, footer: string) {
+  const nodes = [
+    { label: leftLabel, x, color: 0x24608a },
+    { label: opLabel, x: x + 82, color: 0x304b6a },
+    { label: rightLabel, x: x + 164, color: 0x1f6f54 }
+  ];
+
+  nodes.forEach((item, index) => {
+    const box = new Graphics();
+    box.roundRect(item.x, y + 28, 58, 30, 6).fill({ color: item.color, alpha: 0.82 }).stroke({ width: 1, color: 0x7dd3fc, alpha: index === 1 ? 0.5 : 0.34 });
+    layer.addChild(box);
+    addText(layer, item.label, item.x + 29, y + 44, 8, 0xe8f2ff, "900", 0.5);
+  });
+
+  drawSmallArrow(layer, { x: x + 61, y: y + 43 }, { x: x + 78, y: y + 43 }, 0x60a5fa);
+  drawSmallArrow(layer, { x: x + 143, y: y + 43 }, { x: x + 160, y: y + 43 }, 0x60a5fa);
+  drawVectorGlyph(layer, x + 6, y + 4, 4, 0x7dd3fc);
+  drawBroadcastGhostGlyph(layer, x + 89, y + 4);
+  drawMatrixGlyph(layer, x + 174, y + 2, 3, 4, 6, 0x22c55e);
+  addText(layer, footer, x + 105, y + 78, 9, 0x9db2ca, "800", 0.5);
+}
+
+function drawBroadcastGhostGlyph(layer: Container, x: number, y: number) {
+  const ghost = new Graphics();
+  for (let i = 0; i < 3; i += 1) {
+    ghost.roundRect(x + i * 10, y + i * 3, 38, 22, 5).stroke({ width: 1, color: 0xa78bfa, alpha: 0.32 + i * 0.18 });
+  }
+  ghost.circle(x + 18, y + 12, 3).fill({ color: 0xa78bfa, alpha: 0.8 });
+  layer.addChild(ghost);
 }
 
 function drawScalarGlyph(layer: Container, x: number, y: number, label: string) {

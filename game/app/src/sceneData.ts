@@ -1,8 +1,8 @@
 import type { TensorEdge, TensorNode, TraceStep, WorkbenchMode } from "./workbenchTypes";
 
 export const sceneSize = {
-  width: 1240,
-  height: 640
+  width: 1440,
+  height: 900
 };
 
 export const modeLabels: Record<WorkbenchMode, { label: string; title: string; description: string }> = {
