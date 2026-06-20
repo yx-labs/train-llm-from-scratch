@@ -242,6 +242,972 @@ h3 {
   min-height: 0;
 }
 
+.graphAppShell {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.graphWorkbench {
+  display: grid;
+  grid-template-columns: clamp(250px, 18vw, 330px) minmax(0, 1fr) clamp(310px, 23vw, 410px);
+  gap: 8px;
+  min-height: 0;
+  padding: 0 8px 8px;
+}
+
+.graphSidebar,
+.graphStage,
+.graphInspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.graphSidebar,
+.graphInspector {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.graphLevelList,
+.graphModuleList,
+.graphResultList {
+  display: grid;
+  gap: 8px;
+}
+
+.graphLevelButton,
+.graphModuleItem,
+.graphResultItem,
+.graphRunPanel,
+.graphRankPanel,
+.graphInspectorBlock {
+  border: 1px solid #263b55;
+  border-radius: 7px;
+  background: rgba(9, 20, 35, 0.78);
+}
+
+.graphLevelButton {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px;
+  color: #dbeafe;
+  text-align: left;
+}
+
+.graphLevelButton.active {
+  border-color: #60a5fa;
+  background: rgba(16, 35, 58, 0.95);
+}
+
+.graphLevelButton small,
+.graphModuleItem small,
+.graphStageHeader small,
+.graphResultItem small,
+.graphRunPanel p {
+  color: #8aa6bf;
+  line-height: 1.35;
+}
+
+.graphModuleList {
+  min-height: 0;
+  overflow: auto;
+}
+
+.graphModuleItem {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 9px;
+  color: #dbeafe;
+  text-align: left;
+  cursor: grab;
+}
+
+.graphModuleItem:active {
+  cursor: grabbing;
+}
+
+.graphStage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(142px, 24vh);
+  gap: 10px;
+}
+
+.graphStageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.graphRunBar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.graphRunBar .runButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.graphRunBar .ghostButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.graphCanvas {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #20344f;
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(96, 165, 250, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 165, 250, 0.06) 1px, transparent 1px),
+    rgba(4, 10, 19, 0.72);
+  background-size: 28px 28px;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.graphCanvas:active {
+  cursor: grabbing;
+}
+
+.graphCanvas.dragOver {
+  border-color: #38bdf8;
+  background:
+    linear-gradient(rgba(125, 211, 252, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.1) 1px, transparent 1px),
+    rgba(8, 47, 73, 0.36);
+  background-size: 28px 28px;
+}
+
+.graphCanvas.wiring {
+  border-color: #fbbf24;
+}
+
+.graphCanvasHud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  pointer-events: none;
+}
+
+.graphCanvasHud span,
+.graphCanvasHud code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid rgba(49, 95, 148, 0.7);
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.86);
+  color: #bfdbfe;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.graphCanvasToolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+}
+
+.graphCanvasToolbar .iconButton {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: rgba(7, 17, 31, 0.9);
+}
+
+.graphCanvasModulePalette {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 6;
+  display: grid;
+  gap: 7px;
+  width: min(620px, calc(100% - 20px));
+  padding: 8px;
+  border: 1px solid rgba(49, 95, 148, 0.78);
+  border-radius: 8px;
+  background: rgba(7, 17, 31, 0.9);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+}
+
+.graphCanvasModulePaletteHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.graphCanvasModulePaletteHeader b {
+  color: #e8f2ff;
+  font-size: 0.78rem;
+}
+
+.graphCanvasModulePaletteHeader code {
+  padding: 3px 7px;
+  border: 1px solid rgba(49, 95, 148, 0.62);
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.68rem;
+}
+
+.graphCanvasModuleList {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.graphModuleItem.canvas {
+  flex: 0 0 136px;
+  min-height: 48px;
+  padding: 8px;
+}
+
+.graphModuleItem.canvas small {
+  color: #93c5fd;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.graphWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.graphEdgeLayer {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.graphEdge {
+  pointer-events: visiblePainted;
+}
+
+.graphEdgeLayer path {
+  fill: none;
+  stroke: #60a5fa;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.75;
+  pointer-events: stroke;
+  transition: stroke 140ms ease, stroke-width 140ms ease, opacity 140ms ease;
+}
+
+.graphEdgeLayer .graphWirePreview {
+  stroke: #fbbf24;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 8;
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.graphEdge:hover path,
+.graphEdge.selected path {
+  stroke: #fbbf24;
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.graphEdgeLayer text {
+  fill: #9db2ca;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.graphEdge.selected text {
+  fill: #fde68a;
+}
+
+.graphNode {
+  position: absolute;
+  display: grid;
+  gap: 9px;
+  width: 190px;
+  min-height: 118px;
+  padding: 9px 10px 10px;
+  border: 1px solid #315f94;
+  border-radius: 8px;
+  background: rgba(12, 27, 47, 0.96);
+  color: #e8f2ff;
+  text-align: left;
+  cursor: grab;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.graphNode:active {
+  cursor: grabbing;
+}
+
+.graphNodeHeader {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.graphNodeHeader span {
+  width: max-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #10233a;
+  color: #93c5fd;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.graphNode small {
+  color: #9db2ca;
+}
+
+.graphNode.selected {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+}
+
+.graphNode.failed {
+  border-color: #fb7185;
+  box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.18);
+}
+
+.graphPorts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.graphPortColumn {
+  display: grid;
+  gap: 5px;
+}
+
+.graphPortColumn.out {
+  justify-items: end;
+}
+
+.graphPort {
+  display: inline-grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 5px;
+  border: 1px solid rgba(49, 95, 148, 0.72);
+  border-radius: 999px;
+  background: #07111f;
+  color: #cfe1f5;
+  font-size: 0.68rem;
+  text-align: left;
+  cursor: crosshair;
+}
+
+.graphPort.out {
+  grid-template-columns: minmax(0, 1fr) 9px;
+}
+
+.graphPort.out span {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.graphPort.out b {
+  grid-column: 1;
+  grid-row: 1;
+  text-align: right;
+}
+
+.graphPort span {
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: #0b1728;
+}
+
+.graphPort.in {
+  color: #93c5fd;
+}
+
+.graphPort.out {
+  color: #86efac;
+}
+
+.graphPort.armed {
+  border-color: #fbbf24;
+  background: rgba(67, 39, 11, 0.72);
+  color: #fde68a;
+}
+
+.graphPort.connectable {
+  border-color: rgba(34, 197, 94, 0.72);
+  background: rgba(20, 83, 45, 0.44);
+  color: #bbf7d0;
+}
+
+.graphPort.incompatible {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.62);
+  color: #64748b;
+}
+
+.graphPort b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphInspector {
+  overflow-y: auto;
+}
+
+.graphInspectorBlock,
+.graphRunPanel {
+  padding: 10px;
+}
+
+.graphInspectorBlock pre {
+  max-height: 150px;
+  margin: 10px 0 0;
+  overflow: auto;
+  color: #dbeafe;
+  white-space: pre-wrap;
+}
+
+.graphTracePanel {
+  min-height: 0;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid #20344f;
+  border-radius: 8px;
+  background: rgba(4, 10, 19, 0.72);
+}
+
+.graphTraceHeader,
+.graphTraceCaseHeader,
+.graphInspectorTabs,
+.graphKeyValue,
+.graphShapeRecord div {
+  display: flex;
+  align-items: center;
+}
+
+.graphTraceHeader,
+.graphTraceCaseHeader {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.graphTraceHeader {
+  margin-bottom: 8px;
+}
+
+.graphTraceHeader h3 {
+  margin-bottom: 0;
+}
+
+.graphTraceHeader code,
+.graphTraceCaseHeader code {
+  padding: 4px 7px;
+  border: 1px solid rgba(49, 95, 148, 0.7);
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.68rem;
+}
+
+.graphTraceRuns {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100% - 42px);
+  overflow: auto;
+}
+
+.graphTraceCase {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #263b55;
+  border-radius: 7px;
+  background: rgba(9, 20, 35, 0.78);
+}
+
+.graphTraceCase.pass {
+  border-color: rgba(34, 197, 94, 0.38);
+}
+
+.graphTraceCase.fail,
+.graphTraceCase.blocked {
+  border-color: rgba(251, 113, 133, 0.45);
+}
+
+.graphTraceCaseHeader span {
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.graphTraceCaseHeader b {
+  min-width: 0;
+  color: #e8f2ff;
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphTraceSteps {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.graphTraceStep {
+  display: grid;
+  grid-template-columns: 22px minmax(92px, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 7px;
+  min-width: 142px;
+  min-height: 46px;
+  padding: 6px 8px;
+  border: 1px solid rgba(49, 95, 148, 0.62);
+  border-radius: 7px;
+  background: #07111f;
+  color: #dbeafe;
+  text-align: left;
+}
+
+.graphTraceStep span {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(96, 165, 250, 0.54);
+  border-radius: 999px;
+  color: #93c5fd;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.68rem;
+}
+
+.graphTraceStep b,
+.graphTraceStep small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphTraceStep b {
+  font-size: 0.78rem;
+}
+
+.graphTraceStep small {
+  color: #8aa6bf;
+  font-size: 0.68rem;
+}
+
+.graphTraceStep.fail {
+  border-color: rgba(251, 113, 133, 0.55);
+}
+
+.graphTraceStep.fail span {
+  border-color: rgba(251, 113, 133, 0.7);
+  color: #fecdd3;
+}
+
+.graphTraceStep.selected {
+  border-color: #fbbf24;
+  background: rgba(67, 39, 11, 0.46);
+}
+
+.graphTraceEmpty {
+  margin: 0;
+  color: #8aa6bf;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.graphInspectorTabs {
+  gap: 5px;
+  margin: 10px 0;
+  padding: 4px;
+  border: 1px solid #263b55;
+  border-radius: 8px;
+  background: #07111f;
+}
+
+.graphInspectorTabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #9db2ca;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.graphInspectorTabs button.active {
+  border-color: #60a5fa;
+  background: #10233a;
+  color: #e8f2ff;
+}
+
+.graphInspectorTabBody {
+  display: grid;
+  gap: 10px;
+}
+
+.graphKeyValue {
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(49, 95, 148, 0.48);
+  border-radius: 7px;
+  background: #07111f;
+}
+
+.graphKeyValue span {
+  flex: 0 0 74px;
+  color: #8aa6bf;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.graphKeyValue code {
+  min-width: 0;
+  color: #dbeafe;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.graphShapeRecord,
+.graphFailureReport {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid #263b55;
+  border-radius: 7px;
+  background: rgba(7, 17, 31, 0.72);
+}
+
+.graphShapeRecord h4,
+.graphFailureReport h4,
+.graphInspectorTabBody h4 {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 0.82rem;
+}
+
+.graphShapeRecord div {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.graphShapeRecord span {
+  color: #8aa6bf;
+  font-size: 0.74rem;
+}
+
+.graphShapeRecord code {
+  color: #bfdbfe;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.graphValueBlock,
+.graphCodeBlock {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid #263b55;
+  border-radius: 7px;
+  background: #07111f;
+  color: #dbeafe;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.graphFailureReport {
+  border-color: rgba(251, 113, 133, 0.45);
+  background: rgba(69, 10, 10, 0.32);
+}
+
+.graphFailureReport > b {
+  color: #fecdd3;
+  font-size: 0.82rem;
+}
+
+.graphFailureReport > p {
+  margin: 0;
+  color: #f8d8a8;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.graphInspectorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.graphInspectorActions .ghostButton {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.graphParamEditor {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #263b55;
+}
+
+.graphParamHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.graphParamHeader b {
+  color: #e8f2ff;
+  font-size: 0.86rem;
+}
+
+.graphParamHeader code {
+  padding: 3px 7px;
+  border: 1px solid rgba(49, 95, 148, 0.7);
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.68rem;
+}
+
+.graphParamRows {
+  display: grid;
+  gap: 7px;
+}
+
+.graphParamRow {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.78fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.graphParamRow span {
+  min-width: 0;
+  color: #9db2ca;
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphParamRow input,
+.graphParamRow select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #315f94;
+  border-radius: 7px;
+  background: #07111f;
+  color: #e8f2ff;
+}
+
+.graphParamRow input[type="text"],
+.graphParamRow input[type="number"],
+.graphParamRow select {
+  padding: 0 8px;
+}
+
+.graphParamRow.boolean {
+  grid-template-columns: minmax(92px, 0.78fr) auto;
+  justify-content: space-between;
+}
+
+.graphParamRow.boolean input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  accent-color: #38bdf8;
+}
+
+.graphParamRow.readonly {
+  grid-template-columns: minmax(92px, 0.78fr) minmax(0, 1fr);
+}
+
+.graphParamRow.readonly code {
+  min-width: 0;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid rgba(49, 95, 148, 0.56);
+  border-radius: 7px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphParamRow.readonly small {
+  grid-column: 2;
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.graphRunPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.graphRunPanel.pass {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.graphRankPanel {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.graphRankPanel.s,
+.graphRankPanel.a {
+  border-color: rgba(34, 197, 94, 0.54);
+  background: rgba(20, 83, 45, 0.24);
+}
+
+.graphRankPanel.b,
+.graphRankPanel.c {
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.graphRankPanel p {
+  margin: 0;
+  color: #bfd3e8;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.graphRankStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.graphRankStats code {
+  padding: 4px 6px;
+  border: 1px solid rgba(49, 95, 148, 0.56);
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.68rem;
+}
+
+.graphDebriefBox {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  border-radius: 7px;
+  background: rgba(5, 46, 22, 0.36);
+}
+
+.graphDebriefBox b {
+  color: #dcfce7;
+  font-size: 0.82rem;
+}
+
+.graphDebriefBox small {
+  color: #bbf7d0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.graphRunPanel.fail,
+.graphRunPanel.blocked {
+  border-color: rgba(251, 113, 133, 0.5);
+}
+
+.graphResultItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+
+.graphResultItem span {
+  min-width: 0;
+}
+
+.graphResultItem b,
+.graphResultItem small {
+  display: block;
+}
+
+.graphResultItem small {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.graphResultItem.pass {
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+.graphResultItem.fail,
+.graphResultItem.blocked {
+  border-color: rgba(251, 113, 133, 0.45);
+}
+
 .rightStack {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -3300,6 +4266,15 @@ h3 {
 }
 
 @media (max-width: 1280px) {
+  .graphWorkbench {
+    grid-template-columns: clamp(220px, 24vw, 290px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(260px, 34vh);
+  }
+
+  .graphInspector {
+    grid-column: 1 / -1;
+  }
+
   .workbenchGrid {
     grid-template-columns: clamp(210px, 22vw, 260px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(260px, 36vh);
@@ -3357,6 +4332,17 @@ h3 {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(560px, auto) auto auto;
     padding: 0 8px 8px;
+  }
+
+  .graphWorkbench {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(560px, 72vh) auto;
+    padding: 0 8px 8px;
+  }
+
+  .graphSidebar,
+  .graphInspector {
+    overflow: visible;
   }
 
   .rightStack {

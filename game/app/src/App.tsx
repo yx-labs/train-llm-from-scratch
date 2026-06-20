@@ -11,6 +11,7 @@ import {
   type RepairSlotOverlay
 } from "./PixiWorkbenchCanvas";
 import { modeLabels } from "./sceneData";
+import { GraphWorkbench } from "./gameplayGraph/ui/GraphWorkbench";
 import type {
   BootcampAnswerMap,
   BootcampLevel,
@@ -2201,6 +2202,7 @@ export function App() {
   const [initialProgress] = useState<BootcampProgressSave>(() => readBootcampProgressSave());
   const initialSelectedLevelId = resolveSavedLevelId(initialProgress.selectedLevelId);
   const initialSelectedLevel = bootcampLevels.find((level) => level.id === initialSelectedLevelId) ?? bootcampLevels[0];
+  const [experienceMode, setExperienceMode] = useState<"guided" | "graph">("graph");
   const [mode, setMode] = useState<WorkbenchMode>("build");
   const [selectedLevelId, setSelectedLevelId] = useState(initialSelectedLevel.id);
   const [selectedId, setSelectedId] = useState(initialSelectedLevel.defaultSelectedNodeId);
@@ -2696,6 +2698,42 @@ export function App() {
     setPlaying(true);
   }
 
+  if (experienceMode === "graph") {
+    return (
+      <main className="appShell graphAppShell">
+        <header className="topBar">
+          <div className="brand">
+            <div className="brandMark">
+              <Boxes size={28} />
+            </div>
+            <div>
+              <p className="eyebrow">LLM Complete / MVP 0.0.5-dev</p>
+              <h1>Graph Challenge Workbench</h1>
+            </div>
+          </div>
+          <div className="topControls">
+            <div className="modeSwitch" aria-label="experience mode">
+              <button className="modeButton" onClick={() => setExperienceMode("guided")}>
+                <Wrench size={17} />
+                Guided Repair
+              </button>
+              <button className="modeButton active" onClick={() => setExperienceMode("graph")}>
+                <Boxes size={17} />
+                Graph Challenge
+              </button>
+            </div>
+          </div>
+        </header>
+        <section className="statusStrip">
+          <StatusPill label="Mode" value="Graph Challenge" />
+          <StatusPill label="Runtime" value="GraphSpec / ModuleRegistry / Tiny Runtime / Test Runner" />
+          <StatusPill label="Goal" value="Build-Test-Debug vertical slice" />
+        </section>
+        <GraphWorkbench />
+      </main>
+    );
+  }
+
   return (
     <main className="appShell">
       <header className="topBar">
@@ -2709,6 +2747,16 @@ export function App() {
           </div>
         </div>
         <div className="topControls">
+          <div className="modeSwitch" aria-label="experience mode">
+            <button className="modeButton active" onClick={() => setExperienceMode("guided")}>
+              <Wrench size={17} />
+              Guided Repair
+            </button>
+            <button className="modeButton" onClick={() => setExperienceMode("graph")}>
+              <Boxes size={17} />
+              Graph Challenge
+            </button>
+          </div>
           <div className="modeSwitch" aria-label="workbench mode">
             {(Object.keys(modeLabels) as WorkbenchMode[]).map((modeKey) => (
               <button key={modeKey} className={mode === modeKey ? "modeButton active" : "modeButton"} onClick={() => setMode(modeKey)}>

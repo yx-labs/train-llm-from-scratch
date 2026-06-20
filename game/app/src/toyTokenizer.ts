@@ -5,8 +5,13 @@ export type ToyTokenizerOptions = {
   applyMerges?: boolean;
   fallback?: "none" | "char" | "unk";
   addSpecialTokens?: boolean;
+  addBos?: boolean;
+  addEos?: boolean;
+  preservePunctuation?: boolean;
   maxLength?: number;
   padToLength?: number;
+  padSide?: "left" | "right";
+  maskPolicy?: "pad-aware" | "all-ones";
 };
 
 export type ToyTokenizerResult = {
@@ -73,8 +78,12 @@ export const hiddenTextSet = ["we train useful tokenizers.", "unknown glyph ?", 
 
 const punctuation = new Set([",", ".", "!", "?", ":", ";", "(", ")", "[", "]"]);
 
-export function splitTextToPieces(text: string, policy: TokenizerPolicy = "subword") {
-  if (policy === "char") return Array.from(text).map((char) => (char === " " ? "_" : char));
+export function splitTextToPieces(text: string, policy: TokenizerPolicy = "subword", preservePunctuation = true) {
+  if (policy === "char") {
+    return Array.from(text)
+      .filter((char) => preservePunctuation || !punctuation.has(char))
+      .map((char) => (char === " " ? "_" : char));
+  }
 
   const normalized = text.trim().toLowerCase();
   const words: string[] = [];
@@ -87,7 +96,7 @@ export function splitTextToPieces(text: string, policy: TokenizerPolicy = "subwo
     }
     if (punctuation.has(char)) {
       if (current) words.push(current);
-      words.push(char);
+      if (preservePunctuation) words.push(char);
       current = "";
       return;
     }
@@ -145,12 +154,10 @@ export function resolveToyPieces(pieces: string[], fallback: ToyTokenizerOptions
         else if (fallback === "char" && toyVocab[char.toLowerCase()] !== undefined) tokens.push(char.toLowerCase());
         else tokens.push("<unk>");
       });
-      if (chars.some((char) => toyVocab[char] === undefined && toyVocab[char.toLowerCase()] === undefined)) unresolved.push(piece);
       return;
     }
     if (fallback === "unk") {
       tokens.push("<unk>");
-      unresolved.push(piece);
       return;
     }
     unresolved.push(piece);
@@ -161,29 +168,33 @@ export function resolveToyPieces(pieces: string[], fallback: ToyTokenizerOptions
 
 export function encodeToyText(text: string, options: ToyTokenizerOptions = {}): ToyTokenizerResult {
   const policy = options.policy ?? "subword";
-  const initialPieces = splitTextToPieces(text, policy);
+  const initialPieces = splitTextToPieces(text, policy, options.preservePunctuation ?? true);
   const pieces = options.applyMerges === false ? initialPieces : applyToyMerges(initialPieces);
   const resolved = resolveToyPieces(pieces, options.fallback ?? "unk");
-  let tokens = options.addSpecialTokens === false ? resolved.tokens : ["<bos>", ...resolved.tokens, "<eos>"];
+  const addBos = options.addBos ?? options.addSpecialTokens !== false;
+  const addEos = options.addEos ?? options.addSpecialTokens !== false;
+  let tokens = [...(addBos ? ["<bos>"] : []), ...resolved.tokens, ...(addEos ? ["<eos>"] : [])];
   let truncated = false;
 
   if (options.maxLength !== undefined && tokens.length > options.maxLength) {
     tokens = tokens.slice(0, options.maxLength);
     truncated = true;
-    if (options.addSpecialTokens !== false && tokens[tokens.length - 1] !== "<eos>") tokens[tokens.length - 1] = "<eos>";
+    if (addEos && tokens.length > 0 && tokens[tokens.length - 1] !== "<eos>") tokens[tokens.length - 1] = "<eos>";
   }
 
   const padToLength = options.padToLength;
   if (padToLength !== undefined && tokens.length < padToLength) {
-    tokens = [...tokens, ...Array.from({ length: padToLength - tokens.length }, () => "<pad>")];
+    const pads = Array.from({ length: padToLength - tokens.length }, () => "<pad>");
+    tokens = options.padSide === "left" ? [...pads, ...tokens] : [...tokens, ...pads];
   }
+  const attentionMask = options.maskPolicy === "all-ones" ? tokens.map(() => 1) : tokens.map((token) => (token === "<pad>" ? 0 : 1));
 
   return {
     text,
     pieces,
     tokens,
     ids: tokens.map((token) => toyVocab[token] ?? toyVocab["<unk>"]),
-    attentionMask: tokens.map((token) => (token === "<pad>" ? 0 : 1)),
+    attentionMask,
     unresolved: resolved.unresolved,
     truncated
   };
