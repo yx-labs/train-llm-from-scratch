@@ -248,10 +248,72 @@ h3 {
 
 .graphWorkbench {
   display: grid;
-  grid-template-columns: clamp(250px, 18vw, 330px) minmax(0, 1fr) clamp(310px, 23vw, 410px);
-  gap: 8px;
+  grid-template-columns:
+    minmax(210px, var(--graph-sidebar-width, 285px))
+    8px
+    minmax(480px, 1fr)
+    8px
+    minmax(280px, var(--graph-inspector-width, 365px));
+  gap: 0;
   min-height: 0;
   padding: 0 8px 8px;
+}
+
+.graphResizeHandle {
+  position: relative;
+  z-index: 7;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+
+.graphResizeHandle.vertical {
+  cursor: col-resize;
+}
+
+.graphResizeHandle.horizontal {
+  cursor: row-resize;
+}
+
+.graphResizeHandle::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.42);
+  opacity: 0.68;
+  transition: background 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.graphResizeHandle.vertical::after {
+  top: 10px;
+  bottom: 10px;
+  left: 3px;
+  width: 2px;
+}
+
+.graphResizeHandle.horizontal::after {
+  top: 3px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+}
+
+.graphResizeHandle:hover::after,
+.graphResizeHandle:focus-visible::after {
+  background: #38bdf8;
+  opacity: 1;
+}
+
+.graphResizeHandle.vertical:hover::after,
+.graphResizeHandle.vertical:focus-visible::after {
+  transform: scaleX(1.7);
+}
+
+.graphResizeHandle.horizontal:hover::after,
+.graphResizeHandle.horizontal:focus-visible::after {
+  transform: scaleY(1.7);
 }
 
 .graphSidebar,
@@ -281,6 +343,7 @@ h3 {
 .graphResultItem,
 .graphRunPanel,
 .graphRankPanel,
+.graphMissionPanel,
 .graphInspectorBlock {
   border: 1px solid #263b55;
   border-radius: 7px;
@@ -330,9 +393,10 @@ h3 {
 }
 
 .graphStage {
+  position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(142px, 24vh);
-  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr) 8px minmax(112px, var(--graph-trace-height, 178px));
+  gap: 0;
 }
 
 .graphStageHeader {
@@ -340,6 +404,7 @@ h3 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
+  margin-bottom: 10px;
 }
 
 .graphRunBar {
@@ -357,6 +422,128 @@ h3 {
 .graphRunBar .ghostButton:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.graphMissionOverlay {
+  position: absolute;
+  inset: 62px 12px 12px;
+  z-index: 12;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18px;
+  background: linear-gradient(rgba(2, 6, 23, 0.58), rgba(2, 6, 23, 0.18));
+  pointer-events: none;
+}
+
+.graphMissionPanel {
+  display: grid;
+  gap: 12px;
+  width: min(760px, calc(100% - 16px));
+  max-height: min(620px, calc(100% - 20px));
+  overflow: auto;
+  padding: 14px;
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(7, 17, 31, 0.96);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.46);
+  pointer-events: auto;
+}
+
+.graphMissionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graphMissionHeader h3 {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.graphMissionHeader .iconButton {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: #07111f;
+}
+
+.graphMissionCopy,
+.graphMissionSteps,
+.graphNextCoach {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.graphMissionCopy b {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.graphMissionCopy small,
+.graphMissionSteps small,
+.graphNextCoach small {
+  color: #9db2ca;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.graphMissionSteps {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.graphMissionSteps > div {
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 1px solid rgba(49, 95, 148, 0.48);
+  border-radius: 7px;
+  background: rgba(7, 17, 31, 0.62);
+}
+
+.graphMissionSteps b,
+.graphNextCoach b {
+  color: #dbeafe;
+  font-size: 0.76rem;
+}
+
+.graphMissionChecklist {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.graphMissionChecklist span {
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 1px solid rgba(49, 95, 148, 0.56);
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphMissionChecklist span.done {
+  border-color: rgba(34, 197, 94, 0.52);
+  color: #bbf7d0;
+}
+
+.graphMissionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .graphCanvas {
@@ -498,6 +685,42 @@ h3 {
   top: 0;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+.targetGhostLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.targetGhostEdge path {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.38);
+  stroke-width: 2;
+  stroke-dasharray: 9 8;
+}
+
+.targetGhostEdge.matched path {
+  stroke: rgba(34, 197, 94, 0.34);
+  stroke-dasharray: 0;
+}
+
+.targetGhostNode rect {
+  fill: rgba(15, 23, 42, 0.16);
+  stroke: rgba(148, 163, 184, 0.34);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 7;
+}
+
+.targetGhostNode.matched rect {
+  stroke: rgba(34, 197, 94, 0.28);
+}
+
+.targetGhostNode text {
+  fill: rgba(203, 213, 225, 0.42);
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .graphEdgeLayer {
@@ -1101,6 +1324,13 @@ h3 {
   font-size: 0.68rem;
 }
 
+.graphParamRow > small {
+  grid-column: 2;
+  color: #7f98b4;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
 .graphRunPanelHeader {
   display: flex;
   align-items: center;
@@ -1206,6 +1436,23 @@ h3 {
 .graphResultItem.fail,
 .graphResultItem.blocked {
   border-color: rgba(251, 113, 133, 0.45);
+}
+
+.graphResultActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.graphResultActions button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(49, 95, 148, 0.72);
+  border-radius: 7px;
+  background: #07111f;
+  color: #cfe1f5;
+  font-size: 0.7rem;
 }
 
 .rightStack {
@@ -4269,10 +4516,15 @@ h3 {
   .graphWorkbench {
     grid-template-columns: clamp(220px, 24vw, 290px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(260px, 34vh);
+    gap: 8px;
   }
 
   .graphInspector {
     grid-column: 1 / -1;
+  }
+
+  .graphResizeHandle.vertical {
+    display: none;
   }
 
   .workbenchGrid {
@@ -4343,6 +4595,15 @@ h3 {
   .graphSidebar,
   .graphInspector {
     overflow: visible;
+  }
+
+  .graphMissionOverlay {
+    inset: 56px 8px 8px;
+    padding-top: 10px;
+  }
+
+  .graphMissionSteps {
+    grid-template-columns: 1fr;
   }
 
   .rightStack {

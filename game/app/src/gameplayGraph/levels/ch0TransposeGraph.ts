@@ -25,13 +25,8 @@ export const ch0TransposeGraph: LevelSpec = {
   chapter: "Chapter 0",
   goal: "Build scores[b,h,i,j] = dot(Q[b,h,i,:], K[b,h,j,:]) by wiring Q[B,H,T,D] @ K.transpose(-2,-1)[B,H,D,T].",
   modulePalette: ["InputTensor", "TransposeSwitch", "AxisLock", "MatMulGate", "ScoreBoard", "CellTrace", "ReferenceChecker"],
-  initialGraph: {
-    levelId: "ch0_3_transpose_graph",
-    version: 1,
-    nodes: [],
-    edges: [],
-    outputNodes: ["score_board", "cell_trace", "reference"]
-  },
+  initialGraph: createCh0TransposeNoKTransposeGraph(),
+  targetGraph: createCh0TransposeSolutionGraph(),
   constraints: {
     maxNodes: 9,
     maxEdges: 10,
@@ -105,6 +100,21 @@ export const ch0TransposeGraph: LevelSpec = {
       ]
     }
   ],
+  onboarding: {
+    story: "QK score machine is almost complete. K is connected directly, so the token axis and feature axis are in the wrong slots.",
+    startingProblem: "MatMul needs K as [B,H,D,T], but the current K input is [B,H,T,D].",
+    firstAction: "Run Visible, then inspect qk_matmul and the score board.",
+    targetRecipe: [
+      "q.out -> qk_matmul.left",
+      "k.out -> k_transpose.x",
+      "k_transpose.out -> axis_lock.x",
+      "axis_lock.out -> qk_matmul.right",
+      "qk_matmul.out -> score_board.scores",
+      "score_board.out -> cell_trace.scores",
+      "score_board.out -> reference.x"
+    ],
+    winCondition: "score_board and cell_trace output [B,H,T,T] and match the reference."
+  },
   debrief: {
     completeTitle: "Transpose Trap Restored",
     fixedProblem: "K now swaps only its last two axes before QK MatMul, while B/H carrier axes stay locked.",

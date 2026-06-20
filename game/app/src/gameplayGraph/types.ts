@@ -179,6 +179,15 @@ export type ModuleDef = {
   execute: (context: ModuleContext) => ExecuteResult;
 };
 
+export type LevelOnboarding = {
+  story: string;
+  startingProblem: string;
+  firstAction: string;
+  targetRecipe: string[];
+  winCondition: string;
+  allowedMistakes?: string[];
+};
+
 export type LevelSpec = {
   id: string;
   title: string;
@@ -194,6 +203,8 @@ export type LevelSpec = {
   };
   visibleTests: TestCase[];
   hiddenTests: TestCase[];
+  onboarding?: LevelOnboarding;
+  targetGraph?: GraphSpec;
   debrief: {
     completeTitle: string;
     fixedProblem: string;

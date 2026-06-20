@@ -44,7 +44,8 @@ export function validateGraphStructure(graph: GraphSpec, registry: ModuleRegistr
             message: `Required input ${port.id} is not connected`,
             nodeId: node.id,
             portId: port.id,
-            expected: port.accepts
+            expected: port.accepts,
+            suggestedProbe: `Connect a ${port.accepts?.join(" or ") ?? "value"} output to ${node.id}.${port.id}.`
           });
         }
       });
@@ -136,4 +137,3 @@ function findCycleNode(graph: GraphSpec) {
   const orderedIds = new Set(ordered.map((node) => node.id));
   return graph.nodes.find((node) => !orderedIds.has(node.id))?.id;
 }
-

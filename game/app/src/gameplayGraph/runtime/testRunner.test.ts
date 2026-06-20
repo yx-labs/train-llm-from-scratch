@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createGameplayRegistry } from "../modules";
+import { ch0GraphBasics, createCh0GraphBasicsSolutionGraph } from "../levels/ch0GraphBasics";
 import {
   ch0MatMulGraph,
   createCh0MatMulNoTransposeGraph,
@@ -118,11 +119,29 @@ describe("gameplay graph test runner", () => {
     expect(hidden.status).toBe("pass");
   });
 
-  it("blocks the empty MatMul challenge graph before player assembly", () => {
+  it("starts Graph Basics as one unplugged repair with traceable feedback", () => {
+    const visible = runTests(ch0GraphBasics.initialGraph, registry, ch0GraphBasics.visibleTests);
+
+    expect(visible.status).toBe("blocked");
+    expect(visible.results[0].firstBadNodeId).toBe("shape_gate");
+    expect(visible.results[0].diagnostic?.errorType).toBe("missing_input");
+    expect(visible.cases[0].execution.trace.length).toBeGreaterThan(0);
+  });
+
+  it("passes Graph Basics after connecting the missing cable", () => {
+    const graph = createCh0GraphBasicsSolutionGraph();
+    const visible = runTests(graph, registry, ch0GraphBasics.visibleTests);
+    const hidden = runTests(graph, registry, ch0GraphBasics.hiddenTests);
+
+    expect(visible.status).toBe("pass");
+    expect(hidden.status).toBe("pass");
+  });
+
+  it("starts MatMul as a stored-weight repair graph instead of an empty canvas", () => {
     const visible = runTests(ch0MatMulGraph.initialGraph, registry, ch0MatMulGraph.visibleTests);
 
     expect(visible.status).toBe("blocked");
-    expect(visible.results[0].firstBadNodeId).toBe("projected");
+    expect(visible.results[0].firstBadNodeId).toBe("matmul");
   });
 
   it("passes MatMul visible and hidden mutation tests with the complete solution graph", () => {
@@ -152,11 +171,11 @@ describe("gameplay graph test runner", () => {
     expect(visible.results[0].firstBadNodeId).toBe("projected");
   });
 
-  it("blocks the empty Transpose Trap graph before player assembly", () => {
+  it("starts Transpose Trap with the missing K transpose already isolated", () => {
     const visible = runTests(ch0TransposeGraph.initialGraph, registry, ch0TransposeGraph.visibleTests);
 
     expect(visible.status).toBe("blocked");
-    expect(visible.results[0].firstBadNodeId).toBe("score_board");
+    expect(visible.results[0].firstBadNodeId).toBe("qk_matmul");
   });
 
   it("fails Transpose Trap before K transpose", () => {
@@ -188,11 +207,11 @@ describe("gameplay graph test runner", () => {
     expect(visible.results[0].firstBadNodeId).toBe("score_board");
   });
 
-  it("blocks the empty Broadcast Add graph before player assembly", () => {
+  it("starts Broadcast Add with direct bias add as the broken machine", () => {
     const visible = runTests(ch0BroadcastGraph.initialGraph, registry, ch0BroadcastGraph.visibleTests);
 
     expect(visible.status).toBe("blocked");
-    expect(visible.results[0].firstBadNodeId).toBe("axis_ruler");
+    expect(visible.results[0].firstBadNodeId).toBe("biased");
   });
 
   it("passes Broadcast Add visible and hidden semantic-axis tests with the complete solution graph", () => {
@@ -224,11 +243,11 @@ describe("gameplay graph test runner", () => {
     expect(visible.results[0].firstBadNodeId).toBe("biased");
   });
 
-  it("blocks the empty Mini Mask graph before player assembly", () => {
+  it("starts Mini Mask with reversed mask orientation as the broken machine", () => {
     const visible = runTests(ch0MaskGraph.initialGraph, registry, ch0MaskGraph.visibleTests);
 
-    expect(visible.status).toBe("blocked");
-    expect(visible.results[0].firstBadNodeId).toBe("score_board");
+    expect(visible.status).toBe("fail");
+    expect(visible.results.some((result) => result.assertion?.type === "future_attention_zero" && result.firstBadNodeId === "masked_scores")).toBe(true);
   });
 
   it("passes Mini Mask visible and hidden orientation tests with the complete solution graph", () => {

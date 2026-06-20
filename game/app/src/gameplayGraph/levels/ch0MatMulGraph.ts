@@ -25,13 +25,8 @@ export const ch0MatMulGraph: LevelSpec = {
   chapter: "Chapter 0",
   goal: "Build hidden[B,T,C] @ stored_weight[O,C].transpose() -> projected[B,T,O]",
   modulePalette: ["InputTensor", "WeightPlate", "TransposeSwitch", "MatMulGate", "OutputContractGate", "ReferenceChecker"],
-  initialGraph: {
-    levelId: "ch0_2_matmul_graph",
-    version: 1,
-    nodes: [],
-    edges: [],
-    outputNodes: ["projected", "reference"]
-  },
+  initialGraph: createCh0MatMulNoTransposeGraph(),
+  targetGraph: createCh0MatMulSolutionGraph(),
   constraints: {
     maxNodes: 8,
     maxEdges: 8,
@@ -101,6 +96,19 @@ export const ch0MatMulGraph: LevelSpec = {
       ]
     }
   ],
+  onboarding: {
+    story: "Linear Projection machine is already wired, but the stored weight enters MatMul in the wrong orientation.",
+    startingProblem: "stored_weight is [O,C]. MatMul needs its right input to behave like [C,O].",
+    firstAction: "Click Run Visible and inspect why matmul fails.",
+    targetRecipe: [
+      "hidden.out -> matmul.left",
+      "weight.out -> weight_transpose.x",
+      "weight_transpose.out -> matmul.right",
+      "matmul.out -> projected.x",
+      "projected.out -> reference.x"
+    ],
+    winCondition: "projected passes shape [B,T,O] and reference allclose."
+  },
   debrief: {
     completeTitle: "MatMul Gate Restored",
     fixedProblem: "stored_weight[O,C] is now transposed into compute_weight[C,O] before MatMul.",

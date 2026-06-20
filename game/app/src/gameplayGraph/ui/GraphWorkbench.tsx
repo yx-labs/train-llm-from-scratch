@@ -1,18 +1,22 @@
 import {
+  createContext,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useContext,
   type DragEvent as ReactDragEvent,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent
 } from "react";
-import { AlertTriangle, CheckCircle2, GitBranchPlus, Minus, MousePointer2, Move, Play, Plus, RotateCcw, Trash2, Wrench } from "lucide-react";
+import { AlertTriangle, BookOpenText, CheckCircle2, GitBranchPlus, Minus, MousePointer2, Move, Play, Plus, RotateCcw, Trash2, Wrench, X } from "lucide-react";
 import { graphLevels } from "../levelRegistry";
 import { createGameplayRegistry } from "../modules";
 import type { DType, GraphEdge, GraphNode, GraphSpec, LevelSpec, ModuleDef, PortDef, PortRef, TestAssertion, TestResult, TraceFrame } from "../types";
 import { runTests, type RunTestsResult, type TestCaseRunResult } from "../runtime/testRunner";
+import { graphStatusText, graphText, type GraphLanguage } from "../i18n";
 
 type RunState = {
   visible?: RunTestsResult;
@@ -63,6 +67,25 @@ type PanDragState = {
   startViewport: CanvasViewport;
 };
 
+type WorkbenchLayout = {
+  sidebarWidth: number;
+  inspectorWidth: number;
+  traceHeight: number;
+};
+
+type ResizeRegion = "sidebar" | "inspector" | "trace";
+
+type ParamOption = {
+  value: string;
+  label: string;
+  consequence: string;
+};
+
+type ParamCopy = {
+  label: string;
+  help?: string;
+};
+
 const moduleDragMime = "application/x-llm-complete-graph-module";
 const graphNodeWidth = 190;
 const graphNodeMinHeight = 118;
@@ -70,8 +93,28 @@ const graphWorldWidth = 2400;
 const graphWorldHeight = 1600;
 const minCanvasScale = 0.45;
 const maxCanvasScale = 1.8;
+const defaultWorkbenchLayout: WorkbenchLayout = {
+  sidebarWidth: 285,
+  inspectorWidth: 365,
+  traceHeight: 178
+};
+const resizeHandleSize = 8;
+const minSidebarWidth = 210;
+const minInspectorWidth = 280;
+const minCenterWidth = 480;
+const minTraceHeight = 112;
+const GraphLanguageContext = createContext<GraphLanguage>("en");
 
-export function GraphWorkbench() {
+function useGraphT() {
+  const language = useContext(GraphLanguageContext);
+  return {
+    language,
+    t: (text: string) => graphText(language, text),
+    status: (text: string) => graphStatusText(language, text)
+  };
+}
+
+export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }) {
   const registry = useMemo(() => createGameplayRegistry(), []);
   const [selectedLevelId, setSelectedLevelId] = useState(graphLevels[0].id);
   const selectedLevel = graphLevels.find((level) => level.id === selectedLevelId) ?? graphLevels[0];
@@ -88,6 +131,10 @@ export function GraphWorkbench() {
   const [runs, setRuns] = useState<Record<string, RunState>>({});
   const [traceSelection, setTraceSelection] = useState<TraceSelection>();
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("summary");
+  const [missionOpen, setMissionOpen] = useState(true);
+  const [layout, setLayout] = useState<WorkbenchLayout>(defaultWorkbenchLayout);
+  const workbenchRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const nodeDragRef = useRef<NodeDragState>();
   const panDragRef = useRef<PanDragState>();
@@ -102,6 +149,13 @@ export function GraphWorkbench() {
   const activeTraceCase = resolveTraceCase(runState, traceSelection);
   const activeTraceFrame = activeTraceCase && traceSelection?.caseId === activeTraceCase.id ? activeTraceCase.execution.trace[traceSelection.step] : undefined;
   const hiddenLocked = runState.visible?.status !== "pass";
+  const workbenchStyle = {
+    "--graph-sidebar-width": `${layout.sidebarWidth}px`,
+    "--graph-inspector-width": `${layout.inspectorWidth}px`
+  } as CSSProperties;
+  const stageStyle = {
+    "--graph-trace-height": `${layout.traceHeight}px`
+  } as CSSProperties;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -109,6 +163,11 @@ export function GraphWorkbench() {
       if (event.key === "Escape" && wireSourceRef.current) {
         event.preventDefault();
         cancelWire();
+        return;
+      }
+      if (event.key === "Escape" && missionOpen) {
+        event.preventDefault();
+        setMissionOpen(false);
         return;
       }
       if (target?.closest("input, textarea, select")) return;
@@ -121,6 +180,10 @@ export function GraphWorkbench() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
+
+  useEffect(() => {
+    setMissionOpen(true);
+  }, [selectedLevel.id]);
 
   function selectLevel(level: LevelSpec) {
     const levelGraph = graphs[level.id] ?? level.initialGraph;
@@ -574,21 +637,119 @@ export function GraphWorkbench() {
     setCanvasNotice("view reset");
   }
 
+  function focusNode(nodeId: string, tab: InspectorTab = "shape") {
+    const realNodeId = nodeId.split(".")[0];
+    const node = graph.nodes.find((item) => item.id === realNodeId);
+    if (!node) return;
+    setSelection({ type: "node", id: realNodeId });
+    setInspectorTab(tab);
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      setViewport((current) => ({
+        ...current,
+        x: rect.width / 2 - (node.position.x + graphNodeWidth / 2) * current.scale,
+        y: rect.height / 2 - (node.position.y + graphNodeMinHeight / 2) * current.scale
+      }));
+    }
+    setCanvasNotice(`focused ${realNodeId}`);
+  }
+
+  function showNextHint() {
+    const nextNodeId = firstBadNodeIdFromRunState(runState);
+    setRuns((current) => {
+      const previous = current[selectedLevel.id] ?? createEmptyRunState();
+      return {
+        ...current,
+        [selectedLevel.id]: {
+          ...previous,
+          stats: { ...previous.stats, hintsUsed: previous.stats.hintsUsed + 1 }
+        }
+      };
+    });
+    if (nextNodeId) focusNode(nextNodeId);
+    setCanvasNotice("next step shown");
+  }
+
+  function beginWorkbenchResize(event: ReactPointerEvent<HTMLDivElement>, region: ResizeRegion) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLayout = layout;
+    const workbenchRect = workbenchRef.current?.getBoundingClientRect();
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = region === "trace" ? "row-resize" : "col-resize";
+    document.body.style.userSelect = "none";
+
+    function handleMove(moveEvent: PointerEvent) {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      setLayout((current) => {
+        if (region === "sidebar") {
+          const totalWidth = workbenchRect?.width ?? 1280;
+          const maxSidebarWidth = Math.max(minSidebarWidth, totalWidth - startLayout.inspectorWidth - minCenterWidth - resizeHandleSize * 2);
+          return {
+            ...current,
+            sidebarWidth: clamp(startLayout.sidebarWidth + dx, minSidebarWidth, Math.min(460, maxSidebarWidth))
+          };
+        }
+        if (region === "inspector") {
+          const totalWidth = workbenchRect?.width ?? 1280;
+          const maxInspectorWidth = Math.max(minInspectorWidth, totalWidth - startLayout.sidebarWidth - minCenterWidth - resizeHandleSize * 2);
+          return {
+            ...current,
+            inspectorWidth: clamp(startLayout.inspectorWidth - dx, minInspectorWidth, Math.min(540, maxInspectorWidth))
+          };
+        }
+        const stageHeight = stageRect?.height ?? 720;
+        const maxTraceHeight = Math.max(minTraceHeight, Math.min(420, stageHeight - 230));
+        return {
+          ...current,
+          traceHeight: clamp(startLayout.traceHeight - dy, minTraceHeight, maxTraceHeight)
+        };
+      });
+    }
+
+    function handleEnd() {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+    }
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+  }
+
+  function resetResizeRegion(region: ResizeRegion) {
+    setLayout((current) => {
+      if (region === "sidebar") return { ...current, sidebarWidth: defaultWorkbenchLayout.sidebarWidth };
+      if (region === "inspector") return { ...current, inspectorWidth: defaultWorkbenchLayout.inspectorWidth };
+      return { ...current, traceHeight: defaultWorkbenchLayout.traceHeight };
+    });
+  }
+
   const wirePreview = wireSource && wirePointer ? getWirePreviewPath(graph, registry.list(), wireSource, wirePointer) : undefined;
+  const t = (text: string) => graphText(language, text);
 
   return (
-    <section className="graphWorkbench">
+    <GraphLanguageContext.Provider value={language}>
+    <section ref={workbenchRef} className="graphWorkbench" style={workbenchStyle}>
       <aside className="graphSidebar panel">
         <div className="panelHeader">
           <Wrench size={18} />
-          <h2>Graph Levels</h2>
+          <h2>{t("Graph Levels")}</h2>
         </div>
         <div className="graphLevelList">
           {graphLevels.map((level) => (
             <button key={level.id} className={`graphLevelButton ${level.id === selectedLevel.id ? "active" : ""}`} onClick={() => selectLevel(level)}>
               <span>
-                <b>{level.title}</b>
-                <small>{level.goal}</small>
+                <b>{t(level.title)}</b>
+                <small>{t(level.goal)}</small>
               </span>
             </button>
           ))}
@@ -596,42 +757,67 @@ export function GraphWorkbench() {
 
       </aside>
 
-      <section className="graphStage panel">
+      <div
+        className="graphResizeHandle vertical"
+        role="separator"
+        aria-label="Resize graph levels"
+        aria-orientation="vertical"
+        title={t("Drag to resize Graph Levels")}
+        onPointerDown={(event) => beginWorkbenchResize(event, "sidebar")}
+        onDoubleClick={() => resetResizeRegion("sidebar")}
+      />
+
+      <section ref={stageRef} className="graphStage panel" style={stageStyle}>
         <div className="graphStageHeader">
           <div>
-            <p className="eyebrow">Graph Challenge</p>
-            <h2>{selectedLevel.title}</h2>
-            <small>{selectedLevel.goal}</small>
+            <p className="eyebrow">{t("Graph Challenge")}</p>
+            <h2>{t(selectedLevel.title)}</h2>
+            <small>{t(selectedLevel.goal)}</small>
           </div>
           <div className="graphRunBar">
+            <button className="ghostButton" onClick={() => setMissionOpen(true)}>
+              <BookOpenText size={15} />
+              {t("Mission")}
+            </button>
             {canInsertTranspose ? (
               <button className="ghostButton" onClick={insertTransposeRepair}>
                 <Wrench size={15} />
-                {transposeLabel}
+                {t(transposeLabel)}
               </button>
             ) : null}
             <button className="ghostButton" onClick={resetLevel}>
               <RotateCcw size={15} />
-              Reset
+              {t("Reset")}
             </button>
             <button className="ghostButton" onClick={autoLayoutGraph}>
               <GitBranchPlus size={15} />
-              Auto Layout
+              {t("Auto Layout")}
             </button>
             <button className="runButton" onClick={runVisible}>
               <Play size={15} />
-              Run Visible
+              {t("Run Visible")}
             </button>
             <button className="runButton" disabled={hiddenLocked} onClick={runHidden}>
               <Play size={15} />
-              Run Hidden
+              {t("Run Hidden")}
             </button>
             <button className="ghostButton" disabled={!selection} onClick={deleteSelection}>
               <Trash2 size={15} />
-              Delete
+              {t("Delete")}
             </button>
           </div>
         </div>
+
+        {missionOpen ? (
+          <GraphMissionModal
+            level={selectedLevel}
+            graph={graph}
+            runState={runState}
+            onRunVisible={runVisible}
+            onShowHint={showNextHint}
+            onClose={() => setMissionOpen(false)}
+          />
+        ) : null}
 
         <div
           ref={canvasRef}
@@ -683,6 +869,7 @@ export function GraphWorkbench() {
               transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`
             }}
           >
+            <TargetGhostGraph targetGraph={selectedLevel.targetGraph} currentGraph={graph} modules={registry.list()} />
             <svg className="graphEdgeLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} role="img" aria-label="graph edges">
               {wirePreview ? <path className="graphWirePreview" d={wirePreview} /> : null}
               {graph.edges.map((edge) => {
@@ -719,9 +906,9 @@ export function GraphWorkbench() {
                   tabIndex={0}
                 >
                   <div className="graphNodeHeader">
-                    <span>{module.category}</span>
+                    <span>{t(module.category)}</span>
                     <b>{node.id}</b>
-                    <small>{module.label}</small>
+                    <small>{t(module.label)}</small>
                   </div>
                   <div className="graphPorts">
                     <GraphPortColumn
@@ -750,22 +937,40 @@ export function GraphWorkbench() {
             })}
           </div>
         </div>
+        <div
+          className="graphResizeHandle horizontal"
+          role="separator"
+        aria-label="Resize trace timeline"
+        aria-orientation="horizontal"
+        title={t("Drag to resize Trace Timeline")}
+          onPointerDown={(event) => beginWorkbenchResize(event, "trace")}
+          onDoubleClick={() => resetResizeRegion("trace")}
+        />
         <GraphTraceTimeline
           visible={runState.visible}
           hidden={runState.hidden}
           selection={traceSelection}
           onSelect={(nextSelection, frame) => {
             setTraceSelection(nextSelection);
-            setInspectorTab("shape");
-            setSelection({ type: "node", id: frame.nodeId });
+            focusNode(frame.nodeId);
           }}
         />
       </section>
 
+      <div
+        className="graphResizeHandle vertical"
+        role="separator"
+        aria-label="Resize inspector"
+        aria-orientation="vertical"
+        title={t("Drag to resize Inspector")}
+        onPointerDown={(event) => beginWorkbenchResize(event, "inspector")}
+        onDoubleClick={() => resetResizeRegion("inspector")}
+      />
+
       <aside className="graphInspector panel">
         <div className="panelHeader">
           <CheckCircle2 size={18} />
-          <h2>Inspector</h2>
+          <h2>{t("Inspector")}</h2>
         </div>
         {selectedNode && selectedModule ? (
           <GraphInspectorNodePanel
@@ -778,31 +983,155 @@ export function GraphWorkbench() {
             tab={inspectorTab}
             onTabChange={setInspectorTab}
             onParamChange={updateNodeParam}
+            onLocateNode={focusNode}
+            onShowNextStep={showNextHint}
           />
         ) : null}
         {selectedEdge ? (
           <section className="graphInspectorBlock">
-            <p className="eyebrow">Selected Edge</p>
+            <p className="eyebrow">{t("Selected Edge")}</p>
             <h3>{selectedEdge.id}</h3>
             <code>{`${selectedEdge.from.nodeId}.${selectedEdge.from.portId} -> ${selectedEdge.to.nodeId}.${selectedEdge.to.portId}`}</code>
             <div className="graphInspectorActions">
               <button className="ghostButton" onClick={rewireSelectedEdge}>
                 <GitBranchPlus size={14} />
-                Rewire Target
+                {t("Rewire Target")}
               </button>
               <button className="ghostButton" onClick={deleteSelection}>
                 <Trash2 size={14} />
-                Delete Edge
+                {t("Delete Edge")}
               </button>
             </div>
           </section>
         ) : null}
 
         <GraphRankPanel level={selectedLevel} graph={graph} runState={runState} />
-        <GraphRunPanel title="Visible Tests" result={runState.visible} />
-        <GraphRunPanel title="Hidden Tests" result={runState.hidden} locked={hiddenLocked} />
+        <GraphRunPanel title="Visible Tests" result={runState.visible} onLocateNode={focusNode} onShowNextStep={showNextHint} />
+        <GraphRunPanel title="Hidden Tests" result={runState.hidden} locked={hiddenLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
       </aside>
     </section>
+    </GraphLanguageContext.Provider>
+  );
+}
+
+function GraphMissionModal({
+  level,
+  graph,
+  runState,
+  onRunVisible,
+  onShowHint,
+  onClose
+}: {
+  level: LevelSpec;
+  graph: GraphSpec;
+  runState: RunState;
+  onRunVisible: () => void;
+  onShowHint: () => void;
+  onClose: () => void;
+}) {
+  const { language, t } = useGraphT();
+  const onboarding = level.onboarding;
+  const checklist = getChecklistItems(level, graph);
+  const coach = getNextStepCoach(level, graph, runState, language);
+  return (
+    <div className="graphMissionOverlay" role="dialog" aria-modal="true" aria-labelledby="graphMissionTitle">
+      <section className="graphMissionPanel">
+        <div className="graphMissionHeader">
+          <div>
+            <p className="eyebrow">{t("Mission")}</p>
+            <h3 id="graphMissionTitle">{t(level.title)}</h3>
+          </div>
+          <button className="iconButton" type="button" title={t("Collapse mission")} onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="graphMissionCopy">
+          <b>{t(onboarding?.story ?? level.goal)}</b>
+          <small>{t(onboarding?.startingProblem ?? "Run Visible to reveal the first failing node, then repair the graph.")}</small>
+        </div>
+
+        <div className="graphMissionSteps">
+          <div>
+            <b>{t("First action")}</b>
+            <small>{t(onboarding?.firstAction ?? "Click Run Visible.")}</small>
+          </div>
+          <div>
+            <b>{t("Win condition")}</b>
+            <small>{t(onboarding?.winCondition ?? "Visible and hidden tests pass.")}</small>
+          </div>
+        </div>
+
+        {checklist.length ? (
+          <div className="graphMissionChecklist">
+            {checklist.map((item) => (
+              <span key={item.label} className={item.done ? "done" : ""}>
+                {item.done ? "[x]" : "[ ]"} {item.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="graphNextCoach">
+          <b>{t("Next step")}</b>
+          <small>{coach}</small>
+          <div className="graphMissionActions">
+            <button className="ghostButton" onClick={onRunVisible}>
+              <Play size={14} />
+              {t("Run Visible")}
+            </button>
+            <button className="ghostButton" onClick={onShowHint}>
+              <MousePointer2 size={14} />
+              {t("Show Hint")}
+            </button>
+            <button className="ghostButton" onClick={onClose}>
+              {t("Collapse")}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TargetGhostGraph({
+  targetGraph,
+  currentGraph,
+  modules
+}: {
+  targetGraph?: GraphSpec;
+  currentGraph: GraphSpec;
+  modules: ModuleDef[];
+}) {
+  if (!targetGraph) return null;
+  return (
+    <svg className="targetGhostLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} aria-hidden="true">
+      {targetGraph.edges.map((edge) => {
+        const fromNode = targetGraph.nodes.find((node) => node.id === edge.from.nodeId);
+        const toNode = targetGraph.nodes.find((node) => node.id === edge.to.nodeId);
+        if (!fromNode || !toNode) return null;
+        const fromModule = modules.find((module) => module.id === fromNode.moduleId);
+        const toModule = modules.find((module) => module.id === toNode.moduleId);
+        if (!fromModule || !toModule) return null;
+        const from = getPortAnchor(fromNode, fromModule, edge.from.portId, "out");
+        const to = getPortAnchor(toNode, toModule, edge.to.portId, "in");
+        const matched = graphHasEdge(currentGraph, edge.from, edge.to);
+        return (
+          <g key={edge.id} className={`targetGhostEdge ${matched ? "matched" : ""}`}>
+            <path d={`M ${from.x} ${from.y} C ${from.x + 88} ${from.y}, ${to.x - 88} ${to.y}, ${to.x} ${to.y}`} />
+          </g>
+        );
+      })}
+      {targetGraph.nodes.map((node) => {
+        const matched = currentGraph.nodes.some((item) => item.id === node.id && item.moduleId === node.moduleId);
+        return (
+          <g key={node.id} className={`targetGhostNode ${matched ? "matched" : ""}`} transform={`translate(${node.position.x} ${node.position.y})`}>
+            <rect width={graphNodeWidth} height={graphNodeMinHeight} rx={8} />
+            <text x={14} y={24}>{node.id}</text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -825,6 +1154,7 @@ function GraphPortColumn({
   onPortPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, node: GraphNode, port: PortDef) => void;
   onPortPointerUp: (event: ReactPointerEvent<HTMLButtonElement>, node: GraphNode, port: PortDef) => void;
 }) {
+  const { t } = useGraphT();
   const ports = direction === "in" ? module.inputs : module.outputs;
   return (
     <div className={`graphPortColumn ${direction}`}>
@@ -846,7 +1176,7 @@ function GraphPortColumn({
             }}
           >
             <span />
-            <b>{port.label}</b>
+            <b>{t(port.label)}</b>
           </button>
         );
       })}
@@ -863,10 +1193,11 @@ function GraphCanvasModulePalette({
   registry: ReturnType<typeof createGameplayRegistry>;
   onAddModule: (moduleId: string) => void;
 }) {
+  const { t } = useGraphT();
   return (
     <section className="graphCanvasModulePalette">
       <div className="graphCanvasModulePaletteHeader">
-        <b>Available Modules</b>
+        <b>{t("Available Modules")}</b>
         <code>{level.modulePalette.length}</code>
       </div>
       <div className="graphCanvasModuleList">
@@ -877,15 +1208,15 @@ function GraphCanvasModulePalette({
               key={module.id}
               className="graphModuleItem canvas"
               draggable
-              title={module.summary}
+              title={t(module.summary)}
               onDoubleClick={() => onAddModule(module.id)}
               onDragStart={(event) => {
                 event.dataTransfer.setData(moduleDragMime, module.id);
                 event.dataTransfer.effectAllowed = "copy";
               }}
             >
-              <b>{module.label}</b>
-              <small>{module.category}</small>
+              <b>{t(module.label)}</b>
+              <small>{t(module.category)}</small>
             </button>
           );
         })}
@@ -905,6 +1236,7 @@ function GraphTraceTimeline({
   selection?: TraceSelection;
   onSelect: (selection: TraceSelection, frame: TraceFrame) => void;
 }) {
+  const { t, status } = useGraphT();
   const runs: Array<{ key: TraceRunKey; label: string; result?: RunTestsResult }> = [
     { key: "visible", label: "Visible", result: visible },
     { key: "hidden", label: "Hidden", result: hidden }
@@ -915,10 +1247,10 @@ function GraphTraceTimeline({
     <section className="graphTracePanel">
       <div className="graphTraceHeader">
         <div>
-          <p className="eyebrow">Trace Timeline</p>
-          <h3>Run path / first failure / node state</h3>
+          <p className="eyebrow">{t("Trace Timeline")}</p>
+          <h3>{t("Run path / first failure / node state")}</h3>
         </div>
-        <code>{hasTrace ? "click a step" : "idle"}</code>
+        <code>{hasTrace ? t("click a step") : t("idle")}</code>
       </div>
       {hasTrace ? (
         <div className="graphTraceRuns">
@@ -926,9 +1258,9 @@ function GraphTraceTimeline({
             run.result?.cases.map((testCase) => (
               <section key={`${run.key}:${testCase.id}`} className={`graphTraceCase ${testCase.status}`}>
                 <div className="graphTraceCaseHeader">
-                  <span>{run.label}</span>
-                  <b>{testCase.title}</b>
-                  <code>{testCase.status}</code>
+                  <span>{t(run.label)}</span>
+                  <b>{t(testCase.title)}</b>
+                  <code>{status(testCase.status)}</code>
                 </div>
                 <div className="graphTraceSteps">
                   {testCase.execution.trace.map((frame) => {
@@ -951,7 +1283,7 @@ function GraphTraceTimeline({
           )}
         </div>
       ) : (
-        <p className="graphTraceEmpty">Run visible tests to capture a trace.</p>
+        <p className="graphTraceEmpty">{t("Run visible tests to capture a trace.")}</p>
       )}
     </section>
   );
@@ -966,7 +1298,9 @@ function GraphInspectorNodePanel({
   activeTraceFrame,
   tab,
   onTabChange,
-  onParamChange
+  onParamChange,
+  onLocateNode,
+  onShowNextStep
 }: {
   node: GraphNode;
   module: ModuleDef;
@@ -977,23 +1311,26 @@ function GraphInspectorNodePanel({
   tab: InspectorTab;
   onTabChange: (tab: InspectorTab) => void;
   onParamChange: (nodeId: string, key: string, value: unknown) => void;
+  onLocateNode: (nodeId: string) => void;
+  onShowNextStep: () => void;
 }) {
+  const { t } = useGraphT();
   const nodeFrame = activeTraceFrame?.nodeId === node.id ? activeTraceFrame : findLatestNodeFrame(activeTraceCase, node.id);
   const relatedResults = getNodeTestResults(runState, node.id);
   const failingResult = relatedResults.find((result) => result.status !== "pass");
   const incoming = graph.edges.filter((edge) => edge.to.nodeId === node.id);
   const outgoing = graph.edges.filter((edge) => edge.from.nodeId === node.id);
   const tabs: Array<{ id: InspectorTab; label: string }> = [
-    { id: "summary", label: "Summary" },
-    { id: "shape", label: "Shape" },
-    { id: "values", label: "Values" },
-    { id: "tests", label: "Tests" },
-    { id: "code", label: "Code" }
+    { id: "summary", label: t("Summary") },
+    { id: "shape", label: t("Shape") },
+    { id: "values", label: t("Values") },
+    { id: "tests", label: t("Tests") },
+    { id: "code", label: t("Code") }
   ];
 
   return (
     <section className="graphInspectorBlock">
-      <p className="eyebrow">Selected Node</p>
+      <p className="eyebrow">{t("Selected Node")}</p>
       <h3>{node.id}</h3>
       <code>{node.moduleId}</code>
       <div className="graphInspectorTabs">
@@ -1006,10 +1343,10 @@ function GraphInspectorNodePanel({
 
       {tab === "summary" ? (
         <div className="graphInspectorTabBody">
-          <GraphKeyValue label="category" value={module.category} />
-          <GraphKeyValue label="purpose" value={module.summary} />
-          <GraphKeyValue label="incoming" value={incoming.map((edge) => `${edge.from.nodeId}.${edge.from.portId} -> ${edge.to.portId}`).join("\n") || "none"} />
-          <GraphKeyValue label="outgoing" value={outgoing.map((edge) => `${edge.from.portId} -> ${edge.to.nodeId}.${edge.to.portId}`).join("\n") || "none"} />
+          <GraphKeyValue label={t("category")} value={t(module.category)} />
+          <GraphKeyValue label={t("purpose")} value={t(module.summary)} />
+          <GraphKeyValue label={t("incoming")} value={incoming.map((edge) => `${edge.from.nodeId}.${edge.from.portId} -> ${edge.to.portId}`).join("\n") || t("none")} />
+          <GraphKeyValue label={t("outgoing")} value={outgoing.map((edge) => `${edge.from.portId} -> ${edge.to.nodeId}.${edge.to.portId}`).join("\n") || t("none")} />
           {failingResult ? <GraphFailureReport result={failingResult} /> : null}
           <GraphParamEditor node={node} module={module} onChange={onParamChange} />
         </div>
@@ -1019,14 +1356,14 @@ function GraphInspectorNodePanel({
         <div className="graphInspectorTabBody">
           {nodeFrame ? (
             <>
-              <ShapeRecord title="Inputs" shapes={nodeFrame.inputShapes} />
-              <ShapeRecord title="Outputs" shapes={nodeFrame.outputShapes} />
+              <ShapeRecord title={t("Inputs")} shapes={nodeFrame.inputShapes} />
+              <ShapeRecord title={t("Outputs")} shapes={nodeFrame.outputShapes} />
               {nodeFrame.error ? <GraphRuntimeErrorBox frame={nodeFrame} /> : null}
             </>
           ) : (
             <>
-              <PortContractList title="Input Contracts" ports={module.inputs} />
-              <PortContractList title="Output Contracts" ports={module.outputs} />
+              <PortContractList title={t("Input Contracts")} ports={module.inputs} />
+              <PortContractList title={t("Output Contracts")} ports={module.outputs} />
             </>
           )}
         </div>
@@ -1037,11 +1374,11 @@ function GraphInspectorNodePanel({
           {nodeFrame?.samples ? (
             <pre className="graphValueBlock">{formatUnknown(nodeFrame.samples)}</pre>
           ) : (
-            <p className="graphTraceEmpty">No sample values captured for this node yet.</p>
+            <p className="graphTraceEmpty">{t("No sample values captured for this node yet.")}</p>
           )}
           {failingResult?.diagnostic?.sample ? (
             <>
-              <h4>Failure sample</h4>
+              <h4>{t("Failure sample")}</h4>
               <pre className="graphValueBlock">{formatUnknown(failingResult.diagnostic.sample)}</pre>
             </>
           ) : null}
@@ -1053,18 +1390,18 @@ function GraphInspectorNodePanel({
           {relatedResults.length ? (
             <div className="graphResultList">
               {relatedResults.map((result) => (
-                <GraphResultItem key={result.id} item={result} detailed />
+                <GraphResultItem key={result.id} item={result} detailed onLocateNode={onLocateNode} onShowNextStep={onShowNextStep} />
               ))}
             </div>
           ) : (
-            <p className="graphTraceEmpty">No captured test result targets this node yet.</p>
+            <p className="graphTraceEmpty">{t("No captured test result targets this node yet.")}</p>
           )}
         </div>
       ) : null}
 
       {tab === "code" ? (
         <div className="graphInspectorTabBody">
-          <pre className="graphCodeBlock">{module.pseudoCode ?? "No pseudo code registered for this module."}</pre>
+          <pre className="graphCodeBlock">{module.pseudoCode ?? t("No pseudo code registered for this module.")}</pre>
         </div>
       ) : null}
     </section>
@@ -1081,6 +1418,7 @@ function GraphKeyValue({ label, value }: { label: string; value: string }) {
 }
 
 function ShapeRecord({ title, shapes }: { title: string; shapes: TraceFrame["inputShapes"] }) {
+  const { t } = useGraphT();
   const entries = Object.entries(shapes);
   return (
     <section className="graphShapeRecord">
@@ -1093,13 +1431,14 @@ function ShapeRecord({ title, shapes }: { title: string; shapes: TraceFrame["inp
           </div>
         ))
       ) : (
-        <p className="graphTraceEmpty">No shaped values.</p>
+        <p className="graphTraceEmpty">{t("No shaped values.")}</p>
       )}
     </section>
   );
 }
 
 function PortContractList({ title, ports }: { title: string; ports: PortDef[] }) {
+  const { t } = useGraphT();
   return (
     <section className="graphShapeRecord">
       <h4>{title}</h4>
@@ -1107,39 +1446,41 @@ function PortContractList({ title, ports }: { title: string; ports: PortDef[] })
         ports.map((port) => (
           <div key={port.id}>
             <span>{port.id}</span>
-            <code>{port.direction === "in" ? port.accepts?.join(" | ") || "any" : port.emits ?? "value"}</code>
+            <code>{port.direction === "in" ? port.accepts?.join(" | ") || t("any") : port.emits ?? t("value")}</code>
           </div>
         ))
       ) : (
-        <p className="graphTraceEmpty">No ports.</p>
+        <p className="graphTraceEmpty">{t("No ports.")}</p>
       )}
     </section>
   );
 }
 
 function GraphRuntimeErrorBox({ frame }: { frame: TraceFrame }) {
+  const { t } = useGraphT();
   if (!frame.error) return null;
   return (
     <section className="graphFailureReport">
       <b>{frame.error.type}</b>
       <p>{frame.error.message}</p>
-      <GraphKeyValue label="expected" value={formatUnknown(frame.error.expected)} />
-      <GraphKeyValue label="received" value={formatUnknown(frame.error.received)} />
+      <GraphKeyValue label={t("expected")} value={formatUnknown(frame.error.expected)} />
+      <GraphKeyValue label={t("received")} value={formatUnknown(frame.error.received)} />
     </section>
   );
 }
 
 function GraphFailureReport({ result }: { result: TestResult }) {
+  const { t } = useGraphT();
   const diagnostic = result.diagnostic;
   if (!diagnostic) return null;
   return (
     <section className="graphFailureReport">
       <b>{diagnostic.errorType ?? result.status}</b>
       <p>{result.message}</p>
-      <GraphKeyValue label="expected" value={formatUnknown(diagnostic.expected)} />
-      <GraphKeyValue label="received" value={formatUnknown(diagnostic.received)} />
-      <GraphKeyValue label="cause" value={diagnostic.possibleCause ?? "unknown"} />
-      <GraphKeyValue label="probe" value={diagnostic.suggestedProbe ?? "step through trace"} />
+      <GraphKeyValue label={t("expected")} value={formatUnknown(diagnostic.expected)} />
+      <GraphKeyValue label={t("received")} value={formatUnknown(diagnostic.received)} />
+      <GraphKeyValue label={t("cause")} value={diagnostic.possibleCause ?? "unknown"} />
+      <GraphKeyValue label={t("probe hint")} value={diagnostic.suggestedProbe ?? t("step through trace")} />
     </section>
   );
 }
@@ -1153,13 +1494,14 @@ function GraphParamEditor({
   module: ModuleDef;
   onChange: (nodeId: string, key: string, value: unknown) => void;
 }) {
-  const keys = [...new Set([...Object.keys(module.defaultParams), ...Object.keys(node.params)])];
+  const { t } = useGraphT();
+  const keys = [...new Set([...Object.keys(module.defaultParams), ...Object.keys(node.params)])].filter((key) => !hiddenParamKeys.has(key));
   if (!keys.length) {
     return (
       <section className="graphParamEditor">
         <div className="graphParamHeader">
-          <b>Parameters</b>
-          <code>none</code>
+          <b>{t("Parameters")}</b>
+          <code>{t("none")}</code>
         </div>
       </section>
     );
@@ -1168,7 +1510,7 @@ function GraphParamEditor({
   return (
     <section className="graphParamEditor">
       <div className="graphParamHeader">
-        <b>Parameters</b>
+        <b>{t("Parameters")}</b>
         <code>{keys.length}</code>
       </div>
       <div className="graphParamRows">
@@ -1195,14 +1537,16 @@ function GraphParamRow({
   defaultValue: unknown;
   onChange: (nodeId: string, key: string, value: unknown) => void;
 }) {
+  const { t } = useGraphT();
   const options = paramOptions[paramKey];
+  const meta = paramCopy[paramKey] ?? { label: paramKey };
   const valueType = typeof value;
 
   if (Array.isArray(value) || Array.isArray(defaultValue)) {
     const arrayValue = (Array.isArray(value) ? value : defaultValue) as unknown[];
     return (
       <label className="graphParamRow">
-        <span>{paramKey}</span>
+        <span>{t(meta.label)}</span>
         <input
           type="text"
           value={arrayValue.join(",")}
@@ -1217,6 +1561,7 @@ function GraphParamRow({
             )
           }
         />
+        {meta.help ? <small>{t(meta.help)}</small> : null}
       </label>
     );
   }
@@ -1224,8 +1569,9 @@ function GraphParamRow({
   if (typeof value === "boolean" || typeof defaultValue === "boolean") {
     return (
       <label className="graphParamRow boolean">
-        <span>{paramKey}</span>
+        <span>{t(meta.label)}</span>
         <input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(nodeId, paramKey, event.currentTarget.checked)} />
+        {meta.help ? <small>{t(meta.help)}</small> : null}
       </label>
     );
   }
@@ -1233,8 +1579,9 @@ function GraphParamRow({
   if (typeof value === "number" || typeof defaultValue === "number") {
     return (
       <label className="graphParamRow">
-        <span>{paramKey}</span>
+        <span>{t(meta.label)}</span>
         <input type="number" value={Number(value ?? 0)} step={1} onChange={(event) => onChange(nodeId, paramKey, Number(event.currentTarget.value))} />
+        {meta.help ? <small>{t(meta.help)}</small> : null}
       </label>
     );
   }
@@ -1243,84 +1590,147 @@ function GraphParamRow({
     if (options?.length) {
       return (
         <label className="graphParamRow">
-          <span>{paramKey}</span>
+          <span>{t(meta.label)}</span>
           <select value={String(value ?? "")} onChange={(event) => onChange(nodeId, paramKey, event.currentTarget.value)}>
             {options.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
               </option>
             ))}
           </select>
+          <small>{t(options.find((option) => option.value === String(value ?? ""))?.consequence ?? meta.help ?? "")}</small>
         </label>
       );
     }
 
     return (
       <label className="graphParamRow">
-        <span>{paramKey}</span>
+        <span>{t(meta.label)}</span>
         <input type="text" value={String(value ?? "")} onChange={(event) => onChange(nodeId, paramKey, event.currentTarget.value)} />
+        {meta.help ? <small>{t(meta.help)}</small> : null}
       </label>
     );
   }
 
   return (
     <div className="graphParamRow readonly">
-      <span>{paramKey}</span>
+      <span>{t(meta.label)}</span>
       <code>{JSON.stringify(value)}</code>
-      <small>{valueType === "object" ? "structured value" : valueType}</small>
+      <small>{valueType === "object" ? t("structured value") : valueType}</small>
     </div>
   );
 }
 
-const paramOptions: Record<string, string[]> = {
-  policy: ["subword", "word", "char"],
-  fallback: ["unk", "char", "none"],
-  padSide: ["right", "left"],
-  maskPolicy: ["pad-aware", "all-ones"],
-  orientation: ["C,O", "O,C"],
-  maskOrientation: ["query_key", "key_query"]
+const hiddenParamKeys = new Set(["inputKey", "shape", "axes", "referenceKey", "expectedAxes", "expectedPrefixAxes"]);
+
+const paramCopy: Record<string, ParamCopy> = {
+  policy: { label: "Split strategy", help: "Choose how raw text becomes token pieces." },
+  applyMerges: { label: "Apply merges", help: "Use learned subword merges so common pieces stay intact." },
+  fallback: { label: "Unknown fallback", help: "What the tokenizer does when a piece is missing from vocab." },
+  preservePunctuation: { label: "Keep punctuation", help: "Keeps punctuation as meaningful token pieces." },
+  addBos: { label: "Add <bos>", help: "Marks the start of each sequence." },
+  addEos: { label: "Add <eos>", help: "Marks the end of each sequence and should survive truncation." },
+  maxLength: { label: "Token budget", help: "Maximum length T before truncation." },
+  padToLength: { label: "Pad to length", help: "Pads every row to a stable [B,T] tensor." },
+  padSide: { label: "Pad side", help: "Where <pad> tokens are inserted." },
+  maskPolicy: { label: "Mask rule", help: "PAD-aware masks hide padding positions." },
+  orientation: { label: "Weight storage", help: "How the weight plate is stored before projection." },
+  axisA: { label: "Swap axis A", help: "Use -2 with axis B -1 to swap the final two axes." },
+  axisB: { label: "Swap axis B", help: "Use -1 with axis A -2 to swap the final two axes." },
+  alignAxes: { label: "Broadcast slots", help: "Semantic axes where the smaller tensor plugs into the target." },
+  maskOrientation: { label: "Mask direction", help: "query_key blocks future keys for each query row." },
+  maskedValue: { label: "Masked value", help: "Large negative value added to blocked future cells." },
+  b: { label: "Batch index", help: "Which batch row the cell trace should inspect." },
+  h: { label: "Head index", help: "Which attention head the cell trace should inspect." },
+  t: { label: "Token index", help: "Which token position the cell trace should inspect." },
+  o: { label: "Channel index", help: "Which output channel the cell trace should inspect." },
+  i: { label: "Query index", help: "Which query row the cell trace should inspect." },
+  j: { label: "Key index", help: "Which key column the cell trace should inspect." }
+};
+
+const paramOptions: Record<string, ParamOption[]> = {
+  policy: [
+    { value: "subword", label: "Subword", consequence: "Balanced pieces; this is the expected tokenizer repair." },
+    { value: "word", label: "Word", consequence: "Simple, but cannot split unknown compound pieces." },
+    { value: "char", label: "Character", consequence: "Always covers text but usually blows the token budget." }
+  ],
+  fallback: [
+    { value: "unk", label: "<unk>", consequence: "Stable fallback for unseen pieces." },
+    { value: "char", label: "Character fallback", consequence: "Recovers unknown words at the cost of longer sequences." },
+    { value: "none", label: "No fallback", consequence: "Blocks when hidden text contains unseen pieces." }
+  ],
+  padSide: [
+    { value: "right", label: "Right", consequence: "Expected for the current training batches." },
+    { value: "left", label: "Left", consequence: "Can shift EOS and mask positions." }
+  ],
+  maskPolicy: [
+    { value: "pad-aware", label: "PAD-aware", consequence: "Correct: padding tokens are masked out." },
+    { value: "all-ones", label: "All ones", consequence: "Wrong for padded batches; PAD positions look valid." }
+  ],
+  orientation: [
+    { value: "C,O", label: "C,O", consequence: "Already projection-ready for hidden [B,T,C]." },
+    { value: "O,C", label: "O,C", consequence: "Stored backward; add a transpose before MatMul." }
+  ],
+  maskOrientation: [
+    { value: "query_key", label: "Query x Key", consequence: "Correct triangle: each query row blocks future keys." },
+    { value: "key_query", label: "Key x Query", consequence: "Reversed triangle; future cells leak through." }
+  ]
 };
 
 function GraphRankPanel({ level, graph, runState }: { level: LevelSpec; graph: GraphSpec; runState: RunState }) {
-  const rank = computeRank(level, graph, runState);
+  const { language, t } = useGraphT();
+  const rank = computeRank(level, graph, runState, language);
   return (
     <section className={`graphRankPanel ${rank.rank === "-" ? "unranked" : rank.rank.toLowerCase()}`}>
       <div className="graphRunPanelHeader">
-        <h3>Rank / Debrief</h3>
+        <h3>{t("Rank / Debrief")}</h3>
         <code>{rank.rank}</code>
       </div>
       <p>{rank.message}</p>
       <div className="graphRankStats">
-        <code>visible {runState.stats.visibleRuns}</code>
-        <code>hidden {runState.stats.hiddenRuns}</code>
-        <code>failed {runState.stats.failedRuns}</code>
-        <code>hints {runState.stats.hintsUsed}</code>
-        <code>extra {rank.extraModules}</code>
+        <code>{t("visible")} {runState.stats.visibleRuns}</code>
+        <code>{t("hidden")} {runState.stats.hiddenRuns}</code>
+        <code>{t("failed")} {runState.stats.failedRuns}</code>
+        <code>{t("hints")} {runState.stats.hintsUsed}</code>
+        <code>{t("extra")} {rank.extraModules}</code>
       </div>
       {runState.hidden?.status === "pass" ? (
         <div className="graphDebriefBox">
-          <b>{level.debrief.completeTitle}</b>
-          <small>{level.debrief.fixedProblem}</small>
-          <small>{level.debrief.learned}</small>
-          <small>{level.debrief.nextUse}</small>
+          <b>{t(level.debrief.completeTitle)}</b>
+          <small>{t(level.debrief.fixedProblem)}</small>
+          <small>{t(level.debrief.learned)}</small>
+          <small>{t(level.debrief.nextUse)}</small>
         </div>
       ) : null}
     </section>
   );
 }
 
-function GraphRunPanel({ title, result, locked = false }: { title: string; result?: RunTestsResult; locked?: boolean }) {
+function GraphRunPanel({
+  title,
+  result,
+  locked = false,
+  onLocateNode,
+  onShowNextStep
+}: {
+  title: string;
+  result?: RunTestsResult;
+  locked?: boolean;
+  onLocateNode: (nodeId: string) => void;
+  onShowNextStep: () => void;
+}) {
+  const { t, status } = useGraphT();
   return (
     <section className={`graphRunPanel ${result?.status ?? (locked ? "blocked" : "idle")}`}>
       <div className="graphRunPanelHeader">
-        <h3>{title}</h3>
-        <code>{locked ? "locked" : result?.status ?? "idle"}</code>
+        <h3>{t(title)}</h3>
+        <code>{locked ? t("locked") : status(result?.status ?? "idle")}</code>
       </div>
-      {locked ? <p>Visible tests must pass before hidden tests run.</p> : null}
+      {locked ? <p>{t("Visible tests must pass before hidden tests run.")}</p> : null}
       {result ? (
         <div className="graphResultList">
           {result.results.map((item) => (
-            <GraphResultItem key={item.id} item={item} detailed={item.status !== "pass"} />
+            <GraphResultItem key={item.id} item={item} detailed={item.status !== "pass"} onLocateNode={onLocateNode} onShowNextStep={onShowNextStep} />
           ))}
         </div>
       ) : null}
@@ -1328,21 +1738,44 @@ function GraphRunPanel({ title, result, locked = false }: { title: string; resul
   );
 }
 
-function GraphResultItem({ item, detailed = false }: { item: TestResult; detailed?: boolean }) {
+function GraphResultItem({
+  item,
+  detailed = false,
+  onLocateNode,
+  onShowNextStep
+}: {
+  item: TestResult;
+  detailed?: boolean;
+  onLocateNode: (nodeId: string) => void;
+  onShowNextStep: () => void;
+}) {
+  const { t, status } = useGraphT();
   const Icon = item.status === "pass" ? CheckCircle2 : AlertTriangle;
   return (
     <div className={`graphResultItem ${item.status}`}>
       <Icon size={15} />
       <span>
-        <b>{item.status}</b>
+        <b>{status(item.status)}</b>
         <small>{item.message}</small>
         {detailed && item.diagnostic ? (
           <>
-            <small>expected: {formatUnknown(item.diagnostic.expected)}</small>
-            <small>received: {formatUnknown(item.diagnostic.received)}</small>
-            <small>cause: {item.diagnostic.possibleCause ?? "unknown"}</small>
-            <small>probe: {item.diagnostic.suggestedProbe ?? "step through trace"}</small>
+            <small>{t("expected")}: {formatUnknown(item.diagnostic.expected)}</small>
+            <small>{t("received")}: {formatUnknown(item.diagnostic.received)}</small>
+            <small>{t("cause")}: {item.diagnostic.possibleCause ?? "unknown"}</small>
+            <small>{t("probe hint")}: {item.diagnostic.suggestedProbe ?? t("step through trace")}</small>
           </>
+        ) : null}
+        {detailed ? (
+          <span className="graphResultActions">
+            {item.firstBadNodeId ? (
+              <button type="button" onClick={() => onLocateNode(item.firstBadNodeId ?? "")}>
+                {t("Locate Node")}
+              </button>
+            ) : null}
+            <button type="button" onClick={onShowNextStep}>
+              {t("Next step")}
+            </button>
+          </span>
         ) : null}
       </span>
     </div>
@@ -1364,21 +1797,89 @@ function createEmptyRunState(): RunState {
   };
 }
 
-function computeRank(level: LevelSpec, graph: GraphSpec, runState: RunState) {
+function firstBadNodeIdFromRunState(runState: RunState) {
+  const firstBad =
+    runState.visible?.results.find((result) => result.status !== "pass" && result.firstBadNodeId) ??
+    runState.hidden?.results.find((result) => result.status !== "pass" && result.firstBadNodeId);
+  return firstBad?.firstBadNodeId?.split(".")[0];
+}
+
+function getChecklistItems(level: LevelSpec, graph: GraphSpec) {
+  const recipe = level.onboarding?.targetRecipe ?? [];
+  return recipe.map((label) => ({
+    label,
+    done: recipeItemDone(label, graph)
+  }));
+}
+
+function recipeItemDone(label: string, graph: GraphSpec) {
+  const edge = parseRecipeEdge(label);
+  if (edge) return graphHasEdge(graph, edge.from, edge.to);
+  const param = parseRecipeParam(label);
+  if (param) {
+    const node = graph.nodes.find((item) => item.id === param.nodeId);
+    return String(node?.params[param.key]) === param.value;
+  }
+  return false;
+}
+
+function parseRecipeEdge(label: string): { from: PortRef; to: PortRef } | undefined {
+  const match = label.match(/([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s*->\s*([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/);
+  if (!match) return undefined;
+  return {
+    from: { nodeId: match[1], portId: match[2] },
+    to: { nodeId: match[3], portId: match[4] }
+  };
+}
+
+function parseRecipeParam(label: string): { nodeId: string; key: string; value: string } | undefined {
+  const match = label.match(/([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)\s*=\s*(-?[A-Za-z0-9_.,]+)/);
+  if (!match) return undefined;
+  return { nodeId: match[1], key: match[2], value: match[3] };
+}
+
+function graphHasEdge(graph: GraphSpec, from: PortRef, to: PortRef) {
+  return graph.edges.some((edge) => edge.from.nodeId === from.nodeId && edge.from.portId === from.portId && edge.to.nodeId === to.nodeId && edge.to.portId === to.portId);
+}
+
+function getNextStepCoach(level: LevelSpec, graph: GraphSpec, runState: RunState, language: GraphLanguage) {
+  const firstFail =
+    runState.visible?.results.find((result) => result.status !== "pass") ??
+    runState.hidden?.results.find((result) => result.status !== "pass");
+  if (!firstFail) {
+    if (runState.visible?.status === "pass" && runState.hidden?.status !== "pass") return graphText(language, "Visible is green. Run Hidden to check generalization.");
+    return graphText(language, level.onboarding?.firstAction ?? "Click Run Visible to start the repair loop.");
+  }
+  if (firstFail.status === "blocked" && firstFail.diagnostic?.errorType === "missing_input") {
+    const nodeId = firstFail.firstBadNodeId?.split(".")[0] ?? "node";
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    const portText = node ? missingPortText(firstFail.message, node.id, language) : firstFail.message;
+    return `${portText} ${firstFail.diagnostic.suggestedProbe ?? graphText(language, "Connect the missing input, then run Visible again.")}`;
+  }
+  return firstFail.diagnostic?.suggestedProbe ?? firstFail.message ?? graphText(language, "Inspect the first red node and compare its input/output shapes.");
+}
+
+function missingPortText(message: string, nodeId: string, language: GraphLanguage) {
+  const match = message.match(/Required input ([A-Za-z0-9_]+) is not connected/);
+  if (!match) return message;
+  return language === "zh" ? `${nodeId}.${match[1]} 没有接线。` : `${nodeId}.${match[1]} is unplugged.`;
+}
+
+function computeRank(level: LevelSpec, graph: GraphSpec, runState: RunState, language: GraphLanguage) {
   const extraModules = countExtraModules(level.id, graph);
   if (runState.hidden?.status === "pass") {
     if (runState.stats.hiddenRuns === 1 && runState.stats.failedRuns === 0 && runState.stats.hintsUsed === 0 && extraModules === 0) {
-      return { rank: "S", message: "Hidden tests passed on the first clean attempt.", extraModules };
+      return { rank: "S", message: graphText(language, "Hidden tests passed on the first clean attempt."), extraModules };
     }
     if (runState.stats.failedRuns <= 2 && runState.stats.hintsUsed === 0) {
-      return { rank: "A", message: "Hidden tests passed with a low failure count.", extraModules };
+      return { rank: "A", message: graphText(language, "Hidden tests passed with a low failure count."), extraModules };
     }
-    return { rank: "B", message: "Hidden tests passed. The graph generalizes beyond visible inputs.", extraModules };
+    return { rank: "B", message: graphText(language, "Hidden tests passed. The graph generalizes beyond visible inputs."), extraModules };
   }
   if (runState.visible?.status === "pass") {
-    return { rank: "C", message: "Visible tests passed. Run hidden mutation tests to prove generalization.", extraModules };
+    return { rank: "C", message: graphText(language, "Visible tests passed. Run hidden mutation tests to prove generalization."), extraModules };
   }
-  return { rank: "-", message: "Run visible tests to start the challenge loop.", extraModules };
+  return { rank: "-", message: graphText(language, "Run visible tests to start the challenge loop."), extraModules };
 }
 
 function countExtraModules(levelId: string, graph: GraphSpec) {
@@ -1388,6 +1889,7 @@ function countExtraModules(levelId: string, graph: GraphSpec) {
 }
 
 const expectedNodeIdsByLevel: Record<string, Set<string>> = {
+  ch0_0_graph_basics: new Set(["input", "shape_gate"]),
   ch0_2_matmul_graph: new Set(["hidden", "weight", "weight_transpose", "matmul", "projected", "reference"]),
   ch0_3_transpose_graph: new Set(["q", "k", "k_transpose", "axis_lock", "qk_matmul", "score_board", "cell_trace", "reference"]),
   ch0_4_broadcast_add: new Set(["projected", "bias", "axis_ruler", "broadcast", "semantic_lens", "ghost", "biased", "cell_trace", "reference"]),
@@ -1535,6 +2037,12 @@ function cloneParams(params: Record<string, unknown>) {
 }
 
 function getLevelNodeTemplate(levelId: string, graph: GraphSpec, moduleId: string): { id?: string; params?: Record<string, unknown> } {
+  if (levelId === "ch0_0_graph_basics") {
+    const taken = new Set(graph.nodes.map((node) => node.id));
+    if (moduleId === "InputTensor" && !taken.has("input")) return { id: "input", params: { inputKey: "input" } };
+    if (moduleId === "OutputContractGate" && !taken.has("shape_gate")) return { id: "shape_gate", params: { expectedAxes: ["B", "T", "C"] } };
+  }
+
   if (levelId === "ch0_2_matmul_graph") {
     const taken = new Set(graph.nodes.map((node) => node.id));
     if (moduleId === "InputTensor" && !taken.has("hidden")) return { id: "hidden", params: { inputKey: "hidden" } };

@@ -29,13 +29,8 @@ export const ch0MaskGraph: LevelSpec = {
     "CellTrace",
     "ReferenceChecker"
   ],
-  initialGraph: {
-    levelId: "ch0_4f_mask_add",
-    version: 1,
-    nodes: [],
-    edges: [],
-    outputNodes: ["masked_scores", "cell_trace", "reference"]
-  },
+  initialGraph: createCh0MaskWrongOrientationGraph(),
+  targetGraph: createCh0MaskSolutionGraph(),
   constraints: {
     maxNodes: 11,
     maxEdges: 13,
@@ -96,6 +91,22 @@ export const ch0MaskGraph: LevelSpec = {
       ]
     }
   ],
+  onboarding: {
+    story: "Mini Mask machine is wired and the shapes look right, but it blocks the wrong triangle.",
+    startingProblem: "CausalMask is set to key_query, so future-key cells are not masked in query/key order.",
+    firstAction: "Run Visible and inspect the future_attention_zero failure on masked_scores.",
+    targetRecipe: [
+      "scores.out -> score_board.scores",
+      "score_board.out -> mask.target",
+      "mask maskOrientation = query_key",
+      "mask.out -> mask_ruler.x",
+      "mask_ruler.out -> broadcast.small",
+      "broadcast.out -> ghost.x",
+      "score_board.out -> masked_scores.left",
+      "ghost.out -> masked_scores.right"
+    ],
+    winCondition: "future key cells are <= -999 and masked_scores matches the reference."
+  },
   debrief: {
     completeTitle: "Mini Mask Add Restored",
     fixedProblem: "The causal mask is generated in query/key order and then broadcast logically across B/H before AddGate.",

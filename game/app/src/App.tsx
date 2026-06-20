@@ -12,6 +12,7 @@ import {
 } from "./PixiWorkbenchCanvas";
 import { modeLabels } from "./sceneData";
 import { GraphWorkbench } from "./gameplayGraph/ui/GraphWorkbench";
+import { graphText, type GraphLanguage } from "./gameplayGraph/i18n";
 import type {
   BootcampAnswerMap,
   BootcampLevel,
@@ -30,6 +31,18 @@ type ObservationLogItem = ProbeObservation & {
   slotId: string;
   slotLabel: string;
 };
+
+const graphLanguageStorageKey = "llm-complete.graph-language";
+
+function readGraphLanguage(): GraphLanguage {
+  try {
+    const saved = window.localStorage.getItem(graphLanguageStorageKey);
+    if (saved === "en" || saved === "zh") return saved;
+    return window.navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+  } catch {
+    return "en";
+  }
+}
 
 type LevelRepairState = {
   assignments: BootcampAnswerMap;
@@ -2202,7 +2215,8 @@ export function App() {
   const [initialProgress] = useState<BootcampProgressSave>(() => readBootcampProgressSave());
   const initialSelectedLevelId = resolveSavedLevelId(initialProgress.selectedLevelId);
   const initialSelectedLevel = bootcampLevels.find((level) => level.id === initialSelectedLevelId) ?? bootcampLevels[0];
-  const [experienceMode, setExperienceMode] = useState<"guided" | "graph">("graph");
+  const [experienceMode, setExperienceMode] = useState<"guided" | "graph">("guided");
+  const [graphLanguage, setGraphLanguage] = useState<GraphLanguage>(() => readGraphLanguage());
   const [mode, setMode] = useState<WorkbenchMode>("build");
   const [selectedLevelId, setSelectedLevelId] = useState(initialSelectedLevel.id);
   const [selectedId, setSelectedId] = useState(initialSelectedLevel.defaultSelectedNodeId);
@@ -2289,6 +2303,15 @@ export function App() {
     [activeLevel, activeRepairState.assignments, activeRepairState.observations, activeRepairState.selectedSlotId, levelPhase]
   );
   const activeTensorObjectShowcase = tensorObjectDetail ? tensorObjectShowcases[tensorObjectDetail.slotId] : undefined;
+  const gt = (text: string) => graphText(graphLanguage, text);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(graphLanguageStorageKey, graphLanguage);
+    } catch {
+      // Keep the in-memory language even when localStorage is unavailable.
+    }
+  }, [graphLanguage]);
 
   useEffect(() => {
     if (!displayNodes.some((node) => node.id === selectedId)) {
@@ -2708,28 +2731,36 @@ export function App() {
             </div>
             <div>
               <p className="eyebrow">LLM Complete / MVP 0.0.5-dev</p>
-              <h1>Graph Challenge Workbench</h1>
+              <h1>{gt("Graph Challenge Workbench")}</h1>
             </div>
           </div>
           <div className="topControls">
+            <div className="modeSwitch" aria-label="language">
+              <button className={graphLanguage === "en" ? "modeButton active" : "modeButton"} onClick={() => setGraphLanguage("en")}>
+                EN
+              </button>
+              <button className={graphLanguage === "zh" ? "modeButton active" : "modeButton"} onClick={() => setGraphLanguage("zh")}>
+                中文
+              </button>
+            </div>
             <div className="modeSwitch" aria-label="experience mode">
               <button className="modeButton" onClick={() => setExperienceMode("guided")}>
                 <Wrench size={17} />
-                Guided Repair
+                {gt("Guided Repair")}
               </button>
               <button className="modeButton active" onClick={() => setExperienceMode("graph")}>
                 <Boxes size={17} />
-                Graph Challenge
+                {gt("Graph Challenge")}
               </button>
             </div>
           </div>
         </header>
         <section className="statusStrip">
-          <StatusPill label="Mode" value="Graph Challenge" />
-          <StatusPill label="Runtime" value="GraphSpec / ModuleRegistry / Tiny Runtime / Test Runner" />
-          <StatusPill label="Goal" value="Build-Test-Debug vertical slice" />
+          <StatusPill label={gt("Mode")} value={gt("Graph Challenge")} />
+          <StatusPill label={gt("Runtime")} value={gt("GraphSpec / ModuleRegistry / Tiny Runtime / Test Runner")} />
+          <StatusPill label={gt("Goal")} value={gt("Build-Test-Debug vertical slice")} />
         </section>
-        <GraphWorkbench />
+        <GraphWorkbench language={graphLanguage} />
       </main>
     );
   }
@@ -2747,14 +2778,22 @@ export function App() {
           </div>
         </div>
         <div className="topControls">
+          <div className="modeSwitch" aria-label="language">
+            <button className={graphLanguage === "en" ? "modeButton active" : "modeButton"} onClick={() => setGraphLanguage("en")}>
+              EN
+            </button>
+            <button className={graphLanguage === "zh" ? "modeButton active" : "modeButton"} onClick={() => setGraphLanguage("zh")}>
+              中文
+            </button>
+          </div>
           <div className="modeSwitch" aria-label="experience mode">
             <button className="modeButton active" onClick={() => setExperienceMode("guided")}>
               <Wrench size={17} />
-              Guided Repair
+              {gt("Guided Repair")}
             </button>
             <button className="modeButton" onClick={() => setExperienceMode("graph")}>
               <Boxes size={17} />
-              Graph Challenge
+              {gt("Graph Challenge")}
             </button>
           </div>
           <div className="modeSwitch" aria-label="workbench mode">

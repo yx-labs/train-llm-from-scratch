@@ -6,9 +6,20 @@ import { topologicalNodes, validateGraphStructure } from "./graphValidation";
 export function executeGraph(graph: GraphSpec, registry: ModuleRegistry, testInputs: Record<string, RuntimeValue> = {}): GraphExecutionResult {
   const validation = validateGraphStructure(graph, registry);
   if (!validation.ok) {
+    const trace: TraceFrame[] = validation.errors.map((error, index) => {
+      const node = graph.nodes.find((item) => item.id === error.nodeId);
+      return {
+        step: index,
+        nodeId: error.nodeId,
+        moduleId: node?.moduleId ?? "Graph",
+        inputShapes: {},
+        outputShapes: {},
+        error
+      };
+    });
     return {
       values: {},
-      trace: [],
+      trace,
       error: validation.errors[0]
     };
   }

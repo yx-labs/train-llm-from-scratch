@@ -34,13 +34,8 @@ export const ch0BroadcastGraph: LevelSpec = {
     "CellTrace",
     "ReferenceChecker"
   ],
-  initialGraph: {
-    levelId: "ch0_4_broadcast_add",
-    version: 1,
-    nodes: [],
-    edges: [],
-    outputNodes: ["biased", "cell_trace", "reference"]
-  },
+  initialGraph: createCh0BroadcastWithoutRailGraph(),
+  targetGraph: createCh0BroadcastSolutionGraph(),
   constraints: {
     maxNodes: 10,
     maxEdges: 12,
@@ -117,6 +112,20 @@ export const ch0BroadcastGraph: LevelSpec = {
       ]
     }
   ],
+  onboarding: {
+    story: "Bias Add machine adds bias directly to projected. That works only if the small tensor is first aligned and broadcast.",
+    startingProblem: "bias[O] is connected straight into AddGate.right, so AddGate receives mismatched shapes.",
+    firstAction: "Run Visible and inspect biased.right.",
+    targetRecipe: [
+      "bias.out -> axis_ruler.x",
+      "axis_ruler.out -> broadcast.small",
+      "projected.out -> broadcast.target",
+      "broadcast.out -> semantic_lens.x",
+      "semantic_lens.out -> ghost.x",
+      "ghost.out -> biased.right"
+    ],
+    winCondition: "biased outputs [B,T,O], CellTrace shows bias[o], and allclose passes."
+  },
   debrief: {
     completeTitle: "Broadcast Add Restored",
     fixedProblem: "bias[O] is aligned to the O rail, then logically expanded across B and T before AddGate.",
