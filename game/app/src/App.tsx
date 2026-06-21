@@ -2730,7 +2730,7 @@ export function App() {
               <Boxes size={28} />
             </div>
             <div>
-              <p className="eyebrow">LLM Complete / MVP 0.0.5-dev</p>
+              <p className="eyebrow">LLM Complete / Legacy MVP 0.0.5-dev</p>
               <h1>{gt("Graph Challenge Workbench")}</h1>
             </div>
           </div>
@@ -2743,6 +2743,9 @@ export function App() {
                 中文
               </button>
             </div>
+            <a className="ghostButton legacyMainLink" href="#/mvp0.1" title={gt("MVP0.1 Component Builder")}>
+              MVP0.1
+            </a>
             <div className="modeSwitch" aria-label="experience mode">
               <button className="modeButton" onClick={() => setExperienceMode("guided")}>
                 <Wrench size={17} />
@@ -2773,7 +2776,7 @@ export function App() {
             <Boxes size={28} />
           </div>
           <div>
-            <p className="eyebrow">LLM Complete / MVP 0.0.3-dev</p>
+            <p className="eyebrow">LLM Complete / Legacy MVP 0.0.3-dev</p>
             <h1>Campaign Workbench</h1>
           </div>
         </div>
@@ -2786,6 +2789,9 @@ export function App() {
               中文
             </button>
           </div>
+          <a className="ghostButton legacyMainLink" href="#/mvp0.1" title={gt("MVP0.1 Component Builder")}>
+            MVP0.1
+          </a>
           <div className="modeSwitch" aria-label="experience mode">
             <button className="modeButton active" onClick={() => setExperienceMode("guided")}>
               <Wrench size={17} />

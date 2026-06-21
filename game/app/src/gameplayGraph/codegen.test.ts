@@ -3,6 +3,7 @@ import { createTokenizerPreview, generateCaseCodeLines, generateGraphCodeSection
 import { ch0MatMulGraph, createCh0MatMulSolutionGraph } from "./levels/ch0MatMulGraph";
 import { ch1SplitMergeBudget, createCh1SplitMergeCharGraph, createCh1SplitMergeSolutionGraph } from "./levels/ch1TokenizerMachine";
 import { createGameplayRegistry } from "./modules";
+import { createMvp01MatMulSolutionGraph, createMvp01ScalarSolutionGraph, mvp01GraphLevels } from "../mvp01/mvp01GraphLevels";
 
 const registry = createGameplayRegistry();
 const modules = registry.list();
@@ -25,11 +26,11 @@ describe("gameplay graph codegen", () => {
     expect(repairedPreview?.pieces).toContain("useful");
   });
 
-  it("emits only the visible case input code for the code panel", () => {
+  it("emits only the visible task input code for the code panel", () => {
     const caseCode = generateCaseCodeLines(ch1SplitMergeBudget, ch1SplitMergeBudget.visibleTests[0]).map((line) => line.text).join("\n");
 
     expect(caseCode).toContain("texts = [");
-    expect(caseCode).toContain('"tokenizers are useful!",  # focus case');
+    expect(caseCode).toContain('"tokenizers are useful!",  # focus task');
     expect(caseCode).toContain('focus_text = "tokenizers are useful!"');
     expect(caseCode).not.toContain("assert ");
     expect(caseCode).not.toContain("ToyTokenizer(");
@@ -58,5 +59,26 @@ describe("gameplay graph codegen", () => {
     expect(graphCode).toContain("matmul = torch.matmul(hidden, weight_transpose)");
     expect(graphCode).not.toContain("WeightPlate(");
     expect(graphCode).not.toContain("MatMulGate(");
+  });
+
+  it("emits MVP0.1 case code as tensor case data instead of concept text", () => {
+    const scalar = mvp01GraphLevels.find((level) => level.id === "mvp01_1_scalar_cell");
+    const matmul = mvp01GraphLevels.find((level) => level.id === "mvp01_5_matmul_gate");
+    expect(scalar).toBeDefined();
+    expect(matmul).toBeDefined();
+
+    const scalarCaseCode = generateGraphCodeSections(scalar!, createMvp01ScalarSolutionGraph(), modules, scalar!.visibleTests[0])
+      .caseCode.map((line) => line.text)
+      .join("\n");
+    const matmulCaseCode = generateGraphCodeSections(matmul!, createMvp01MatMulSolutionGraph(), modules, matmul!.visibleTests[0])
+      .caseCode.map((line) => line.text)
+      .join("\n");
+
+    expect(scalarCaseCode).toContain("starting_value = Tensor(shape=[], axes=[], values=[0.5])");
+    expect(scalarCaseCode).not.toContain("case = [");
+    expect(scalarCaseCode).not.toContain("Concept:");
+    expect(matmulCaseCode).toContain('hidden = Tensor(shape=[1, 2, 3], axes=["B", "T", "C"]');
+    expect(matmulCaseCode).toContain('weight = Tensor(shape=[3, 2], axes=["C", "O"]');
+    expect(matmulCaseCode).not.toContain("Concept:");
   });
 });

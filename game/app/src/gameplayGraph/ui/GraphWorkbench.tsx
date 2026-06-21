@@ -15,8 +15,26 @@ import {
 import { AlertTriangle, BookOpenText, CheckCircle2, GitBranchPlus, Minus, MousePointer2, Move, Play, Plus, RotateCcw, Trash2, Wrench, X } from "lucide-react";
 import { graphLevels } from "../levelRegistry";
 import { createGameplayRegistry } from "../modules";
-import type { DType, GraphEdge, GraphNode, GraphSpec, LevelSpec, ModuleDef, PortDef, PortRef, RuntimeValue, TestAssertion, TestResult, TraceFrame } from "../types";
-import { runTests, type RunTestsResult, type TestCaseRunResult } from "../runtime/testRunner";
+import type {
+  CertificationControlSpec,
+  CertificationControlValue,
+  CertificationTestSpec,
+  DType,
+  GraphEdge,
+  GraphNode,
+  GraphSpec,
+  LevelCertificationSpec,
+  LevelSpec,
+  ModuleDef,
+  PortDef,
+  PortRef,
+  RuntimeValue,
+  TestAssertion,
+  TestCase,
+  TestResult,
+  TraceFrame
+} from "../types";
+import { runTestCaseDetailed, runTests, type RunTestsResult, type TestCaseRunResult } from "../runtime/testRunner";
 import { graphStatusText, graphText, type GraphLanguage } from "../i18n";
 import { createTokenizerPreview, generateGraphCodeSections, getCaseTexts, type TokenizerCasePreview } from "../codegen";
 
@@ -41,6 +59,14 @@ type TraceSelection = {
   caseId: string;
   step: number;
 };
+
+type CompletionNotice = {
+  componentTitle?: string;
+  nextLevelTitle?: string;
+  routeComplete: boolean;
+};
+
+type CertificationValuesByLevel = Record<string, Record<string, CertificationControlValue>>;
 
 type WireSource = PortRef & {
   dtype?: DType;
@@ -90,9 +116,33 @@ type ParamCopy = {
   help?: string;
 };
 
+export type ComponentFlowLevelSpec = {
+  componentId: string;
+  title: string;
+  version: number;
+  exportModuleId: string;
+  requires: string[];
+  unlocks: string[];
+  shelf: string;
+};
+
+export type ComponentAvailabilityPayload = {
+  level: LevelSpec;
+  component: ComponentFlowLevelSpec;
+  graph: GraphSpec;
+  visible?: RunTestsResult;
+  hidden?: RunTestsResult;
+};
+
+export type ComponentFlowConfig = {
+  specs: Record<string, ComponentFlowLevelSpec>;
+  availableComponentIds: string[];
+  onComponentAvailable: (payload: ComponentAvailabilityPayload) => void;
+};
+
 const moduleDragMime = "application/x-llm-complete-graph-module";
-const graphNodeWidth = 190;
-const graphNodeMinHeight = 118;
+const graphNodeWidth = 240;
+const graphNodeMinHeight = 156;
 const graphWorldWidth = 2400;
 const graphWorldHeight = 1600;
 const minCanvasScale = 0.45;
@@ -118,14 +168,24 @@ function useGraphT() {
   };
 }
 
-export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }) {
+export function GraphWorkbench({
+  language = "en",
+  levels = graphLevels,
+  componentFlow
+}: {
+  language?: GraphLanguage;
+  levels?: LevelSpec[];
+  componentFlow?: ComponentFlowConfig;
+}) {
   const registry = useMemo(() => createGameplayRegistry(), []);
   const modules = useMemo(() => registry.list(), [registry]);
-  const [selectedLevelId, setSelectedLevelId] = useState(graphLevels[0].id);
-  const selectedLevel = graphLevels.find((level) => level.id === selectedLevelId) ?? graphLevels[0];
-  const [graphs, setGraphs] = useState<Record<string, GraphSpec>>(() => initialGraphsByLevel());
+  const availableComponentIds = useMemo(() => new Set(componentFlow?.availableComponentIds ?? []), [componentFlow?.availableComponentIds]);
+  const [selectedLevelId, setSelectedLevelId] = useState(levels[0].id);
+  const selectedLevel = levels.find((level) => level.id === selectedLevelId) ?? levels[0];
+  const selectedComponent = componentFlow?.specs[selectedLevel.id];
+  const [graphs, setGraphs] = useState<Record<string, GraphSpec>>(() => initialGraphsByLevel(levels));
   const [selection, setSelection] = useState<GraphSelection | undefined>(() => {
-    const firstNodeId = graphLevels[0].initialGraph.nodes[0]?.id;
+    const firstNodeId = levels[0].initialGraph.nodes[0]?.id;
     return firstNodeId ? { type: "node", id: firstNodeId } : undefined;
   });
   const [wireSource, setWireSource] = useState<WireSource>();
@@ -134,27 +194,37 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   const [dragOverCanvas, setDragOverCanvas] = useState(false);
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 0, y: 0, scale: 1 });
   const [runs, setRuns] = useState<Record<string, RunState>>({});
+  const [certificationValuesByLevel, setCertificationValuesByLevel] = useState<CertificationValuesByLevel>(() => initialCertificationValuesByLevel(levels));
   const [traceSelection, setTraceSelection] = useState<TraceSelection>();
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("summary");
-  const [missionOpen, setMissionOpen] = useState(true);
+  const [missionOpen, setMissionOpen] = useState(false);
+  const [completionNotice, setCompletionNotice] = useState<CompletionNotice>();
   const [layout, setLayout] = useState<WorkbenchLayout>(defaultWorkbenchLayout);
   const [portAnchors, setPortAnchors] = useState<PortAnchorMap>({});
   const workbenchRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const seenMissionLevelIdsRef = useRef<Set<string>>(new Set());
+  const autoAdvanceTimerRef = useRef<number>();
   const nodeDragRef = useRef<NodeDragState>();
   const panDragRef = useRef<PanDragState>();
   const wireSourceRef = useRef<WireSource>();
   const suppressNextPortClickRef = useRef(false);
   const graph = graphs[selectedLevel.id] ?? selectedLevel.initialGraph;
   const runState = runs[selectedLevel.id] ?? createEmptyRunState();
+  const certificationValues = certificationValuesForLevel(selectedLevel, certificationValuesByLevel[selectedLevel.id]);
+  const certificationErrors = certificationControlErrors(selectedLevel.certification, certificationValues);
+  const missingComponentRequirements = selectedComponent?.requires.filter((componentId) => !availableComponentIds.has(componentId)) ?? [];
+  const componentLevelLocked = missingComponentRequirements.length > 0;
+  const componentAvailable = selectedComponent ? availableComponentIds.has(selectedComponent.componentId) : false;
   const selectedNode = selection?.type === "node" ? graph.nodes.find((node) => node.id === selection.id) : undefined;
   const selectedEdge = selection?.type === "edge" ? graph.edges.find((edge) => edge.id === selection.id) : undefined;
   const selectedModule = selectedNode ? registry.maybeGet(selectedNode.moduleId) : undefined;
   const wireSourcePort = wireSource ? getOutputPort(graph, modules, wireSource) : undefined;
   const activeTraceCase = resolveTraceCase(runState, traceSelection);
   const activeTraceFrame = activeTraceCase && traceSelection?.caseId === activeTraceCase.id ? activeTraceCase.execution.trace[traceSelection.step] : undefined;
-  const hiddenLocked = runState.visible?.status !== "pass";
+  const certificationLocked = runState.visible?.status !== "pass";
+  const canSubmitCertification = !certificationLocked && !componentLevelLocked && certificationErrors.length === 0;
   const workbenchStyle = {
     "--graph-sidebar-width": `${layout.sidebarWidth}px`,
     "--graph-inspector-width": `${layout.inspectorWidth}px`
@@ -188,8 +258,19 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   });
 
   useEffect(() => {
+    if (seenMissionLevelIdsRef.current.has(selectedLevel.id)) {
+      setMissionOpen(false);
+      return;
+    }
+    seenMissionLevelIdsRef.current.add(selectedLevel.id);
     setMissionOpen(true);
   }, [selectedLevel.id]);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) window.clearTimeout(autoAdvanceTimerRef.current);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -210,6 +291,10 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   }, [graph, selectedLevel.id, viewport.x, viewport.y, viewport.scale, language]);
 
   function selectLevel(level: LevelSpec) {
+    if (autoAdvanceTimerRef.current) {
+      window.clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = undefined;
+    }
     const levelGraph = graphs[level.id] ?? level.initialGraph;
     setSelectedLevelId(level.id);
     setSelection(levelGraph.nodes[0] ? { type: "node", id: levelGraph.nodes[0].id } : undefined);
@@ -217,22 +302,29 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
     setWirePointer(undefined);
     setTraceSelection(undefined);
     setInspectorTab("summary");
+    setCompletionNotice(undefined);
     setCanvasNotice("ready");
   }
 
   function resetLevel() {
     setGraphs((current) => ({ ...current, [selectedLevel.id]: selectedLevel.initialGraph }));
     setRuns((current) => ({ ...current, [selectedLevel.id]: createEmptyRunState() }));
+    setCertificationValuesByLevel((current) => ({ ...current, [selectedLevel.id]: defaultCertificationValues(selectedLevel) }));
     setSelection(selectedLevel.initialGraph.nodes[0] ? { type: "node", id: selectedLevel.initialGraph.nodes[0].id } : undefined);
     clearWireSource();
     setWirePointer(undefined);
     setTraceSelection(undefined);
     setInspectorTab("summary");
+    setCompletionNotice(undefined);
     setViewport({ x: 0, y: 0, scale: 1 });
     setCanvasNotice("reset");
   }
 
   function runVisible() {
+    if (componentLevelLocked) {
+      setCanvasNotice(`missing requirements: ${missingComponentRequirements.join(", ")}`);
+      return;
+    }
     const result = runTests(graph, registry, selectedLevel.visibleTests);
     setRuns((current) => {
       const previous = current[selectedLevel.id] ?? createEmptyRunState();
@@ -241,6 +333,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
         [selectedLevel.id]: {
           ...previous,
           visible: result,
+          hidden: undefined,
           stats: {
             ...previous.stats,
             visibleRuns: previous.stats.visibleRuns + 1,
@@ -254,7 +347,20 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   }
 
   function runHidden() {
-    const result = runTests(graph, registry, selectedLevel.hiddenTests);
+    if (componentLevelLocked) {
+      setCanvasNotice(`missing requirements: ${missingComponentRequirements.join(", ")}`);
+      return;
+    }
+    if (certificationErrors.length > 0) {
+      setCanvasNotice("certification variant needs valid inputs");
+      return;
+    }
+    const result = runCertificationTests(
+      graph,
+      selectedLevel.certification
+        ? [...selectedLevel.certification.makePublicTests(graph, certificationValues), ...selectedLevel.hiddenTests.map((testCase) => ({ testCase }))]
+        : selectedLevel.hiddenTests.map((testCase) => ({ testCase }))
+    );
     setRuns((current) => {
       const previous = current[selectedLevel.id] ?? createEmptyRunState();
       return {
@@ -271,7 +377,66 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
       };
     });
     setTraceSelection(defaultTraceSelection(result, "hidden"));
-    focusFirstBadNode(result);
+    if (result.status === "pass") {
+      completeSelectedLevel(result);
+    } else {
+      focusFirstBadNode(result);
+    }
+  }
+
+  function completeSelectedLevel(hiddenResult: RunTestsResult) {
+    const nextLevel = nextLevelAfter(selectedLevel.id);
+    if (selectedComponent && componentFlow && !componentAvailable) {
+      componentFlow.onComponentAvailable({
+        level: selectedLevel,
+        component: selectedComponent,
+        graph,
+        visible: runState.visible,
+        hidden: hiddenResult
+      });
+    }
+
+    setMissionOpen(false);
+    setCompletionNotice({
+      componentTitle: selectedComponent?.title,
+      nextLevelTitle: nextLevel?.title,
+      routeComplete: !nextLevel
+    });
+    setCanvasNotice(selectedComponent ? `${selectedComponent.title} available` : "level complete");
+
+    if (!nextLevel) return;
+    if (autoAdvanceTimerRef.current) window.clearTimeout(autoAdvanceTimerRef.current);
+    autoAdvanceTimerRef.current = window.setTimeout(() => {
+      autoAdvanceTimerRef.current = undefined;
+      selectLevel(nextLevel);
+    }, 1400);
+  }
+
+  function nextLevelAfter(levelId: string) {
+    const currentIndex = levels.findIndex((level) => level.id === levelId);
+    if (currentIndex < 0) return undefined;
+    return levels[currentIndex + 1];
+  }
+
+  function updateCertificationValue(controlId: string, value: CertificationControlValue) {
+    setCertificationValuesByLevel((current) => ({
+      ...current,
+      [selectedLevel.id]: {
+        ...certificationValuesForLevel(selectedLevel, current[selectedLevel.id]),
+        [controlId]: value
+      }
+    }));
+    setRuns((current) => {
+      const previous = current[selectedLevel.id] ?? createEmptyRunState();
+      return { ...current, [selectedLevel.id]: { ...previous, hidden: undefined } };
+    });
+    setCompletionNotice(undefined);
+  }
+
+  function runCertificationTests(defaultGraph: GraphSpec, certificationTests: CertificationTestSpec[]): RunTestsResult {
+    const cases = certificationTests.map((item) => runTestCaseDetailed(item.graph ?? defaultGraph, registry, item.testCase));
+    const results = cases.flatMap((testCase) => testCase.results);
+    return { status: statusFromResults(results), results, cases };
   }
 
   function focusFirstBadNode(result: RunTestsResult) {
@@ -335,7 +500,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   }
 
   function beginNodeDrag(event: ReactPointerEvent<HTMLDivElement>, node: GraphNode) {
-    if ((event.target as HTMLElement).closest("[data-graph-port='true']")) return;
+    if ((event.target as HTMLElement).closest("[data-graph-port='true'], input, select, textarea, button")) return;
     const point = clientToWorld(event.clientX, event.clientY);
     if (!point) return;
     nodeDragRef.current = {
@@ -371,7 +536,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   function beginCanvasPan(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest(".graphNode, .graphCanvasToolbar, .graphCanvasHud, .graphCanvasModulePalette, .graphCasePanel, button, input, select, textarea")) return;
+    if (target.closest(".graphNode, .graphCanvasToolbar, .graphCanvasHud, .graphCanvasModulePalette, button, input, select, textarea")) return;
     if (wireSourceRef.current) return;
     panDragRef.current = {
       startClientX: event.clientX,
@@ -408,6 +573,10 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   }
 
   function addModuleNode(moduleId: string, x = 320, y = 220) {
+    if (componentLevelLocked) {
+      setCanvasNotice(`blueprint locked: ${missingComponentRequirements.join(", ")}`);
+      return;
+    }
     const module = registry.get(moduleId);
     const forbidden = selectedLevel.constraints?.forbiddenModules?.includes(moduleId);
     if (forbidden) {
@@ -474,6 +643,10 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   }
 
   function completeWireToInput(node: GraphNode, port: PortDef) {
+    if (componentLevelLocked) {
+      setCanvasNotice(`blueprint locked: ${missingComponentRequirements.join(", ")}`);
+      return;
+    }
     const activeWire = wireSourceRef.current;
     if (!activeWire) {
       setSelection({ type: "node", id: node.id });
@@ -769,16 +942,26 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
           <h2>{t("Graph Levels")}</h2>
         </div>
         <div className="graphLevelList">
-          {graphLevels.map((level) => (
-            <button key={level.id} className={`graphLevelButton ${level.id === selectedLevel.id ? "active" : ""}`} onClick={() => selectLevel(level)}>
-              <span>
-                <b>{t(level.title)}</b>
-                <small>{t(level.goal)}</small>
-              </span>
-            </button>
-          ))}
+          {levels.map((level) => {
+            const component = componentFlow?.specs[level.id];
+            const missing = component?.requires.filter((componentId) => !availableComponentIds.has(componentId)) ?? [];
+            const available = component ? availableComponentIds.has(component.componentId) : false;
+            const lifecycle = component ? lifecycleLabel({ available, missingCount: missing.length }) : undefined;
+            return (
+              <button
+                key={level.id}
+                className={`graphLevelButton ${level.id === selectedLevel.id ? "active" : ""} ${missing.length ? "locked" : ""} ${available ? "available" : ""}`}
+                onClick={() => selectLevel(level)}
+              >
+                <span>
+                  <b>{t(level.title)}</b>
+                  <small>{t(level.goal)}</small>
+                  {lifecycle ? <code className="graphLifecyclePill">{t(lifecycle)}</code> : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
-
       </aside>
 
       <div
@@ -794,9 +977,18 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
       <section ref={stageRef} className="graphStage panel" style={stageStyle}>
         <div className="graphStageHeader">
           <div>
-            <p className="eyebrow">{t("Graph Challenge")}</p>
+            <p className="eyebrow">{t(componentFlow ? "Component Builder" : "Graph Challenge")}</p>
             <h2>{t(selectedLevel.title)}</h2>
             <small>{t(selectedLevel.goal)}</small>
+            {selectedComponent ? (
+              <ComponentLifecycleHeader
+                component={selectedComponent}
+                available={componentAvailable}
+                visiblePassed={runState.visible?.status === "pass"}
+                missingRequirements={missingComponentRequirements}
+                availableComponentIds={availableComponentIds}
+              />
+            ) : null}
           </div>
           <div className="graphRunBar">
             <button className="ghostButton" onClick={() => setMissionOpen(true)}>
@@ -817,13 +1009,13 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
               <GitBranchPlus size={15} />
               {t("Auto Layout")}
             </button>
-            <button className="runButton" onClick={runVisible}>
+            <button className="runButton" disabled={componentLevelLocked} onClick={runVisible}>
               <Play size={15} />
-              {t("Run Visible")}
+              {t("Check Current Task")}
             </button>
-            <button className="runButton" disabled={hiddenLocked} onClick={runHidden}>
+            <button className="runButton" disabled={!canSubmitCertification} onClick={runHidden}>
               <Play size={15} />
-              {t("Run Hidden")}
+              {t("Submit Certification")}
             </button>
             <button className="ghostButton" disabled={!selection} onClick={deleteSelection}>
               <Trash2 size={15} />
@@ -836,12 +1028,15 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
           <GraphMissionModal
             level={selectedLevel}
             graph={graph}
+            modules={modules}
             runState={runState}
             onRunVisible={runVisible}
             onShowHint={showNextHint}
             onClose={() => setMissionOpen(false)}
           />
         ) : null}
+
+        {completionNotice ? <GraphCompletionNotice notice={completionNotice} /> : null}
 
         <div
           ref={canvasRef}
@@ -869,6 +1064,24 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
             {wireSource ? <code>{`${wireSource.nodeId}.${wireSource.portId} ->`}</code> : <code>{graph.nodes.length} nodes / {graph.edges.length} edges</code>}
             <code>{Math.round(viewport.scale * 100)}%</code>
           </div>
+          {componentLevelLocked ? (
+            <div className="graphComponentLockOverlay">
+              <AlertTriangle size={18} />
+              <b>{t("Blueprint locked")}</b>
+              <span>{t("Unlock required components first")}: {missingComponentRequirements.join(", ")}</span>
+            </div>
+          ) : null}
+          {selectedLevel.certification && runState.visible?.status === "pass" ? (
+            <GraphCertificationPanel
+              certification={selectedLevel.certification}
+              values={certificationValues}
+              errors={certificationErrors}
+              taskPassed={runState.visible?.status === "pass"}
+              certificationResult={runState.hidden}
+              onChange={updateCertificationValue}
+              onSubmit={runHidden}
+            />
+          ) : null}
           <div className="graphCanvasToolbar">
             <button className="iconButton" title="Zoom out" onClick={() => zoomCanvas(0.9)}>
               <Minus size={15} />
@@ -880,7 +1093,6 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
               <Plus size={15} />
             </button>
           </div>
-          <GraphCasePanel key={selectedLevel.id} level={selectedLevel} graph={graph} modules={modules} />
           <GraphCanvasModulePalette
             level={selectedLevel}
             registry={registry}
@@ -941,7 +1153,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
                     <b>{node.id}</b>
                     <small>{t(module.label)}</small>
                   </div>
-                  <GraphNodeCaseChips level={selectedLevel} graph={graph} modules={modules} node={node} module={module} />
+                  <GraphNodeCaseChips level={selectedLevel} graph={graph} modules={modules} node={node} module={module} onParamChange={updateNodeParam} />
                   <div className="graphPorts">
                     <GraphPortColumn
                       node={node}
@@ -1039,8 +1251,8 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
 
         <GraphCodePanel level={selectedLevel} graph={graph} modules={modules} />
         <GraphRankPanel level={selectedLevel} graph={graph} runState={runState} />
-        <GraphRunPanel title="Visible Tests" result={runState.visible} onLocateNode={focusNode} onShowNextStep={showNextHint} />
-        <GraphRunPanel title="Hidden Tests" result={runState.hidden} locked={hiddenLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
+        <GraphRunPanel title="Task Check" result={runState.visible} onLocateNode={focusNode} onShowNextStep={showNextHint} />
+        <GraphRunPanel title="Certification Check" result={runState.hidden} locked={certificationLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
       </aside>
     </section>
     </GraphLanguageContext.Provider>
@@ -1050,6 +1262,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
 function GraphMissionModal({
   level,
   graph,
+  modules,
   runState,
   onRunVisible,
   onShowHint,
@@ -1057,6 +1270,7 @@ function GraphMissionModal({
 }: {
   level: LevelSpec;
   graph: GraphSpec;
+  modules: ModuleDef[];
   runState: RunState;
   onRunVisible: () => void;
   onShowHint: () => void;
@@ -1082,17 +1296,19 @@ function GraphMissionModal({
 
         <div className="graphMissionCopy">
           <b>{t(caseStudy?.title ?? onboarding?.story ?? level.goal)}</b>
-          <small>{t(caseStudy?.narrative ?? onboarding?.startingProblem ?? "Run Visible to reveal the first failing node, then repair the graph.")}</small>
+          <small>{t(caseStudy?.narrative ?? onboarding?.startingProblem ?? "Check the current task to reveal the first failing node, then repair the graph.")}</small>
         </div>
+
+        {caseStudy ? <GraphTaskDataPanels level={level} graph={graph} modules={modules} /> : null}
 
         <div className="graphMissionSteps">
           <div>
-            <b>{t("First action")}</b>
-            <small>{t(caseStudy?.playerQuestion ?? onboarding?.firstAction ?? "Click Run Visible.")}</small>
+            <b>{t(caseStudy ? "Task Check" : "First action")}</b>
+            <small>{t(caseStudy?.playerQuestion ?? onboarding?.firstAction ?? "Click Check Current Task.")}</small>
           </div>
           <div>
-            <b>{t("Win condition")}</b>
-            <small>{t(caseStudy?.successObservation ?? onboarding?.winCondition ?? "Visible and hidden tests pass.")}</small>
+            <b>{t(caseStudy ? "Pass Condition" : "Win condition")}</b>
+            <small>{t(caseStudy?.successObservation ?? onboarding?.winCondition ?? "Task check and certification pass.")}</small>
           </div>
         </div>
 
@@ -1112,7 +1328,7 @@ function GraphMissionModal({
           <div className="graphMissionActions">
             <button className="ghostButton" onClick={onRunVisible}>
               <Play size={14} />
-              {t("Run Visible")}
+              {t("Check Current Task")}
             </button>
             <button className="ghostButton" onClick={onShowHint}>
               <MousePointer2 size={14} />
@@ -1158,6 +1374,11 @@ type CaseChip = {
   label: string;
   value: string;
   tone?: "ok" | "warn" | "bad" | "muted";
+  error?: string;
+  editable?: {
+    paramKey: string;
+    kind: "finite_float32";
+  };
 };
 
 function GraphNodeCaseChips({
@@ -1165,27 +1386,54 @@ function GraphNodeCaseChips({
   graph,
   modules,
   node,
-  module
+  module,
+  onParamChange
 }: {
   level: LevelSpec;
   graph: GraphSpec;
   modules: ModuleDef[];
   node: GraphNode;
   module: ModuleDef;
+  onParamChange: (nodeId: string, key: string, value: unknown) => void;
 }) {
   const { t } = useGraphT();
   const chips = getNodeCaseChips(level, graph, modules, node, module);
   if (!chips.length) return null;
   return (
     <div className="graphNodeCase">
-      <span>{t("Case Flow")}</span>
+      <span>{t("Data Flow")}</span>
       <div>
-        {chips.map((chip) => (
-          <code key={`${chip.label}:${chip.value}`} className={chip.tone ?? "muted"}>
-            <b>{t(chip.label)}</b>
-            {chip.value}
-          </code>
-        ))}
+        {chips.map((chip) => {
+          const editable = chip.editable;
+          return (
+          <div key={`${chip.label}:${editable?.paramKey ?? chip.value}`} className="graphNodeCaseSlot">
+            {editable ? (
+              <label className={`graphNodeCaseEditable ${chip.tone ?? "muted"}`}>
+                <b>{t(chip.label)}</b>
+                <input
+                  value={chip.value}
+                  aria-invalid={Boolean(chip.error)}
+                  title={chip.error ? t(chip.error) : undefined}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  onKeyUp={(event) => event.stopPropagation()}
+                  onChange={(event) => {
+                    const parsed = parseEditableCaseValue(editable, event.currentTarget.value);
+                    onParamChange(node.id, editable.paramKey, parsed.ok ? parsed.value : event.currentTarget.value);
+                  }}
+                />
+              </label>
+            ) : (
+              <code className={chip.tone ?? "muted"}>
+                <b>{t(chip.label)}</b>
+                {t(chip.value)}
+              </code>
+            )}
+            {chip.error ? <small className="graphNodeCaseError">{t(chip.error)}</small> : null}
+          </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1281,7 +1529,7 @@ function GraphCanvasModulePalette({
   );
 }
 
-function GraphCasePanel({
+function GraphTaskDataPanels({
   level,
   graph,
   modules
@@ -1291,68 +1539,108 @@ function GraphCasePanel({
   modules: ModuleDef[];
 }) {
   const { t } = useGraphT();
-  const [collapsed, setCollapsed] = useState(false);
   const caseStudy = level.caseStudy;
   const visibleCase = level.visibleTests[0];
   if (!caseStudy) return null;
+  const panels = level.id.startsWith("mvp01_")
+    ? caseStudy.dataPanels.filter((panel) => panel.type !== "text_batch")
+    : caseStudy.dataPanels;
+  if (!panels.length) return null;
 
   return (
-    <section className={`graphCasePanel ${collapsed ? "collapsed" : ""}`}>
-      <div className="graphCasePanelHeader">
-        <div>
-          <p className="eyebrow">{t("Current Case")}</p>
-          <h3>{t(caseStudy.title)}</h3>
-        </div>
-        <button className="iconButton" type="button" title={t(collapsed ? "Open case" : "Collapse case")} onClick={() => setCollapsed((current) => !current)}>
-          {collapsed ? <BookOpenText size={15} /> : <X size={15} />}
-        </button>
+    <div className="graphCaseDataGrid">
+      {panels.map((panel) => {
+        if (panel.type === "text_batch") {
+          const texts = getCaseTexts(visibleCase, panel.inputKey);
+          const focusText = panel.focusText ?? caseStudy.visibleInputFocus;
+          return (
+            <section key={`${panel.type}:${panel.inputKey}`} className="graphCaseDataCard">
+              <b>{t(panel.title)}</b>
+              <div className="graphCaseTextList">
+                {texts.map((text) => (
+                  <code key={text} className={text === focusText ? "focus" : ""}>
+                    {t(text)}
+                  </code>
+                ))}
+              </div>
+            </section>
+          );
+        }
+
+        if (panel.type === "tokenizer_preview") {
+          const preview = createTokenizerPreview(level, graph, modules, visibleCase, panel.tokenizerNodeId, panel.textInputKey);
+          return (
+            <section key={`${panel.type}:${panel.tokenizerNodeId}`} className="graphCaseDataCard">
+              <TokenizerPreviewCard title={panel.title} preview={preview} />
+            </section>
+          );
+        }
+
+        if (panel.type === "tensor_preview") {
+          return (
+            <section key={`${panel.type}:${panel.inputKey}`} className="graphCaseDataCard">
+              <TensorPreviewCard
+                title={panel.title}
+                value={visibleCase.inputs[panel.inputKey]}
+                maxRows={panel.maxRows}
+                maxCols={panel.maxCols}
+              />
+            </section>
+          );
+        }
+
+        return (
+          <section key={`${panel.type}:${panel.title}`} className="graphCaseDataCard">
+            <b>{t(panel.title)}</b>
+            <p className="graphTraceEmpty">{t("Task preview is coming in the next slice.")}</p>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function TensorPreviewCard({
+  title,
+  value,
+  maxRows = 4,
+  maxCols = 6
+}: {
+  title: string;
+  value?: RuntimeValue;
+  maxRows?: number;
+  maxCols?: number;
+}) {
+  const { t } = useGraphT();
+  if (!value?.shape || !Array.isArray(value.data)) {
+    return (
+      <>
+        <b>{t(title)}</b>
+        <p className="graphTraceEmpty">{t("No shaped values.")}</p>
+      </>
+    );
+  }
+
+  const rows = tensorPreviewRows(value, maxRows, maxCols);
+  return (
+    <>
+      <div className="graphCasePreviewHeader">
+        <b>{t(title)}</b>
+        <code>{`${value.dtype}[${value.shape.axes.join(",") || "scalar"}]=[${value.shape.dims.join(",")}]`}</code>
       </div>
-      {!collapsed ? (
-        <>
-          <p className="graphCaseNarrative">{t(caseStudy.narrative)}</p>
-          <div className="graphCaseDataGrid">
-            {caseStudy.dataPanels.map((panel) => {
-              if (panel.type === "text_batch") {
-                const texts = getCaseTexts(visibleCase, panel.inputKey);
-                const focusText = panel.focusText ?? caseStudy.visibleInputFocus;
-                return (
-                  <section key={`${panel.type}:${panel.inputKey}`} className="graphCaseDataCard">
-                    <b>{t(panel.title)}</b>
-                    <div className="graphCaseTextList">
-                      {texts.map((text) => (
-                        <code key={text} className={text === focusText ? "focus" : ""}>
-                          {text}
-                        </code>
-                      ))}
-                    </div>
-                  </section>
-                );
-              }
-
-              if (panel.type === "tokenizer_preview") {
-                const preview = createTokenizerPreview(level, graph, modules, visibleCase, panel.tokenizerNodeId, panel.textInputKey);
-                return (
-                  <section key={`${panel.type}:${panel.tokenizerNodeId}`} className="graphCaseDataCard">
-                    <TokenizerPreviewCard title={panel.title} preview={preview} />
-                  </section>
-                );
-              }
-
-              return (
-                <section key={`${panel.type}:${panel.title}`} className="graphCaseDataCard">
-                  <b>{t(panel.title)}</b>
-                  <p className="graphTraceEmpty">{t("Case preview is coming in the next slice.")}</p>
-                </section>
-              );
-            })}
+      <div className="graphTensorPreviewGrid">
+        {rows.map((row) => (
+          <div key={row.label} className="graphTensorPreviewRow">
+            <small>{row.label}</small>
+            <span>
+              {row.values.map((item, index) => (
+                <code key={`${row.label}:${index}`}>{item}</code>
+              ))}
+            </span>
           </div>
-          <div className="graphCaseQuestion">
-            <b>{t("Player question")}</b>
-            <small>{t(caseStudy.playerQuestion)}</small>
-          </div>
-        </>
-      ) : null}
-    </section>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -1423,7 +1711,7 @@ function GraphCodePanel({ level, graph, modules }: { level: LevelSpec; graph: Gr
       </div>
       {!collapsed ? (
         <div className="graphCodeSections">
-          <CodeSection title="Case Code" lines={sections.caseCode} />
+          <CodeSection title="Task Input" lines={sections.caseCode} />
           <CodeSection title="Graph Code" lines={sections.graphCode} />
           <CodeSection title="Test Code" lines={sections.testCode} />
         </div>
@@ -1455,8 +1743,8 @@ function GraphTraceTimeline({
 }) {
   const { t, status } = useGraphT();
   const runs: Array<{ key: TraceRunKey; label: string; result?: RunTestsResult }> = [
-    { key: "visible", label: "Visible", result: visible },
-    { key: "hidden", label: "Hidden", result: hidden }
+    { key: "visible", label: "Task Check", result: visible },
+    { key: "hidden", label: "Certification", result: hidden }
   ];
   const hasTrace = runs.some((run) => run.result?.cases.length);
 
@@ -1500,7 +1788,7 @@ function GraphTraceTimeline({
           )}
         </div>
       ) : (
-        <p className="graphTraceEmpty">{t("Run visible tests to capture a trace.")}</p>
+        <p className="graphTraceEmpty">{t("Check current task to capture a trace.")}</p>
       )}
     </section>
   );
@@ -1794,11 +2082,30 @@ function GraphParamRow({
   }
 
   if (typeof value === "number" || typeof defaultValue === "number") {
+    const isFloat32ValueParam = paramKey === "value";
+    const error = isFloat32ValueParam ? finiteFloat32InputError(value) : undefined;
     return (
       <label className="graphParamRow">
         <span>{t(meta.label)}</span>
-        <input type="number" value={Number(value ?? 0)} step={1} onChange={(event) => onChange(nodeId, paramKey, Number(event.currentTarget.value))} />
-        {meta.help ? <small>{t(meta.help)}</small> : null}
+        <input
+          type="text"
+          inputMode="decimal"
+          value={String(value ?? "")}
+          aria-invalid={Boolean(error)}
+          title={error ? t(error) : undefined}
+          onChange={(event) => {
+            const text = event.currentTarget.value;
+            if (isFloat32ValueParam) {
+              const parsed = parseFiniteFloat32Input(text);
+              onChange(nodeId, paramKey, parsed.ok ? parsed.value : text);
+              return;
+            }
+
+            const parsed = Number(text);
+            onChange(nodeId, paramKey, text.trim() !== "" && Number.isFinite(parsed) ? parsed : text);
+          }}
+        />
+        {error ? <small className="graphParamError">{t(error)}</small> : meta.help ? <small>{t(meta.help)}</small> : null}
       </label>
     );
   }
@@ -1923,6 +2230,154 @@ function GraphRankPanel({ level, graph, runState }: { level: LevelSpec; graph: G
   );
 }
 
+function ComponentLifecycleHeader({
+  component,
+  available,
+  visiblePassed,
+  missingRequirements,
+  availableComponentIds
+}: {
+  component: ComponentFlowLevelSpec;
+  available: boolean;
+  visiblePassed: boolean;
+  missingRequirements: string[];
+  availableComponentIds: Set<string>;
+}) {
+  const { t } = useGraphT();
+  const lifecycle = available ? "Available" : visiblePassed ? "Visible Passed" : missingRequirements.length ? "Blueprint Locked" : "Draft";
+  return (
+    <div className="graphLifecycleHeader">
+      <code>{t(lifecycle)}</code>
+      <code>{component.title}</code>
+      <code>{`v${component.version}`}</code>
+      {component.requires.map((componentId) => {
+        const met = availableComponentIds.has(componentId);
+        return (
+          <span key={componentId} className={met ? "met" : "missing"}>
+            {met ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+            {componentId}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function GraphCompletionNotice({ notice }: { notice: CompletionNotice }) {
+  const { t } = useGraphT();
+  const title = notice.componentTitle ? `${t(notice.componentTitle)} ${t("is now available")}` : t("Level complete");
+  const next = notice.nextLevelTitle ? `${t("Entering next challenge")}: ${t(notice.nextLevelTitle)}` : t("Route complete");
+  return (
+    <div className="graphCompletionNotice" role="status" aria-live="polite">
+      <CheckCircle2 size={18} />
+      <span>
+        <b>{title}</b>
+        <small>{next}</small>
+      </span>
+    </div>
+  );
+}
+
+function GraphCertificationPanel({
+  certification,
+  values,
+  errors,
+  taskPassed,
+  certificationResult,
+  onChange,
+  onSubmit
+}: {
+  certification: LevelCertificationSpec;
+  values: Record<string, CertificationControlValue>;
+  errors: string[];
+  taskPassed: boolean;
+  certificationResult?: RunTestsResult;
+  onChange: (controlId: string, value: CertificationControlValue) => void;
+  onSubmit: () => void;
+}) {
+  const { t, status } = useGraphT();
+  const canSubmit = taskPassed && errors.length === 0;
+  return (
+    <section className={`graphCertificationPanel ${taskPassed ? "ready" : "locked"} ${certificationResult?.status ?? ""}`}>
+      <div className="graphCertificationHeader">
+        <span>
+          <p className="eyebrow">{t("Certification")}</p>
+          <h3>{t(certification.title)}</h3>
+        </span>
+        <code>{certificationResult ? status(certificationResult.status) : taskPassed ? t("ready") : t("locked")}</code>
+      </div>
+      <p>{t(taskPassed ? certification.narrative : "The current task must pass before certification can start.")}</p>
+      <div className="graphCertificationVariant">
+        <b>{t(certification.publicVariantLabel)}</b>
+        <small>{t(certification.publicVariantDescription)}</small>
+        <div className="graphCertificationControls">
+          {certification.controls.map((control) => (
+            <CertificationControl key={control.id} control={control} value={values[control.id] ?? control.defaultValue} disabled={!taskPassed} onChange={onChange} />
+          ))}
+        </div>
+      </div>
+      <div className="graphCertificationSystem">
+        <b>{t("System variants")}</b>
+        <small>{t(certification.systemVariantDescription)}</small>
+      </div>
+      {errors.length ? (
+        <div className="graphCertificationErrors">
+          {errors.map((error) => (
+            <small key={error}>{t(error)}</small>
+          ))}
+        </div>
+      ) : null}
+      <button className="runButton" type="button" disabled={!canSubmit} onClick={onSubmit}>
+        <Play size={14} />
+        {t("Submit Certification")}
+      </button>
+    </section>
+  );
+}
+
+function CertificationControl({
+  control,
+  value,
+  disabled,
+  onChange
+}: {
+  control: CertificationControlSpec;
+  value: CertificationControlValue;
+  disabled: boolean;
+  onChange: (controlId: string, value: CertificationControlValue) => void;
+}) {
+  const { t } = useGraphT();
+  if (control.kind === "select") {
+    return (
+      <label className="graphCertificationControl">
+        <span>{t(control.label)}</span>
+        <select disabled={disabled} value={String(value)} onChange={(event) => onChange(control.id, event.currentTarget.value)}>
+          {(control.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.label)}
+            </option>
+          ))}
+        </select>
+        {control.help ? <small>{t(control.help)}</small> : null}
+      </label>
+    );
+  }
+
+  return (
+    <label className="graphCertificationControl">
+      <span>{t(control.label)}</span>
+      <input
+        disabled={disabled}
+        type="text"
+        inputMode={control.kind === "integer" ? "numeric" : "decimal"}
+        value={String(value)}
+        onChange={(event) => onChange(control.id, event.currentTarget.value)}
+      />
+      {control.help ? <small>{t(control.help)}</small> : null}
+    </label>
+  );
+}
+
 function GraphRunPanel({
   title,
   result,
@@ -1943,7 +2398,7 @@ function GraphRunPanel({
         <h3>{t(title)}</h3>
         <code>{locked ? t("locked") : status(result?.status ?? "idle")}</code>
       </div>
-      {locked ? <p>{t("Visible tests must pass before hidden tests run.")}</p> : null}
+      {locked ? <p>{t("Task check must pass before certification.")}</p> : null}
       {result ? (
         <div className="graphResultList">
           {result.results.map((item) => (
@@ -1999,8 +2454,97 @@ function GraphResultItem({
   );
 }
 
-function initialGraphsByLevel() {
-  return Object.fromEntries(graphLevels.map((level) => [level.id, level.initialGraph]));
+function initialGraphsByLevel(levels: LevelSpec[]) {
+  return Object.fromEntries(levels.map((level) => [level.id, level.initialGraph]));
+}
+
+function initialCertificationValuesByLevel(levels: LevelSpec[]): CertificationValuesByLevel {
+  return Object.fromEntries(levels.map((level) => [level.id, defaultCertificationValues(level)]));
+}
+
+function defaultCertificationValues(level: LevelSpec) {
+  return Object.fromEntries((level.certification?.controls ?? []).map((control) => [control.id, control.defaultValue]));
+}
+
+function certificationValuesForLevel(level: LevelSpec, values: Record<string, CertificationControlValue> | undefined) {
+  return { ...defaultCertificationValues(level), ...(values ?? {}) };
+}
+
+function certificationControlErrors(certification: LevelCertificationSpec | undefined, values: Record<string, CertificationControlValue>) {
+  if (!certification) return [];
+  return certification.controls.flatMap((control) => {
+    const value = values[control.id] ?? control.defaultValue;
+    if (control.kind === "select") {
+      const valid = (control.options ?? []).some((option) => option.value === String(value));
+      return valid ? [] : ["Invalid certification option"];
+    }
+
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(parsed)) return [control.kind === "number" ? "Enter a finite float32 number" : "Enter a finite number"];
+    if (control.kind === "number" && !Number.isFinite(Math.fround(parsed))) {
+      return ["Value is outside float32 range"];
+    }
+    if (control.kind === "integer" && !Number.isInteger(parsed)) return ["Enter an integer"];
+    if (control.min !== undefined && parsed < control.min) return [`Minimum is ${control.min}`];
+    if (control.max !== undefined && parsed > control.max) return [`Maximum is ${control.max}`];
+    return [];
+  });
+}
+
+function statusFromResults(results: TestResult[]) {
+  return results.some((result) => result.status === "fail")
+    ? "fail"
+    : results.some((result) => result.status === "blocked")
+      ? "blocked"
+      : "pass";
+}
+
+function lifecycleLabel({ available, missingCount }: { available: boolean; missingCount: number }) {
+  if (available) return "Available";
+  if (missingCount > 0) return "Locked";
+  return "Draft";
+}
+
+function tensorPreviewRows(value: RuntimeValue, maxRows: number, maxCols: number) {
+  const data = Array.isArray(value.data) ? value.data : [];
+  const dims = value.shape?.dims ?? [];
+  const axes = value.shape?.axes ?? [];
+  if (!dims.length) {
+    return [{ label: "scalar", values: [formatTensorCell(data[0])] }];
+  }
+  if (dims.length === 1) {
+    return [{ label: axes[0] ?? "dim0", values: data.slice(0, maxCols).map(formatTensorCell) }];
+  }
+
+  const rowCount = Math.min(maxRows, dims.slice(0, -1).reduce((total, dim) => total * dim, 1));
+  const colCount = Math.min(maxCols, dims[dims.length - 1]);
+  const rows: Array<{ label: string; values: string[] }> = [];
+  for (let row = 0; row < rowCount; row += 1) {
+    const prefixIndex = unravelPreviewIndex(row, dims.slice(0, -1));
+    const label = prefixIndex.map((slot, index) => `${axes[index] ?? `d${index}`}=${slot}`).join(" ");
+    const offset = row * dims[dims.length - 1];
+    rows.push({
+      label,
+      values: data.slice(offset, offset + colCount).map(formatTensorCell)
+    });
+  }
+  return rows;
+}
+
+function unravelPreviewIndex(flatIndex: number, dims: number[]) {
+  const index = Array.from({ length: dims.length }, () => 0);
+  let remainder = flatIndex;
+  for (let dimIndex = dims.length - 1; dimIndex >= 0; dimIndex -= 1) {
+    index[dimIndex] = dims[dimIndex] ? remainder % dims[dimIndex] : 0;
+    remainder = dims[dimIndex] ? Math.floor(remainder / dims[dimIndex]) : 0;
+  }
+  return index;
+}
+
+function formatTensorCell(value: unknown) {
+  if (typeof value === "number") return Number(value.toFixed(4)).toString();
+  if (typeof value === "string") return value;
+  return String(value ?? "");
 }
 
 function createEmptyRunState(): RunState {
@@ -2074,6 +2618,8 @@ function estimateCurrentNodeSizes(graph: GraphSpec) {
 function getNodeCaseChips(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], node: GraphNode, module: ModuleDef): CaseChip[] {
   const visibleCase = level.visibleTests[0];
   if (!visibleCase) return [];
+  const mvp01Chips = getMvp01NodeCaseChips(level, graph, node, module, visibleCase);
+  if (mvp01Chips.length) return mvp01Chips;
 
   if (node.moduleId === "TextInput") {
     const inputKey = String(node.params.inputKey ?? "texts");
@@ -2107,6 +2653,17 @@ function getNodeCaseChips(level: LevelSpec, graph: GraphSpec, modules: ModuleDef
     return [{ label: "expects", value: "int token IDs", tone: "muted" }];
   }
 
+  if (isMatMulModule(node.moduleId)) {
+    const left = estimateOutputShape(level, graph, node, "left");
+    const right = estimateOutputShape(level, graph, node, "right");
+    const out = estimateNodeOutputShape(level, graph, node);
+    return [
+      ...(left ? [{ label: "left", value: formatShape(left), tone: "muted" as const }] : []),
+      ...(right ? [{ label: "right", value: formatShape(right), tone: left && right && left.dims[left.dims.length - 1] === right.dims[0] ? "ok" as const : "warn" as const }] : []),
+      ...(out ? [{ label: "out", value: formatShape(out), tone: "ok" as const }] : [])
+    ];
+  }
+
   if (node.moduleId === "InputTensor" || node.moduleId === "WeightPlate") {
     const inputKey = String(node.params.inputKey ?? node.id);
     const value = visibleCase.inputs[inputKey];
@@ -2125,17 +2682,6 @@ function getNodeCaseChips(level: LevelSpec, graph: GraphSpec, modules: ModuleDef
     ];
   }
 
-  if (node.moduleId === "MatMulGate") {
-    const left = estimateOutputShape(level, graph, node, "left");
-    const right = estimateOutputShape(level, graph, node, "right");
-    const out = estimateNodeOutputShape(level, graph, node);
-    return [
-      ...(left ? [{ label: "left", value: formatShape(left), tone: "muted" as const }] : []),
-      ...(right ? [{ label: "right", value: formatShape(right), tone: left && right && left.dims[left.dims.length - 1] === right.dims[0] ? "ok" as const : "warn" as const }] : []),
-      ...(out ? [{ label: "out", value: formatShape(out), tone: "ok" as const }] : [])
-    ];
-  }
-
   if (node.moduleId === "OutputContractGate" || node.moduleId === "ScoreBoard" || node.moduleId === "AxisAlignmentRuler" || node.moduleId === "AxisLock") {
     const expectedAxes = Array.isArray(node.params.expectedAxes)
       ? node.params.expectedAxes
@@ -2145,7 +2691,7 @@ function getNodeCaseChips(level: LevelSpec, graph: GraphSpec, modules: ModuleDef
     const inputPort = module.inputs[0]?.id ?? "x";
     const inputShape = estimateOutputShape(level, graph, node, inputPort);
     return [
-      ...(inputShape ? [{ label: "case", value: formatShape(inputShape), tone: "muted" as const }] : []),
+      ...(inputShape ? [{ label: "task", value: formatShape(inputShape), tone: "muted" as const }] : []),
       ...(expectedAxes.length ? [{ label: "expects", value: `[${expectedAxes.join(",")}]`, tone: "ok" as const }] : [])
     ];
   }
@@ -2153,10 +2699,134 @@ function getNodeCaseChips(level: LevelSpec, graph: GraphSpec, modules: ModuleDef
   if (node.moduleId === "ReferenceChecker") {
     const referenceKey = String(node.params.referenceKey ?? "reference");
     const value = visibleCase.inputs[referenceKey];
-    return value?.shape ? [{ label: "reference", value: formatShape(value.shape), tone: "muted" }] : [];
+    return [
+      { label: "Role", value: "prebuilt probe", tone: "ok" },
+      { label: "INPUT", value: "compare x", tone: "muted" },
+      ...(value?.shape ? [{ label: "reference", value: formatShape(value.shape), tone: "muted" as const }] : [])
+    ];
   }
 
   return [];
+}
+
+function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNode, module: ModuleDef, visibleCase: TestCase): CaseChip[] {
+  if (!level.id.startsWith("mvp01_")) return [];
+  const caseHeadline = getCaseHeadline(visibleCase);
+  const outputShape = estimateNodeOutputShape(level, graph, node);
+
+  if (node.moduleId === "Float32Literal") {
+    const value = node.params.value ?? 0.5;
+    const error = finiteFloat32InputError(value);
+    return [
+      { label: "Source", value: "scalar value", tone: "muted" },
+      { label: "VALUE", value: String(value), tone: error ? "bad" : "ok", error, editable: { paramKey: "value", kind: "finite_float32" } },
+      { label: "SHAPE", value: error ? "blocked" : "float32[]", tone: error ? "bad" : "ok" }
+    ];
+  }
+
+  if (node.moduleId === "component.scalar_cell.v1") {
+    const value = node.params.value ?? 0.5;
+    const error = finiteFloat32InputError(value);
+    return [
+      { label: "Component", value: "ScalarCell", tone: "ok" },
+      { label: "VALUE", value: String(value), tone: error ? "bad" : "ok", error, editable: { paramKey: "value", kind: "finite_float32" } },
+      { label: "Output", value: error ? "blocked" : "float32[]", tone: error ? "bad" : "muted" }
+    ];
+  }
+
+  if (node.moduleId === "InputTensor" || node.moduleId === "WeightPlate") {
+    const inputKey = String(node.params.inputKey ?? node.id);
+    const value = visibleCase.inputs[inputKey];
+    return [
+      ...(caseHeadline ? [{ label: "Task", value: "visible input", tone: "muted" as const }] : []),
+      { label: "INPUT", value: inputKey, tone: "muted" },
+      ...(value?.shape ? [{ label: "SHAPE", value: formatShape(value.shape), tone: "ok" as const }] : []),
+      ...(Array.isArray(value?.data) ? [{ label: "Sample", value: formatSmallSample(value.data), tone: "muted" as const }] : [])
+    ];
+  }
+
+  if (node.moduleId === "VectorRail") {
+    return [
+      { label: "Task", value: "three scalars", tone: "muted" },
+      { label: "Combine", value: "c0,c1,c2 -> C", tone: "ok" },
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[C=3]", tone: "ok" }
+    ];
+  }
+
+  if (node.moduleId === "MatrixStruct") {
+    return [
+      { label: "Task", value: "two output columns", tone: "muted" },
+      { label: "Structure", value: "O0/O1 columns", tone: "ok" },
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[C=3,O=2]", tone: "ok" }
+    ];
+  }
+
+  if (node.moduleId === "TensorBox") {
+    return [
+      { label: "Task", value: "three axes", tone: "muted" },
+      { label: "Stack", value: "t0,t1 -> T", tone: "ok" },
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[B=1,T=2,C=3]", tone: "ok" }
+    ];
+  }
+
+  if (isMatMulModule(node.moduleId)) {
+    const left = estimateOutputShape(level, graph, node, "left");
+    const right = estimateOutputShape(level, graph, node, "right");
+    const compatible = Boolean(left && right && left.dims[left.dims.length - 1] === right.dims[0]);
+    return [
+      { label: "Task", value: "C axis match", tone: "muted" },
+      ...(left ? [{ label: "LEFT", value: formatShape(left), tone: "muted" as const }] : []),
+      ...(right ? [{ label: "RIGHT", value: formatShape(right), tone: compatible ? "ok" as const : "warn" as const }] : []),
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "[B,T,O]", tone: compatible || outputShape ? "ok" : "warn" }
+    ];
+  }
+
+  if (node.moduleId === "BroadcastRail") {
+    const target = estimateOutputShape(level, graph, node, "target");
+    const small = estimateOutputShape(level, graph, node, "small");
+    return [
+      ...(small ? [{ label: "BIAS", value: formatShape(small), tone: "muted" as const }] : []),
+      { label: "Align", value: `O -> ${formatAxisList(target?.axes ?? ["B", "T", "O"])}`, tone: "ok" },
+      ...(target ? [{ label: "Output", value: formatShape(target), tone: "ok" as const }] : [])
+    ];
+  }
+
+  if (node.moduleId === "AddGate") {
+    const left = estimateOutputShape(level, graph, node, "left");
+    const right = estimateOutputShape(level, graph, node, "right");
+    return [
+      ...(left ? [{ label: "SCORE", value: formatShape(left), tone: "muted" as const }] : []),
+      ...(right ? [{ label: "BIAS", value: formatShape(right), tone: "muted" as const }] : []),
+      { label: "Merge", value: "score + bias", tone: "ok" }
+    ];
+  }
+
+  if (node.moduleId === "OutputContractGate") {
+    const expectedAxes = Array.isArray(node.params.expectedAxes) ? node.params.expectedAxes.map(String) : [];
+    const inputShape = estimateOutputShape(level, graph, node, "x");
+    return [
+      ...(inputShape ? [{ label: "Received", value: formatShape(inputShape), tone: "muted" as const }] : []),
+      { label: "Expected", value: expectedAxes.length ? formatAxisList(expectedAxes) : "rank-0 []", tone: "ok" },
+      { label: "Role", value: "certify output", tone: "ok" }
+    ];
+  }
+
+  if (node.moduleId === "ReferenceChecker") {
+    const referenceKey = String(node.params.referenceKey ?? "reference");
+    const value = visibleCase.inputs[referenceKey];
+    return [
+      { label: "Role", value: "prebuilt probe", tone: "ok" },
+      { label: "INPUT", value: "compare x", tone: "muted" },
+      { label: "REFERENCE", value: referenceKey, tone: "muted" },
+      ...(value?.shape ? [{ label: "SHAPE", value: formatShape(value.shape), tone: "ok" as const }] : []),
+      ...(Array.isArray(value?.data) ? [{ label: "Sample", value: formatSmallSample(value.data), tone: "muted" as const }] : [])
+    ];
+  }
+
+  return [
+    ...(caseHeadline ? [{ label: "Task", value: "visible input", tone: "muted" as const }] : []),
+    ...(outputShape ? [{ label: "Output", value: formatShape(outputShape), tone: "ok" as const }] : [{ label: "Node", value: module.label, tone: "muted" as const }])
+  ];
 }
 
 function getEdgeCaseLabel(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], edge: GraphEdge) {
@@ -2208,9 +2878,29 @@ function estimateNodeOutputShape(level: LevelSpec, graph: GraphSpec, node: Graph
   const visibleCase = level.visibleTests[0];
   if (!visibleCase) return undefined;
 
+  if (node.moduleId === "Float32Literal" || node.moduleId === "component.scalar_cell.v1") {
+    return { dtype: "float32", dims: [], axes: [] };
+  }
+
   if (node.moduleId === "InputTensor" || node.moduleId === "WeightPlate" || node.moduleId === "ReferenceChecker") {
     const inputKey = node.moduleId === "ReferenceChecker" ? String(node.params.referenceKey ?? "reference") : String(node.params.inputKey ?? node.id);
     return visibleCase.inputs[inputKey]?.shape;
+  }
+
+  if (node.moduleId === "VectorRail" || node.moduleId === "component.vector_rail.v1") {
+    return { dtype: "float32", dims: [3], axes: ["C"] };
+  }
+
+  if (node.moduleId === "MatrixStruct" || node.moduleId === "component.matrix_struct.v1") {
+    const left = estimateOutputShape(level, graph, node, "o0");
+    const c = left?.dims[0] ?? 3;
+    return { dtype: "float32", dims: [c, 2], axes: ["C", "O"] };
+  }
+
+  if (node.moduleId === "TensorBox" || node.moduleId === "component.tensor_box.v1") {
+    const firstToken = estimateOutputShape(level, graph, node, "t0");
+    const c = firstToken?.dims[0] ?? 3;
+    return { dtype: "float32", dims: [1, 2, c], axes: ["B", "T", "C"] };
   }
 
   if (node.moduleId === "TokenizerSocket") {
@@ -2234,7 +2924,7 @@ function estimateNodeOutputShape(level: LevelSpec, graph: GraphSpec, node: Graph
     return { ...input, dims, axes };
   }
 
-  if (node.moduleId === "MatMulGate") {
+  if (isMatMulModule(node.moduleId)) {
     const left = estimateOutputShape(level, graph, node, "left");
     const right = estimateOutputShape(level, graph, node, "right");
     if (!left || !right || left.dims.length < 1 || right.dims.length < 2) return undefined;
@@ -2263,6 +2953,45 @@ function getFocusText(level: LevelSpec, texts: string[]) {
   return level.caseStudy?.visibleInputFocus ?? texts[0];
 }
 
+function getCaseHeadline(testCase: TestCase) {
+  const raw = testCase.inputs.case;
+  if (raw?.dtype !== "raw_text") return undefined;
+  if (Array.isArray(raw.data)) return raw.data.find((item): item is string => typeof item === "string");
+  return typeof raw.data === "string" ? raw.data : undefined;
+}
+
+function parseEditableCaseValue(editable: CaseChip["editable"], rawValue: string): { ok: true; value: unknown } | { ok: false } {
+  if (!editable) return { ok: false };
+  if (editable.kind === "finite_float32") {
+    return { ok: true, value: rawValue };
+  }
+  return { ok: false };
+}
+
+function finiteFloat32InputError(value: unknown) {
+  return parseFiniteFloat32Input(value).error;
+}
+
+function parseFiniteFloat32Input(value: unknown): { ok: true; value: number; error?: undefined } | { ok: false; error: string } {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return { ok: false, error: "Enter a finite float32 number" };
+    if (!Number.isFinite(Math.fround(value))) return { ok: false, error: "Value is outside float32 range" };
+    return { ok: true, value };
+  }
+
+  const text = String(value ?? "");
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, error: "VALUE cannot be empty" };
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)) {
+    return { ok: false, error: "Enter a finite float32 number" };
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return { ok: false, error: "Enter a finite float32 number" };
+  if (!Number.isFinite(Math.fround(parsed))) return { ok: false, error: "Value is outside float32 range" };
+  return { ok: true, value: parsed };
+}
+
 function quoteShort(value: string, maxLength = 32) {
   return `"${shortText(value, maxLength)}"`;
 }
@@ -2276,6 +3005,14 @@ function formatSmallSample(data: RuntimeValue["data"]) {
   return `[${data.slice(0, 3).map((item) => (typeof item === "number" ? Number(item).toFixed(2) : String(item))).join(", ")}${data.length > 3 ? ", ..." : ""}]`;
 }
 
+function formatAxisList(axes: string[]) {
+  return `[${axes.join(",")}]`;
+}
+
+function isMatMulModule(moduleId: string) {
+  return moduleId === "MatMulGate" || moduleId === "component.matmul_gate.v1";
+}
+
 function normalizePreviewAxis(axis: number, rank: number) {
   const normalized = axis < 0 ? rank + axis : axis;
   return clamp(normalized, 0, Math.max(0, rank - 1));
@@ -2286,14 +3023,14 @@ function getNextStepCoach(level: LevelSpec, graph: GraphSpec, runState: RunState
     runState.visible?.results.find((result) => result.status !== "pass") ??
     runState.hidden?.results.find((result) => result.status !== "pass");
   if (!firstFail) {
-    if (runState.visible?.status === "pass" && runState.hidden?.status !== "pass") return graphText(language, "Visible is green. Run Hidden to check generalization.");
-    return graphText(language, level.onboarding?.firstAction ?? "Click Run Visible to start the repair loop.");
+    if (runState.visible?.status === "pass" && runState.hidden?.status !== "pass") return graphText(language, "Current task passed. Prepare a certification variant, then submit certification.");
+    return graphText(language, level.onboarding?.firstAction ?? "Click Check Current Task to start the repair loop.");
   }
   if (firstFail.status === "blocked" && firstFail.diagnostic?.errorType === "missing_input") {
     const nodeId = firstFail.firstBadNodeId?.split(".")[0] ?? "node";
     const node = graph.nodes.find((item) => item.id === nodeId);
     const portText = node ? missingPortText(firstFail.message, node.id, language) : firstFail.message;
-    return `${portText} ${firstFail.diagnostic.suggestedProbe ?? graphText(language, "Connect the missing input, then run Visible again.")}`;
+    return `${portText} ${firstFail.diagnostic.suggestedProbe ?? graphText(language, "Connect the missing input, then check the current task again.")}`;
   }
   return firstFail.diagnostic?.suggestedProbe ?? firstFail.message ?? graphText(language, "Inspect the first red node and compare its input/output shapes.");
 }
@@ -2308,17 +3045,17 @@ function computeRank(level: LevelSpec, graph: GraphSpec, runState: RunState, lan
   const extraModules = countExtraModules(level.id, graph);
   if (runState.hidden?.status === "pass") {
     if (runState.stats.hiddenRuns === 1 && runState.stats.failedRuns === 0 && runState.stats.hintsUsed === 0 && extraModules === 0) {
-      return { rank: "S", message: graphText(language, "Hidden tests passed on the first clean attempt."), extraModules };
+      return { rank: "S", message: graphText(language, "Certification passed on the first clean attempt."), extraModules };
     }
     if (runState.stats.failedRuns <= 2 && runState.stats.hintsUsed === 0) {
-      return { rank: "A", message: graphText(language, "Hidden tests passed with a low failure count."), extraModules };
+      return { rank: "A", message: graphText(language, "Certification passed with a low failure count."), extraModules };
     }
-    return { rank: "B", message: graphText(language, "Hidden tests passed. The graph generalizes beyond visible inputs."), extraModules };
+    return { rank: "B", message: graphText(language, "Certification passed. The graph handles variants beyond the current task."), extraModules };
   }
   if (runState.visible?.status === "pass") {
-    return { rank: "C", message: graphText(language, "Visible tests passed. Run hidden mutation tests to prove generalization."), extraModules };
+    return { rank: "C", message: graphText(language, "Current task passed. Submit certification with a variant to prove generalization."), extraModules };
   }
-  return { rank: "-", message: graphText(language, "Run visible tests to start the challenge loop."), extraModules };
+  return { rank: "-", message: graphText(language, "Check the current task to start the challenge loop."), extraModules };
 }
 
 function countExtraModules(levelId: string, graph: GraphSpec) {
@@ -2536,6 +3273,60 @@ function getLevelNodeTemplate(levelId: string, graph: GraphSpec, moduleId: strin
     if (moduleId === "AddGate" && !taken.has("masked_scores")) return { id: "masked_scores" };
     if (moduleId === "CellTrace" && !taken.has("cell_trace")) return { id: "cell_trace", params: { b: 0, h: 0, i: 0, j: 1 } };
     if (moduleId === "ReferenceChecker" && !taken.has("reference")) return { id: "reference", params: { referenceKey: "reference" } };
+  }
+
+  if (levelId.startsWith("mvp01_")) {
+    const taken = new Set(graph.nodes.map((node) => node.id));
+    if (moduleId === "ReferenceChecker" && !taken.has("reference")) return { id: "reference", params: { referenceKey: "reference" } };
+
+    if (levelId === "mvp01_1_scalar_cell") {
+      if (moduleId === "Float32Literal" && !taken.has("scalar_source")) return { id: "scalar_source", params: { value: 0.5 } };
+      if (moduleId === "OutputContractGate" && !taken.has("scalar_out")) return { id: "scalar_out", params: { expectedAxes: [] } };
+    }
+
+    if (levelId === "mvp01_2_vector_rail") {
+      const scalarTemplate = [
+        { id: "scalar_c0", value: 0.5 },
+        { id: "scalar_c1", value: -1 },
+        { id: "scalar_c2", value: 2 }
+      ].find((item) => !taken.has(item.id));
+      if (moduleId === "component.scalar_cell.v1" && scalarTemplate) {
+        return { id: scalarTemplate.id, params: { value: scalarTemplate.value } };
+      }
+      if (moduleId === "VectorRail" && !taken.has("vector")) return { id: "vector" };
+      if (moduleId === "OutputContractGate" && !taken.has("vector_out")) return { id: "vector_out", params: { expectedAxes: ["C"] } };
+    }
+
+    if (levelId === "mvp01_3_matrix_struct") {
+      if (moduleId === "InputTensor" && !taken.has("col0")) return { id: "col0", params: { inputKey: "col0", shape: [3], axes: ["C"] } };
+      if (moduleId === "InputTensor" && !taken.has("col1")) return { id: "col1", params: { inputKey: "col1", shape: [3], axes: ["C"] } };
+      if (moduleId === "MatrixStruct" && !taken.has("matrix")) return { id: "matrix" };
+      if (moduleId === "OutputContractGate" && !taken.has("matrix_out")) return { id: "matrix_out", params: { expectedAxes: ["C", "O"] } };
+    }
+
+    if (levelId === "mvp01_4_tensor_box") {
+      if (moduleId === "InputTensor" && !taken.has("t0")) return { id: "t0", params: { inputKey: "t0", shape: [3], axes: ["C"] } };
+      if (moduleId === "InputTensor" && !taken.has("t1")) return { id: "t1", params: { inputKey: "t1", shape: [3], axes: ["C"] } };
+      if (moduleId === "TensorBox" && !taken.has("tensor")) return { id: "tensor" };
+      if (moduleId === "OutputContractGate" && !taken.has("tensor_out")) return { id: "tensor_out", params: { expectedAxes: ["B", "T", "C"] } };
+    }
+
+    if (levelId === "mvp01_5_matmul_gate") {
+      if (moduleId === "InputTensor" && !taken.has("hidden")) return { id: "hidden", params: { inputKey: "hidden", shape: [1, 2, 3], axes: ["B", "T", "C"] } };
+      if (moduleId === "WeightPlate" && !taken.has("weight")) return { id: "weight", params: { inputKey: "weight", shape: [3, 2], axes: ["C", "O"], orientation: "C,O" } };
+      if (moduleId === "MatMulGate" && !taken.has("matmul")) return { id: "matmul" };
+      if (moduleId === "OutputContractGate" && !taken.has("matmul_out")) return { id: "matmul_out", params: { expectedAxes: ["B", "T", "O"] } };
+    }
+
+    if (levelId === "mvp01_6_linear") {
+      if (moduleId === "InputTensor" && !taken.has("hidden")) return { id: "hidden", params: { inputKey: "hidden", shape: [1, 2, 3], axes: ["B", "T", "C"] } };
+      if (moduleId === "InputTensor" && !taken.has("bias")) return { id: "bias", params: { inputKey: "bias", shape: [2], axes: ["O"] } };
+      if (moduleId === "WeightPlate" && !taken.has("weight")) return { id: "weight", params: { inputKey: "weight", shape: [3, 2], axes: ["C", "O"], orientation: "C,O" } };
+      if ((moduleId === "MatMulGate" || moduleId === "component.matmul_gate.v1") && !taken.has("matmul")) return { id: "matmul" };
+      if (moduleId === "BroadcastRail" && !taken.has("bias_broadcast")) return { id: "bias_broadcast", params: { alignAxes: ["O"] } };
+      if (moduleId === "AddGate" && !taken.has("linear_add")) return { id: "linear_add" };
+      if (moduleId === "OutputContractGate" && !taken.has("linear_out")) return { id: "linear_out", params: { expectedAxes: ["B", "T", "O"] } };
+    }
   }
 
   if (levelId.startsWith("ch1_")) {

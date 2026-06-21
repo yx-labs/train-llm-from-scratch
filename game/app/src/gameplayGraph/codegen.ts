@@ -67,22 +67,24 @@ export function createTokenizerPreview(
 export function generateGraphCodeSections(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], testCase?: TestCase): GraphCodeSections {
   const activeTest = testCase ?? level.visibleTests[0];
   return {
-    caseCode: buildCaseCode(level, activeTest),
+    caseCode: buildCaseCode(level, activeTest, graph),
     graphCode: buildGraphCode(graph, modules, activeTest),
     testCode: buildTestCode(activeTest)
   };
 }
 
-export function generateCaseCodeLines(level: LevelSpec, testCase?: TestCase): CodeLine[] {
-  return buildCaseCode(level, testCase ?? level.visibleTests[0]);
+export function generateCaseCodeLines(level: LevelSpec, testCase?: TestCase, graph?: GraphSpec): CodeLine[] {
+  return buildCaseCode(level, testCase ?? level.visibleTests[0], graph);
 }
 
 export function getCaseTexts(testCase: TestCase | undefined, inputKey: string) {
   return extractTexts(testCase?.inputs[inputKey]);
 }
 
-function buildCaseCode(level: LevelSpec, testCase: TestCase | undefined): CodeLine[] {
-  if (!testCase) return [{ id: "case-empty", text: "# No visible case selected." }];
+function buildCaseCode(level: LevelSpec, testCase: TestCase | undefined, graph?: GraphSpec): CodeLine[] {
+  if (!testCase) return [{ id: "case-empty", text: "# No visible task input selected." }];
+  if (level.id.startsWith("mvp01_")) return buildMvp01CaseCode(level, testCase, graph);
+
   const textPanel = level.caseStudy?.dataPanels.find((panel) => panel.type === "text_batch");
   if (textPanel?.type === "text_batch") {
     const texts = getCaseTexts(testCase, textPanel.inputKey);
@@ -91,7 +93,7 @@ function buildCaseCode(level: LevelSpec, testCase: TestCase | undefined): CodeLi
       { id: "case-texts-open", text: `${textPanel.inputKey} = [` },
       ...texts.map((text, index) => ({
         id: `case-text-${index}`,
-        text: `    ${toPythonLiteral(text)},${focusText === text ? "  # focus case" : ""}`
+        text: `    ${toPythonLiteral(text)},${focusText === text ? "  # focus task" : ""}`
       })),
       { id: "case-texts-close", text: "]" }
     ];
@@ -107,7 +109,64 @@ function buildCaseCode(level: LevelSpec, testCase: TestCase | undefined): CodeLi
     }
     lines.push({ id: `case-input-${key}`, text: `${safeVar(key)} = ${toPythonLiteral(value.data ?? value.meta ?? "runtime input")}` });
   });
-  return lines.length ? lines : [{ id: "case-empty-inputs", text: "# This case has no explicit inputs." }];
+  return lines.length ? lines : [{ id: "case-empty-inputs", text: "# This task has no explicit inputs." }];
+}
+
+function buildMvp01CaseCode(level: LevelSpec, testCase: TestCase, graph: GraphSpec | undefined): CodeLine[] {
+  if (level.id === "mvp01_1_scalar_cell") {
+    const value = graphParam(graph, "scalar_source", "value") ?? tensorFirstValue(testCase.inputs.reference) ?? 0.5;
+    return [tensorCaseLine("case-scalar-starting-value", "starting_value", [], [], [value])];
+  }
+
+  if (level.id === "mvp01_2_vector_rail") {
+    const referenceValues = Array.isArray(testCase.inputs.reference?.data) ? testCase.inputs.reference.data : [];
+    return ["c0", "c1", "c2"].map((slot, index) => {
+      const value = graphParam(graph, `scalar_${slot}`, "value") ?? referenceValues[index] ?? 0;
+      return tensorCaseLine(`case-vector-${slot}`, slot, [], [], [value]);
+    });
+  }
+
+  const inputLines = Object.entries(testCase.inputs)
+    .filter(([key, value]) => key !== "case" && key !== "reference" && Boolean(value.shape))
+    .map(([key, value]) => tensorCaseLine(`case-${key}`, key, value.shape?.dims ?? [], value.shape?.axes ?? [], previewTensorValues(value)));
+
+  if (inputLines.length) return inputLines;
+
+  const reference = testCase.inputs.reference;
+  if (reference?.shape) {
+    return [tensorCaseLine("case-reference", "starting_example", reference.shape.dims, reference.shape.axes, previewTensorValues(reference))];
+  }
+
+  return [{ id: "case-empty-inputs", text: "# This task has no explicit tensor inputs." }];
+}
+
+function tensorCaseLine(id: string, name: string, shape: number[], axes: string[], values?: unknown[]): CodeLine {
+  const args = [`shape=${toPythonLiteral(shape)}`, `axes=${toPythonLiteral(axes)}`];
+  if (values?.length) args.push(`values=${toPythonLiteral(values.map(normalizeCaseValue))}`);
+  return { id, text: `${safeVar(name)} = Tensor(${args.join(", ")})` };
+}
+
+function previewTensorValues(value: RuntimeValue | undefined) {
+  if (!Array.isArray(value?.data)) return undefined;
+  if (value.data.length > 8) return undefined;
+  return value.data;
+}
+
+function tensorFirstValue(value: RuntimeValue | undefined) {
+  return Array.isArray(value?.data) ? value.data[0] : undefined;
+}
+
+function graphParam(graph: GraphSpec | undefined, nodeId: string, key: string) {
+  return graph?.nodes.find((node) => node.id === nodeId)?.params[key];
+}
+
+function normalizeCaseValue(value: unknown) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)) return value;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : value;
 }
 
 function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCase | undefined): CodeLine[] {
@@ -264,7 +323,7 @@ function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCa
 }
 
 function buildTestCode(testCase: TestCase | undefined): CodeLine[] {
-  if (!testCase) return [{ id: "test-empty", text: "# Run a visible case to see test code." }];
+  if (!testCase) return [{ id: "test-empty", text: "# Run a visible task input to see test code." }];
   return testCase.assertions.map((assertion, index) => ({ id: `test-${index}`, nodeId: assertionNodeId(assertion), text: assertionToCode(assertion) }));
 }
 

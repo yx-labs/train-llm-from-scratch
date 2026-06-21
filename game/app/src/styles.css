@@ -331,6 +331,10 @@ h3 {
   gap: 12px;
 }
 
+.graphSidebar {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .graphLevelList,
 .graphModuleList,
 .graphResultList {
@@ -362,9 +366,40 @@ h3 {
   text-align: left;
 }
 
+.graphLevelButton > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.graphLevelButton b,
+.graphLevelButton small {
+  display: block;
+}
+
 .graphLevelButton.active {
   border-color: #60a5fa;
   background: rgba(16, 35, 58, 0.95);
+}
+
+.graphLevelButton.locked {
+  opacity: 0.68;
+}
+
+.graphLevelButton.available {
+  border-color: rgba(34, 197, 94, 0.48);
+}
+
+.graphLifecyclePill {
+  justify-self: start;
+  margin-top: 4px;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 999px;
+  background: rgba(15, 35, 60, 0.88);
+  color: #bfdbfe;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
 }
 
 .graphLevelButton small,
@@ -374,6 +409,11 @@ h3 {
 .graphRunPanel p {
   color: #8aa6bf;
   line-height: 1.35;
+}
+
+.graphLevelList {
+  min-height: 0;
+  overflow: auto;
 }
 
 .graphModuleList {
@@ -408,6 +448,39 @@ h3 {
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 10px;
+}
+
+.graphLifecycleHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.graphLifecycleHeader code,
+.graphLifecycleHeader span {
+  min-height: 24px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  border-radius: 999px;
+  background: rgba(15, 35, 60, 0.76);
+  color: #bfdbfe;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.graphLifecycleHeader span.met {
+  border-color: rgba(34, 197, 94, 0.38);
+  color: #bbf7d0;
+}
+
+.graphLifecycleHeader span.missing {
+  border-color: rgba(251, 113, 133, 0.42);
+  color: #fecdd3;
 }
 
 .graphRunBar {
@@ -610,6 +683,77 @@ h3 {
   white-space: nowrap;
 }
 
+.graphComponentLockOverlay {
+  position: absolute;
+  z-index: 16;
+  inset: 58px 16px auto 16px;
+  min-height: 82px;
+  border: 1px solid rgba(251, 113, 133, 0.54);
+  border-radius: 9px;
+  background: rgba(63, 9, 28, 0.92);
+  color: #fecdd3;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 10px;
+  align-items: center;
+  padding: 13px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+}
+
+.graphComponentLockOverlay svg {
+  grid-row: span 2;
+}
+
+.graphComponentLockOverlay b {
+  color: #ffe4e6;
+}
+
+.graphComponentLockOverlay span {
+  color: #fecdd3;
+  overflow-wrap: anywhere;
+}
+
+.graphCompletionNotice {
+  position: absolute;
+  z-index: 9;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(520px, calc(100% - 40px));
+  border: 1px solid rgba(34, 197, 94, 0.48);
+  border-radius: 7px;
+  background: rgba(6, 24, 24, 0.96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  color: #d1fae5;
+  padding: 12px 14px;
+}
+
+.graphCompletionNotice svg {
+  flex: 0 0 auto;
+  color: #22c55e;
+  margin-top: 1px;
+}
+
+.graphCompletionNotice span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.graphCompletionNotice b {
+  color: #ecfdf5;
+  line-height: 1.25;
+}
+
+.graphCompletionNotice small {
+  color: #a7f3d0;
+  line-height: 1.35;
+}
+
 .graphCanvasToolbar {
   position: absolute;
   top: 10px;
@@ -624,6 +768,156 @@ h3 {
   height: 32px;
   border-radius: 7px;
   background: rgba(7, 17, 31, 0.9);
+}
+
+.graphCertificationPanel {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  z-index: 7;
+  display: grid;
+  gap: 9px;
+  width: min(390px, calc(100% - 20px));
+  max-height: calc(100% - 84px);
+  overflow: auto;
+  padding: 11px;
+  border: 1px solid rgba(34, 197, 94, 0.42);
+  border-radius: 8px;
+  background: rgba(5, 22, 23, 0.94);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.32);
+  color: #d1fae5;
+  cursor: default;
+  user-select: text;
+}
+
+.graphCertificationPanel.locked {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(7, 17, 31, 0.92);
+  color: #bfdbfe;
+}
+
+.graphCertificationPanel.fail,
+.graphCertificationPanel.blocked {
+  border-color: rgba(251, 113, 133, 0.54);
+}
+
+.graphCertificationPanel.pass {
+  border-color: rgba(34, 197, 94, 0.64);
+}
+
+.graphCertificationHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.graphCertificationHeader span {
+  display: grid;
+  gap: 2px;
+}
+
+.graphCertificationHeader h3 {
+  margin: 0;
+  color: #ecfdf5;
+  font-size: 0.96rem;
+  line-height: 1.2;
+}
+
+.graphCertificationHeader code {
+  flex: 0 0 auto;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.75);
+  color: #bbf7d0;
+  padding: 4px 7px;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.graphCertificationPanel p,
+.graphCertificationPanel small {
+  margin: 0;
+  color: #a7f3d0;
+  font-size: 0.74rem;
+  line-height: 1.38;
+}
+
+.graphCertificationPanel.locked p,
+.graphCertificationPanel.locked small {
+  color: #9db2ca;
+}
+
+.graphCertificationVariant,
+.graphCertificationSystem,
+.graphCertificationErrors {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  border-radius: 7px;
+  background: rgba(7, 17, 31, 0.58);
+}
+
+.graphCertificationVariant b,
+.graphCertificationSystem b {
+  color: #ecfdf5;
+  font-size: 0.78rem;
+}
+
+.graphCertificationControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.graphCertificationControl {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.graphCertificationControl span {
+  color: #d1fae5;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.graphCertificationControl input,
+.graphCertificationControl select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid rgba(49, 95, 148, 0.72);
+  border-radius: 6px;
+  background: #07111f;
+  color: #dbeafe;
+  padding: 6px 7px;
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.graphCertificationControl input:disabled,
+.graphCertificationControl select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.graphCertificationControl small {
+  color: #8ed8b8;
+}
+
+.graphCertificationErrors {
+  border-color: rgba(251, 113, 133, 0.42);
+  background: rgba(69, 10, 10, 0.28);
+}
+
+.graphCertificationErrors small {
+  color: #fecdd3;
+}
+
+.graphCertificationPanel > .runButton {
+  justify-self: start;
+  min-height: 32px;
 }
 
 .graphCasePanel {
@@ -747,6 +1041,39 @@ h3 {
 .graphCaseTextList code.focus {
   border-color: rgba(251, 191, 36, 0.68);
   color: #fde68a;
+}
+
+.graphTensorPreviewGrid {
+  display: grid;
+  gap: 6px;
+}
+
+.graphTensorPreviewRow {
+  display: grid;
+  grid-template-columns: minmax(54px, auto) minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.graphTensorPreviewRow small {
+  color: #8aa6bf;
+  font-size: 0.68rem;
+}
+
+.graphTensorPreviewRow span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.graphTensorPreviewRow code {
+  min-width: 34px;
+  padding: 4px 6px;
+  border: 1px solid rgba(49, 95, 148, 0.46);
+  border-radius: 5px;
+  background: rgba(7, 17, 31, 0.62);
+  color: #dbeafe;
+  text-align: center;
 }
 
 .graphTokenRow {
@@ -911,16 +1238,19 @@ h3 {
   position: absolute;
   display: grid;
   gap: 9px;
-  width: 190px;
-  min-height: 118px;
-  padding: 9px 10px 10px;
-  border: 1px solid #315f94;
+  width: 240px;
+  min-height: 156px;
+  padding: 12px;
+  border: 1px solid rgba(77, 132, 196, 0.92);
   border-radius: 8px;
-  background: rgba(12, 27, 47, 0.96);
+  background:
+    linear-gradient(180deg, rgba(16, 33, 56, 0.98), rgba(9, 22, 39, 0.98));
   color: #e8f2ff;
   text-align: left;
   cursor: grab;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(96, 165, 250, 0.1);
   transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
@@ -930,50 +1260,95 @@ h3 {
 
 .graphNodeHeader {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .graphNodeCase {
   display: grid;
-  gap: 5px;
-  padding: 7px;
-  border: 1px solid rgba(49, 95, 148, 0.5);
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(49, 95, 148, 0.72);
   border-radius: 7px;
-  background: rgba(4, 10, 19, 0.58);
+  background: rgba(4, 10, 19, 0.66);
   user-select: text;
 }
 
 .graphNodeCase > span {
-  color: #93c5fd;
-  font-size: 0.62rem;
+  color: #bfdbfe;
+  font-size: 0.66rem;
   font-weight: 950;
   text-transform: uppercase;
 }
 
 .graphNodeCase > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  display: grid;
+  gap: 6px;
+}
+
+.graphNodeCaseSlot {
+  display: grid;
+  gap: 4px;
 }
 
 .graphNodeCase code {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
   max-width: 100%;
-  gap: 4px;
-  padding: 3px 5px;
+  min-height: 29px;
+  gap: 7px;
+  padding: 4px 6px;
   border: 1px solid rgba(49, 95, 148, 0.58);
   border-radius: 6px;
   background: #07111f;
   color: #c7dcf2;
-  font-size: 0.61rem;
+  font-size: 0.65rem;
   line-height: 1.25;
   overflow-wrap: anywhere;
   white-space: normal;
 }
 
-.graphNodeCase code b {
-  color: #8aa6bf;
+.graphNodeCaseEditable {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  max-width: 100%;
+  min-height: 29px;
+  gap: 7px;
+  padding: 4px 6px;
+  border: 1px solid rgba(49, 95, 148, 0.58);
+  border-radius: 6px;
+  background: #07111f;
+}
+
+.graphNodeCaseEditable input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #bbf7d0;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.graphNodeCaseEditable input[aria-invalid="true"] {
+  color: #fecdd3;
+}
+
+.graphNodeCase code b,
+.graphNodeCaseEditable b {
+  display: inline-grid;
+  place-items: center;
+  min-height: 20px;
+  padding: 2px 5px;
+  border: 1px solid rgba(49, 95, 148, 0.62);
+  border-radius: 5px;
+  background: rgba(15, 35, 60, 0.82);
+  color: #9fc8e8;
   font-weight: 950;
   text-transform: uppercase;
 }
@@ -993,19 +1368,48 @@ h3 {
   color: #fecdd3;
 }
 
+.graphNodeCaseEditable.ok {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.graphNodeCaseEditable.warn {
+  border-color: rgba(251, 191, 36, 0.52);
+}
+
+.graphNodeCaseEditable.bad {
+  border-color: rgba(251, 113, 133, 0.72);
+  background: rgba(69, 10, 10, 0.34);
+}
+
+.graphNodeCaseError {
+  color: #fecdd3;
+  font-size: 0.64rem;
+  line-height: 1.28;
+}
+
 .graphNodeHeader span {
   width: max-content;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: #10233a;
-  color: #93c5fd;
-  font-size: 0.68rem;
+  background: rgba(15, 35, 60, 0.9);
+  color: #bfdbfe;
+  font-size: 0.7rem;
   font-weight: 900;
   text-transform: uppercase;
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.08);
+}
+
+.graphNodeHeader b {
+  color: #f8fbff;
+  font-size: 0.94rem;
+  line-height: 1.16;
+  overflow-wrap: anywhere;
 }
 
 .graphNode small {
   color: #9db2ca;
+  font-size: 0.76rem;
+  line-height: 1.25;
 }
 
 .graphNode.selected {
@@ -1515,6 +1919,15 @@ h3 {
 .graphParamRow input[type="number"],
 .graphParamRow select {
   padding: 0 8px;
+}
+
+.graphParamRow input[aria-invalid="true"] {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
+}
+
+.graphParamError {
+  color: #fecaca;
 }
 
 .graphParamRow.boolean {
@@ -3714,6 +4127,15 @@ h3 {
   font-weight: 900;
 }
 
+.legacyMainLink {
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: rgba(96, 165, 250, 0.42);
+  background: rgba(15, 35, 58, 0.48);
+  color: #bfdbfe;
+  font-size: 0.76rem;
+}
+
 .challengeLayout {
   display: grid;
   grid-template-columns: 280px minmax(460px, 1fr) 360px;
@@ -4918,4 +5340,83 @@ h3 {
     width: 100%;
   }
 
+}
+
+.mvp01GraphShell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(56, 189, 248, 0.1), transparent 34%),
+    #07111f;
+  color: #dbeafe;
+}
+
+.mvp01GraphTopbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.18);
+}
+
+.mvp01GraphTopbar h1 {
+  margin: 2px 0 4px;
+  color: #e8f2ff;
+  font-size: clamp(1.15rem, 1.8vw, 1.65rem);
+  line-height: 1.15;
+}
+
+.mvp01GraphTopbar small {
+  display: block;
+  color: #8aa6bf;
+  line-height: 1.35;
+}
+
+.mvp01GraphActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mvp01LanguageSwitch {
+  min-height: 38px;
+}
+
+.mvp01LanguageSwitch .modeButton {
+  min-height: 28px;
+  padding-inline: 10px;
+}
+
+.mvp01LegacyLink {
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: rgba(49, 95, 148, 0.4);
+  background: rgba(7, 17, 31, 0.28);
+  color: #7f94ad;
+  font-size: 0.74rem;
+  opacity: 0.72;
+}
+
+.mvp01LegacyLink:hover {
+  opacity: 1;
+  color: #bfdbfe;
+}
+
+.mvp01GraphShell > .graphWorkbench {
+  min-height: 0;
+  padding-top: 8px;
+}
+
+@media (max-width: 860px) {
+  .mvp01GraphTopbar {
+    flex-direction: column;
+  }
+
+  .mvp01GraphActions {
+    justify-content: flex-start;
+  }
 }

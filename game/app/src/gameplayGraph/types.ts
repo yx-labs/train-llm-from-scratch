@@ -246,6 +246,35 @@ export type LevelCaseStudy = {
   successObservation: string;
 };
 
+export type CertificationControlValue = string | number;
+
+export type CertificationControlSpec = {
+  id: string;
+  label: string;
+  kind: "number" | "integer" | "select";
+  defaultValue: CertificationControlValue;
+  min?: number;
+  max?: number;
+  step?: number;
+  help?: string;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type CertificationTestSpec = {
+  testCase: TestCase;
+  graph?: GraphSpec;
+};
+
+export type LevelCertificationSpec = {
+  title: string;
+  narrative: string;
+  publicVariantLabel: string;
+  publicVariantDescription: string;
+  systemVariantDescription: string;
+  controls: CertificationControlSpec[];
+  makePublicTests: (graph: GraphSpec, values: Record<string, CertificationControlValue>) => CertificationTestSpec[];
+};
+
 export type LevelSpec = {
   id: string;
   title: string;
@@ -263,6 +292,7 @@ export type LevelSpec = {
   hiddenTests: TestCase[];
   onboarding?: LevelOnboarding;
   caseStudy?: LevelCaseStudy;
+  certification?: LevelCertificationSpec;
   targetGraph?: GraphSpec;
   debrief: {
     completeTitle: string;

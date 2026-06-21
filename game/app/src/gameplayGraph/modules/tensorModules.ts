@@ -614,7 +614,8 @@ export const referenceCheckerModule: ModuleDef = {
   inputs: [{ id: "x", label: "x", direction: "in", accepts: ["float32"], required: true }],
   outputs: [{ id: "out", label: "reference", direction: "out", emits: "float32" }],
   defaultParams: { referenceKey: "reference" },
-  summary: "Emits a reference tensor supplied by the active test case.",
+  summary: "Prebuilt probe: x marks the value under test, and reference comes from the active test case.",
+  pseudoCode: "reference = test_case[referenceKey]\n# probe only; not part of the reusable component",
   execute: ({ node, testInputs }) => {
     const referenceKey = String(node.params.referenceKey ?? "reference");
     const reference = testInputs[referenceKey];
