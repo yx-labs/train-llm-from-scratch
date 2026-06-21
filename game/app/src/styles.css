@@ -343,7 +343,10 @@ h3 {
 .graphResultItem,
 .graphRunPanel,
 .graphRankPanel,
+.graphCodePanel,
 .graphMissionPanel,
+.graphCasePanel,
+.graphCaseDataCard,
 .graphInspectorBlock {
   border: 1px solid #263b55;
   border-radius: 7px;
@@ -621,6 +624,146 @@ h3 {
   height: 32px;
   border-radius: 7px;
   background: rgba(7, 17, 31, 0.9);
+}
+
+.graphCasePanel {
+  position: absolute;
+  top: 52px;
+  right: 10px;
+  z-index: 6;
+  display: grid;
+  gap: 9px;
+  width: min(390px, calc(100% - 20px));
+  max-height: calc(100% - 154px);
+  overflow: auto;
+  padding: 10px;
+  border-color: rgba(56, 189, 248, 0.48);
+  background: rgba(7, 17, 31, 0.94);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.3);
+  cursor: default;
+  touch-action: auto;
+  user-select: text;
+}
+
+.graphCasePanel.collapsed {
+  width: min(270px, calc(100% - 20px));
+  overflow: hidden;
+}
+
+.graphCasePanelHeader,
+.graphCasePreviewHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.graphCasePanelHeader h3 {
+  margin: 0;
+  color: #e8f2ff;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.graphCasePanelHeader .iconButton {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: #07111f;
+}
+
+.graphCaseNarrative,
+.graphCaseQuestion small,
+.graphCaseBudget {
+  margin: 0;
+  color: #9db2ca;
+  font-size: 0.74rem;
+  line-height: 1.38;
+}
+
+.graphCaseDataGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.graphCaseDataCard {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  background: rgba(4, 10, 19, 0.66);
+}
+
+.graphCaseDataCard > b,
+.graphCasePreviewHeader b,
+.graphCaseQuestion b {
+  color: #dbeafe;
+  font-size: 0.78rem;
+}
+
+.graphCasePreviewHeader code,
+.graphCasePreviewMeta code {
+  padding: 4px 6px;
+  border: 1px solid rgba(49, 95, 148, 0.62);
+  border-radius: 999px;
+  background: #07111f;
+  color: #bfdbfe;
+  font-size: 0.68rem;
+}
+
+.graphCasePreviewHeader code.ok,
+.graphCaseBudget.ok {
+  border-color: rgba(34, 197, 94, 0.48);
+  color: #bbf7d0;
+}
+
+.graphCasePreviewHeader code.over,
+.graphCaseBudget.over {
+  border-color: rgba(251, 113, 133, 0.52);
+  color: #fecdd3;
+}
+
+.graphCaseTextList,
+.graphCasePreviewMeta,
+.graphTokenRow div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.graphCaseTextList code,
+.graphTokenRow code {
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid rgba(49, 95, 148, 0.56);
+  border-radius: 6px;
+  background: #07111f;
+  color: #c7dcf2;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.graphCaseTextList code.focus {
+  border-color: rgba(251, 191, 36, 0.68);
+  color: #fde68a;
+}
+
+.graphTokenRow {
+  display: grid;
+  gap: 5px;
+}
+
+.graphTokenRow span {
+  color: #8aa6bf;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.graphCaseQuestion {
+  display: grid;
+  gap: 4px;
+  padding-top: 2px;
 }
 
 .graphCanvasModulePalette {
@@ -918,7 +1061,8 @@ h3 {
 }
 
 .graphInspectorBlock,
-.graphRunPanel {
+.graphRunPanel,
+.graphCodePanel {
   padding: 10px;
 }
 
@@ -1192,6 +1336,27 @@ h3 {
   color: #dbeafe;
   font-size: 0.72rem;
   line-height: 1.45;
+}
+
+.graphCodePanel {
+  display: grid;
+  gap: 8px;
+}
+
+.graphCodePanel .graphRunPanelHeader {
+  margin-bottom: 0;
+}
+
+.graphCodePanel .iconButton {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #07111f;
+}
+
+.graphCodePanel .graphCodeBlock {
+  max-height: 240px;
+  font-size: 0.68rem;
 }
 
 .graphFailureReport {

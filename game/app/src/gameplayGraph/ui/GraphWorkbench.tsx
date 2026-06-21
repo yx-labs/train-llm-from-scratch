@@ -17,6 +17,7 @@ import { createGameplayRegistry } from "../modules";
 import type { DType, GraphEdge, GraphNode, GraphSpec, LevelSpec, ModuleDef, PortDef, PortRef, TestAssertion, TestResult, TraceFrame } from "../types";
 import { runTests, type RunTestsResult, type TestCaseRunResult } from "../runtime/testRunner";
 import { graphStatusText, graphText, type GraphLanguage } from "../i18n";
+import { createTokenizerPreview, generateCaseCodeLines, getCaseTexts, type TokenizerCasePreview } from "../codegen";
 
 type RunState = {
   visible?: RunTestsResult;
@@ -116,6 +117,7 @@ function useGraphT() {
 
 export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }) {
   const registry = useMemo(() => createGameplayRegistry(), []);
+  const modules = useMemo(() => registry.list(), [registry]);
   const [selectedLevelId, setSelectedLevelId] = useState(graphLevels[0].id);
   const selectedLevel = graphLevels.find((level) => level.id === selectedLevelId) ?? graphLevels[0];
   const [graphs, setGraphs] = useState<Record<string, GraphSpec>>(() => initialGraphsByLevel());
@@ -145,7 +147,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   const selectedNode = selection?.type === "node" ? graph.nodes.find((node) => node.id === selection.id) : undefined;
   const selectedEdge = selection?.type === "edge" ? graph.edges.find((edge) => edge.id === selection.id) : undefined;
   const selectedModule = selectedNode ? registry.maybeGet(selectedNode.moduleId) : undefined;
-  const wireSourcePort = wireSource ? getOutputPort(graph, registry.list(), wireSource) : undefined;
+  const wireSourcePort = wireSource ? getOutputPort(graph, modules, wireSource) : undefined;
   const activeTraceCase = resolveTraceCase(runState, traceSelection);
   const activeTraceFrame = activeTraceCase && traceSelection?.caseId === activeTraceCase.id ? activeTraceCase.execution.trace[traceSelection.step] : undefined;
   const hiddenLocked = runState.visible?.status !== "pass";
@@ -347,7 +349,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   function beginCanvasPan(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest(".graphNode, .graphCanvasToolbar, .graphCanvasHud, .graphCanvasModulePalette, button, input, select, textarea")) return;
+    if (target.closest(".graphNode, .graphCanvasToolbar, .graphCanvasHud, .graphCanvasModulePalette, .graphCasePanel, button, input, select, textarea")) return;
     if (wireSourceRef.current) return;
     panDragRef.current = {
       startClientX: event.clientX,
@@ -733,7 +735,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
     });
   }
 
-  const wirePreview = wireSource && wirePointer ? getWirePreviewPath(graph, registry.list(), wireSource, wirePointer) : undefined;
+  const wirePreview = wireSource && wirePointer ? getWirePreviewPath(graph, modules, wireSource, wirePointer) : undefined;
   const t = (text: string) => graphText(language, text);
 
   return (
@@ -856,6 +858,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
               <Plus size={15} />
             </button>
           </div>
+          <GraphCasePanel key={selectedLevel.id} level={selectedLevel} graph={graph} modules={modules} />
           <GraphCanvasModulePalette
             level={selectedLevel}
             registry={registry}
@@ -869,7 +872,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
               transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`
             }}
           >
-            <TargetGhostGraph targetGraph={selectedLevel.targetGraph} currentGraph={graph} modules={registry.list()} />
+            <TargetGhostGraph targetGraph={selectedLevel.targetGraph} currentGraph={graph} modules={modules} />
             <svg className="graphEdgeLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} role="img" aria-label="graph edges">
               {wirePreview ? <path className="graphWirePreview" d={wirePreview} /> : null}
               {graph.edges.map((edge) => {
@@ -1005,6 +1008,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
           </section>
         ) : null}
 
+        <GraphCodePanel level={selectedLevel} />
         <GraphRankPanel level={selectedLevel} graph={graph} runState={runState} />
         <GraphRunPanel title="Visible Tests" result={runState.visible} onLocateNode={focusNode} onShowNextStep={showNextHint} />
         <GraphRunPanel title="Hidden Tests" result={runState.hidden} locked={hiddenLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
@@ -1031,6 +1035,7 @@ function GraphMissionModal({
 }) {
   const { language, t } = useGraphT();
   const onboarding = level.onboarding;
+  const caseStudy = level.caseStudy;
   const checklist = getChecklistItems(level, graph);
   const coach = getNextStepCoach(level, graph, runState, language);
   return (
@@ -1047,18 +1052,18 @@ function GraphMissionModal({
         </div>
 
         <div className="graphMissionCopy">
-          <b>{t(onboarding?.story ?? level.goal)}</b>
-          <small>{t(onboarding?.startingProblem ?? "Run Visible to reveal the first failing node, then repair the graph.")}</small>
+          <b>{t(caseStudy?.title ?? onboarding?.story ?? level.goal)}</b>
+          <small>{t(caseStudy?.narrative ?? onboarding?.startingProblem ?? "Run Visible to reveal the first failing node, then repair the graph.")}</small>
         </div>
 
         <div className="graphMissionSteps">
           <div>
             <b>{t("First action")}</b>
-            <small>{t(onboarding?.firstAction ?? "Click Run Visible.")}</small>
+            <small>{t(caseStudy?.playerQuestion ?? onboarding?.firstAction ?? "Click Run Visible.")}</small>
           </div>
           <div>
             <b>{t("Win condition")}</b>
-            <small>{t(onboarding?.winCondition ?? "Visible and hidden tests pass.")}</small>
+            <small>{t(caseStudy?.successObservation ?? onboarding?.winCondition ?? "Visible and hidden tests pass.")}</small>
           </div>
         </div>
 
@@ -1221,6 +1226,151 @@ function GraphCanvasModulePalette({
           );
         })}
       </div>
+    </section>
+  );
+}
+
+function GraphCasePanel({
+  level,
+  graph,
+  modules
+}: {
+  level: LevelSpec;
+  graph: GraphSpec;
+  modules: ModuleDef[];
+}) {
+  const { t } = useGraphT();
+  const [collapsed, setCollapsed] = useState(false);
+  const caseStudy = level.caseStudy;
+  const visibleCase = level.visibleTests[0];
+  if (!caseStudy) return null;
+
+  return (
+    <section className={`graphCasePanel ${collapsed ? "collapsed" : ""}`}>
+      <div className="graphCasePanelHeader">
+        <div>
+          <p className="eyebrow">{t("Current Case")}</p>
+          <h3>{t(caseStudy.title)}</h3>
+        </div>
+        <button className="iconButton" type="button" title={t(collapsed ? "Open case" : "Collapse case")} onClick={() => setCollapsed((current) => !current)}>
+          {collapsed ? <BookOpenText size={15} /> : <X size={15} />}
+        </button>
+      </div>
+      {!collapsed ? (
+        <>
+          <p className="graphCaseNarrative">{t(caseStudy.narrative)}</p>
+          <div className="graphCaseDataGrid">
+            {caseStudy.dataPanels.map((panel) => {
+              if (panel.type === "text_batch") {
+                const texts = getCaseTexts(visibleCase, panel.inputKey);
+                const focusText = panel.focusText ?? caseStudy.visibleInputFocus;
+                return (
+                  <section key={`${panel.type}:${panel.inputKey}`} className="graphCaseDataCard">
+                    <b>{t(panel.title)}</b>
+                    <div className="graphCaseTextList">
+                      {texts.map((text) => (
+                        <code key={text} className={text === focusText ? "focus" : ""}>
+                          {text}
+                        </code>
+                      ))}
+                    </div>
+                  </section>
+                );
+              }
+
+              if (panel.type === "tokenizer_preview") {
+                const preview = createTokenizerPreview(level, graph, modules, visibleCase, panel.tokenizerNodeId, panel.textInputKey);
+                return (
+                  <section key={`${panel.type}:${panel.tokenizerNodeId}`} className="graphCaseDataCard">
+                    <TokenizerPreviewCard title={panel.title} preview={preview} />
+                  </section>
+                );
+              }
+
+              return (
+                <section key={`${panel.type}:${panel.title}`} className="graphCaseDataCard">
+                  <b>{t(panel.title)}</b>
+                  <p className="graphTraceEmpty">{t("Case preview is coming in the next slice.")}</p>
+                </section>
+              );
+            })}
+          </div>
+          <div className="graphCaseQuestion">
+            <b>{t("Player question")}</b>
+            <small>{t(caseStudy.playerQuestion)}</small>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function TokenizerPreviewCard({ title, preview }: { title: string; preview?: TokenizerCasePreview }) {
+  const { t } = useGraphT();
+  if (!preview) {
+    return (
+      <>
+        <b>{t(title)}</b>
+        <p className="graphTraceEmpty">{t("Tokenizer node is missing from this graph.")}</p>
+      </>
+    );
+  }
+
+  const budgetClass = preview.withinBudget && !preview.truncated ? "ok" : "over";
+  return (
+    <>
+      <div className="graphCasePreviewHeader">
+        <b>{t(title)}</b>
+        <code className={budgetClass}>
+          {preview.rawTokenCount} / {preview.maxBudget}
+        </code>
+      </div>
+      <GraphKeyValue label={t("Raw text")} value={preview.focusText} />
+      <div className="graphCasePreviewMeta">
+        <code>{t("Split strategy")}: {t(formatPolicy(preview.policy))}</code>
+        <code>{t("Apply merges")}: {preview.applyMerges ? t("On") : t("Off")}</code>
+        <code>{t("Unknown fallback")}: {preview.fallback}</code>
+      </div>
+      <TokenRow label={t("Pieces")} values={preview.pieces} />
+      <TokenRow label={t("Token IDs")} values={preview.ids.map(String)} compact />
+      <TokenRow label={t("Attention Mask")} values={preview.mask.map(String)} compact />
+      <p className={`graphCaseBudget ${budgetClass}`}>
+        {preview.withinBudget && !preview.truncated ? t("Within budget.") : t("Over budget. Try Subword plus Apply merges.")}
+      </p>
+      {preview.unresolved.length ? <p className="graphCaseBudget over">{t("Unresolved")}: {preview.unresolved.join(", ")}</p> : null}
+    </>
+  );
+}
+
+function TokenRow({ label, values, compact = false }: { label: string; values: string[]; compact?: boolean }) {
+  const displayed = values.slice(0, compact ? 12 : 18);
+  return (
+    <div className="graphTokenRow">
+      <span>{label}</span>
+      <div>
+        {displayed.map((value, index) => (
+          <code key={`${value}:${index}`}>{value}</code>
+        ))}
+        {values.length > displayed.length ? <code>+{values.length - displayed.length}</code> : null}
+      </div>
+    </div>
+  );
+}
+
+function GraphCodePanel({ level }: { level: LevelSpec }) {
+  const { t } = useGraphT();
+  const [collapsed, setCollapsed] = useState(false);
+  const lines = useMemo(() => generateCaseCodeLines(level, level.visibleTests[0]), [level]);
+
+  return (
+    <section className={`graphCodePanel ${collapsed ? "collapsed" : ""}`}>
+      <div className="graphRunPanelHeader">
+        <h3>{t("Case Code")}</h3>
+        <button className="iconButton" type="button" title={t(collapsed ? "Open code" : "Collapse code")} onClick={() => setCollapsed((current) => !current)}>
+          {collapsed ? <BookOpenText size={14} /> : <X size={14} />}
+        </button>
+      </div>
+      {!collapsed ? <pre className="graphCodeBlock">{lines.map((line) => line.text).join("\n")}</pre> : null}
     </section>
   );
 }
@@ -1967,6 +2117,13 @@ function assertionTouchesNode(assertion: TestAssertion | undefined, nodeId: stri
 function formatShape(shape: { dtype: DType; dims: number[]; axes: string[] }) {
   const axes = shape.axes.map((axis, index) => `${axis}=${shape.dims[index] ?? "?"}`).join(",");
   return `${shape.dtype}[${axes}]`;
+}
+
+function formatPolicy(policy: string) {
+  if (policy === "char") return "Character";
+  if (policy === "word") return "Word";
+  if (policy === "subword") return "Subword";
+  return policy;
 }
 
 function formatUnknown(value: unknown) {

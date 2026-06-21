@@ -1,0 +1,359 @@
+import { encodeToyBatch, encodeToyText, type TokenizerPolicy, type ToyTokenizerOptions } from "../toyTokenizer";
+import type { CodeLine, GraphEdge, GraphNode, GraphSpec, LevelSpec, ModuleDef, RuntimeValue, TestAssertion, TestCase } from "./types";
+
+export type TokenizerCasePreview = {
+  focusText: string;
+  policy: string;
+  applyMerges: boolean;
+  fallback: string;
+  pieces: string[];
+  tokens: string[];
+  ids: number[];
+  mask: number[];
+  rawTokenCount: number;
+  maxBudget: number;
+  withinBudget: boolean;
+  truncated: boolean;
+  unresolved: string[];
+};
+
+export type GraphCodeSections = {
+  caseCode: CodeLine[];
+  graphCode: CodeLine[];
+  testCode: CodeLine[];
+};
+
+export function createTokenizerPreview(
+  level: LevelSpec,
+  graph: GraphSpec,
+  modules: ModuleDef[],
+  testCase: TestCase | undefined,
+  tokenizerNodeId: string,
+  textInputKey: string,
+  focusText?: string
+): TokenizerCasePreview | undefined {
+  const tokenizerNode = graph.nodes.find((node) => node.id === tokenizerNodeId);
+  if (!tokenizerNode) return undefined;
+  const tokenizerModule = modules.find((module) => module.id === tokenizerNode.moduleId);
+  const params = { ...(tokenizerModule?.defaultParams ?? {}), ...tokenizerNode.params };
+  const texts = getCaseTexts(testCase, textInputKey);
+  const selectedText = focusText ?? level.caseStudy?.visibleInputFocus ?? texts[0];
+  if (!selectedText) return undefined;
+
+  const options = tokenizerOptionsFromParams(params);
+  const raw = encodeToyText(selectedText, { ...options, maxLength: undefined, padToLength: undefined });
+  const batch = encodeToyBatch([selectedText], options);
+  const maxBudget = getTokenBudget(testCase, Number(params.maxLength ?? 8));
+  const specialCount = (options.addBos ? 1 : 0) + (options.addEos ? 1 : 0);
+  const rawTokenCount = raw.pieces.length + specialCount;
+
+  return {
+    focusText: selectedText,
+    policy: String(params.policy ?? "subword"),
+    applyMerges: Boolean(params.applyMerges ?? true),
+    fallback: String(params.fallback ?? "unk"),
+    pieces: raw.pieces,
+    tokens: batch.tokens[0] ?? [],
+    ids: batch.tokenIds[0] ?? [],
+    mask: batch.attentionMask[0] ?? [],
+    rawTokenCount,
+    maxBudget,
+    withinBudget: rawTokenCount <= maxBudget,
+    truncated: batch.truncated,
+    unresolved: batch.unresolved
+  };
+}
+
+export function generateGraphCodeSections(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], testCase?: TestCase): GraphCodeSections {
+  const activeTest = testCase ?? level.visibleTests[0];
+  return {
+    caseCode: buildCaseCode(level, activeTest),
+    graphCode: buildGraphCode(graph, modules, activeTest),
+    testCode: buildTestCode(activeTest)
+  };
+}
+
+export function generateCaseCodeLines(level: LevelSpec, testCase?: TestCase): CodeLine[] {
+  return buildCaseCode(level, testCase ?? level.visibleTests[0]);
+}
+
+export function getCaseTexts(testCase: TestCase | undefined, inputKey: string) {
+  return extractTexts(testCase?.inputs[inputKey]);
+}
+
+function buildCaseCode(level: LevelSpec, testCase: TestCase | undefined): CodeLine[] {
+  if (!testCase) return [{ id: "case-empty", text: "# No visible case selected." }];
+  const textPanel = level.caseStudy?.dataPanels.find((panel) => panel.type === "text_batch");
+  if (textPanel?.type === "text_batch") {
+    const texts = getCaseTexts(testCase, textPanel.inputKey);
+    const focusText = textPanel.focusText ?? level.caseStudy?.visibleInputFocus;
+    const lines: CodeLine[] = [
+      { id: "case-texts-open", text: `${textPanel.inputKey} = [` },
+      ...texts.map((text, index) => ({
+        id: `case-text-${index}`,
+        text: `    ${toPythonLiteral(text)},${focusText === text ? "  # focus case" : ""}`
+      })),
+      { id: "case-texts-close", text: "]" }
+    ];
+    if (focusText) lines.push({ id: "case-focus", text: `focus_text = ${toPythonLiteral(focusText)}` });
+    return lines;
+  }
+
+  const lines: CodeLine[] = [];
+  Object.entries(testCase.inputs).forEach(([key, value]) => {
+    if (value.shape) {
+      lines.push({ id: `case-shape-${key}`, text: `${safeVar(key)} = Tensor(shape=${toPythonLiteral(value.shape.dims)}, axes=${toPythonLiteral(value.shape.axes)})` });
+      return;
+    }
+    lines.push({ id: `case-input-${key}`, text: `${safeVar(key)} = ${toPythonLiteral(value.data ?? value.meta ?? "runtime input")}` });
+  });
+  return lines.length ? lines : [{ id: "case-empty-inputs", text: "# This case has no explicit inputs." }];
+}
+
+function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCase | undefined): CodeLine[] {
+  const ordered = topologicalNodes(graph);
+  const lines: CodeLine[] = [];
+  ordered.forEach((node) => {
+    const module = modules.find((item) => item.id === node.moduleId);
+    if (!module) {
+      lines.push({ id: `graph-${node.id}-unknown`, nodeId: node.id, text: `# Unknown module: ${node.moduleId}` });
+      return;
+    }
+
+    if (node.moduleId === "TextInput") {
+      const inputKey = String(node.params.inputKey ?? "texts");
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = ${safeVar(inputKey)}` });
+      return;
+    }
+
+    if (node.moduleId === "TokenizerSocket") {
+      const textVar = incomingVar(graph, node, "text");
+      const params = { ...module.defaultParams, ...node.params };
+      lines.push({ id: `graph-${node.id}-ctor`, nodeId: node.id, text: `${safeVar(node.id)} = ToyTokenizer(` });
+      tokenizerParamLines(params).forEach((line, index) => lines.push({ id: `graph-${node.id}-param-${index}`, nodeId: node.id, text: line }));
+      lines.push({ id: `graph-${node.id}-ctor-close`, nodeId: node.id, text: ")" });
+      lines.push({ id: `graph-${node.id}-pieces`, nodeId: node.id, text: `${outputVar(node.id, "pieces")} = ${safeVar(node.id)}.split(${textVar})` });
+      lines.push({ id: `graph-${node.id}-encode`, nodeId: node.id, text: `${outputVar(node.id, "out")}, ${outputVar(node.id, "mask")} = ${safeVar(node.id)}.encode_batch(${textVar})` });
+      return;
+    }
+
+    if (node.moduleId === "EmbeddingReadyProbe") {
+      const idsVar = incomingVar(graph, node, "ids");
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = embedding_ready(${idsVar})` });
+      return;
+    }
+
+    if (node.moduleId === "InputTensor") {
+      const inputKey = String(node.params.inputKey ?? node.id);
+      const value = testCase?.inputs[inputKey];
+      const shapeText = value?.shape ? `, shape=${toPythonLiteral(value.shape.dims)}, axes=${toPythonLiteral(value.shape.axes)}` : "";
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = Tensor(${toPythonLiteral(inputKey)}${shapeText})` });
+      return;
+    }
+
+    if (node.moduleId === "WeightPlate") {
+      const inputKey = String(node.params.inputKey ?? node.id);
+      const orientation = String(node.params.orientation ?? "C,O");
+      const value = testCase?.inputs[inputKey];
+      const shapeText = value?.shape ? `, shape=${toPythonLiteral(value.shape.dims)}, axes=${toPythonLiteral(value.shape.axes)}` : "";
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = WeightPlate(${toPythonLiteral(inputKey)}, storage=${toPythonLiteral(orientation)}${shapeText})` });
+      return;
+    }
+
+    if (node.moduleId === "TransposeSwitch") {
+      const xVar = incomingVar(graph, node, "x");
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${safeVar(node.id)} = transpose(${xVar}, axis_a=${Number(node.params.axisA ?? -2)}, axis_b=${Number(node.params.axisB ?? -1)})`
+      });
+      return;
+    }
+
+    if (node.moduleId === "MatMulGate") {
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = matmul(${incomingVar(graph, node, "left")}, ${incomingVar(graph, node, "right")})` });
+      return;
+    }
+
+    if (node.moduleId === "OutputContractGate") {
+      const expectedAxes = Array.isArray(node.params.expectedAxes) ? node.params.expectedAxes : [];
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = expect_axes(${incomingVar(graph, node, "x")}, ${toPythonLiteral(expectedAxes)})` });
+      return;
+    }
+
+    if (node.moduleId === "ReferenceChecker") {
+      const referenceKey = String(node.params.referenceKey ?? "reference");
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = reference(${toPythonLiteral(referenceKey)})` });
+      return;
+    }
+
+    const inputArgs = module.inputs.map((port) => `${port.id}=${incomingVar(graph, node, port.id)}`).join(", ");
+    lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = ${safeVar(node.moduleId)}(${inputArgs})` });
+  });
+
+  return lines.length ? lines : [{ id: "graph-empty", text: "# Empty graph." }];
+}
+
+function buildTestCode(testCase: TestCase | undefined): CodeLine[] {
+  if (!testCase) return [{ id: "test-empty", text: "# Run a visible case to see test code." }];
+  return testCase.assertions.map((assertion, index) => ({ id: `test-${index}`, nodeId: assertionNodeId(assertion), text: assertionToCode(assertion) }));
+}
+
+function tokenizerParamLines(params: Record<string, unknown>) {
+  const keys = ["policy", "applyMerges", "fallback", "maxLength", "padToLength", "padSide", "maskPolicy", "addBos", "addEos"];
+  return keys.map((key) => `    ${toSnakeCase(key)}=${toPythonLiteral(params[key])},`);
+}
+
+function tokenizerOptionsFromParams(params: Record<string, unknown>): ToyTokenizerOptions {
+  return {
+    policy: stringParam(params, "policy", "subword") as TokenizerPolicy,
+    applyMerges: boolParam(params, "applyMerges", true),
+    fallback: stringParam(params, "fallback", "unk") as "none" | "char" | "unk",
+    preservePunctuation: boolParam(params, "preservePunctuation", true),
+    addBos: boolParam(params, "addBos", true),
+    addEos: boolParam(params, "addEos", true),
+    maxLength: numberParam(params, "maxLength", 8),
+    padToLength: numberParam(params, "padToLength", numberParam(params, "maxLength", 8)),
+    padSide: stringParam(params, "padSide", "right") as "left" | "right",
+    maskPolicy: stringParam(params, "maskPolicy", "pad-aware") as "pad-aware" | "all-ones"
+  };
+}
+
+function getTokenBudget(testCase: TestCase | undefined, fallback: number) {
+  const assertion = testCase?.assertions.find((item): item is Extract<TestAssertion, { type: "token_budget" }> => item.type === "token_budget");
+  return assertion?.maxT ?? fallback;
+}
+
+function incomingVar(graph: GraphSpec, node: GraphNode, portId: string) {
+  const edge = graph.edges.find((item) => item.to.nodeId === node.id && item.to.portId === portId);
+  if (!edge) return `${safeVar(node.id)}_${safeVar(portId)}_missing`;
+  return outputVar(edge.from.nodeId, edge.from.portId);
+}
+
+function outputVar(nodeId: string, portId: string) {
+  if (portId === "out") return safeVar(nodeId);
+  return `${safeVar(nodeId)}_${safeVar(portId)}`;
+}
+
+function topologicalNodes(graph: GraphSpec) {
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const incoming = new Map(graph.nodes.map((node) => [node.id, 0]));
+  graph.edges.forEach((edge) => incoming.set(edge.to.nodeId, (incoming.get(edge.to.nodeId) ?? 0) + 1));
+
+  const ready = graph.nodes.filter((node) => (incoming.get(node.id) ?? 0) === 0);
+  const ordered: GraphNode[] = [];
+  const used = new Set<string>();
+  while (ready.length) {
+    const node = ready.shift() as GraphNode;
+    if (used.has(node.id)) continue;
+    ordered.push(node);
+    used.add(node.id);
+    graph.edges
+      .filter((edge) => edge.from.nodeId === node.id)
+      .forEach((edge) => {
+        const count = Math.max(0, (incoming.get(edge.to.nodeId) ?? 0) - 1);
+        incoming.set(edge.to.nodeId, count);
+        const next = nodesById.get(edge.to.nodeId);
+        if (next && count === 0) ready.push(next);
+      });
+  }
+
+  graph.nodes.forEach((node) => {
+    if (!used.has(node.id)) ordered.push(node);
+  });
+  return ordered;
+}
+
+function assertionNodeId(assertion: TestAssertion) {
+  switch (assertion.type) {
+    case "allclose":
+      return assertion.nodeId;
+    case "mask_pad":
+      return assertion.idsNodeId;
+    default:
+      return "nodeId" in assertion ? assertion.nodeId : undefined;
+  }
+}
+
+function assertionToCode(assertion: TestAssertion) {
+  switch (assertion.type) {
+    case "dtype":
+      return `assert dtype(${nodeRefToVar(assertion.nodeId)}) == ${toPythonLiteral(assertion.expected)}`;
+    case "shape":
+      return `assert shape(${nodeRefToVar(assertion.nodeId)}) == ${toPythonLiteral(assertion.expectedDims ?? assertion.expectedAxes)}`;
+    case "axis_semantics":
+      return `assert axes(${nodeRefToVar(assertion.nodeId)}) == ${toPythonLiteral(assertion.expectedAxes)}`;
+    case "allclose":
+      return `assert allclose(${nodeRefToVar(assertion.nodeId)}, ${nodeRefToVar(assertion.referenceNodeId)}, atol=${assertion.atol})`;
+    case "pieces_non_empty":
+      return `assert len(${nodeRefToVar(assertion.nodeId)}) > 0`;
+    case "no_oov":
+      return `assert no_oov(${nodeRefToVar(assertion.nodeId)})`;
+    case "tokens_include":
+      return `assert ${toPythonLiteral(assertion.token)} in tokens(${nodeRefToVar(assertion.nodeId)})`;
+    case "eos_preserved":
+      return `assert eos_preserved(${nodeRefToVar(assertion.nodeId)}, eos=${toPythonLiteral(assertion.eosToken ?? "<eos>")})`;
+    case "token_budget":
+      return `assert token_count(${nodeRefToVar(assertion.nodeId)}) <= ${assertion.maxT}`;
+    case "mask_pad":
+      return `assert mask_matches_pad(${nodeRefToVar(assertion.idsNodeId)}, ${nodeRefToVar(assertion.maskNodeId)}, pad_id=${assertion.padId})`;
+    case "future_attention_zero":
+      return `assert future_attention_zero(${nodeRefToVar(assertion.nodeId)}, threshold=${assertion.threshold})`;
+    case "row_sum":
+      return `assert row_sum(${nodeRefToVar(assertion.nodeId)}, dim=${toPythonLiteral(assertion.dim)}) ~= ${assertion.target}`;
+    default:
+      return `# Unsupported assertion ${JSON.stringify(assertion)}`;
+  }
+}
+
+function nodeRefToVar(ref: string) {
+  return safeVar(ref.replace(".", "_"));
+}
+
+function extractTexts(value: RuntimeValue | undefined) {
+  if (!value) return [];
+  if (typeof value.data === "string") return [value.data];
+  if (Array.isArray(value.data) && value.data.every((item): item is string => typeof item === "string")) return value.data;
+  const batch = value.meta?.batch;
+  if (Array.isArray(batch) && batch.every((item): item is string => typeof item === "string")) return batch;
+  return [];
+}
+
+function stringParam(params: Record<string, unknown>, key: string, fallback: string) {
+  const value = params[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function boolParam(params: Record<string, unknown>, key: string, fallback: boolean) {
+  const value = params[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function numberParam(params: Record<string, unknown>, key: string, fallback: number) {
+  const value = params[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function safeVar(value: string) {
+  const normalized = value.replace(/[^A-Za-z0-9_]/g, "_").replace(/^([0-9])/, "_$1");
+  return normalized || "value";
+}
+
+function toSnakeCase(value: string) {
+  return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+function toPythonLiteral(value: unknown): string {
+  if (value === undefined) return "None";
+  if (value === null) return "None";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "None";
+  if (typeof value === "boolean") return value ? "True" : "False";
+  if (Array.isArray(value)) return `[${value.map((item) => toPythonLiteral(item)).join(", ")}]`;
+  if (typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => `${toPythonLiteral(key)}: ${toPythonLiteral(item)}`)
+      .join(", ")}}`;
+  }
+  return JSON.stringify(String(value));
+}

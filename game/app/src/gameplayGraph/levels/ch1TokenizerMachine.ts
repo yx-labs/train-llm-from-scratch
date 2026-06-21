@@ -136,6 +136,27 @@ export const ch1SplitMergeBudget: LevelSpec = {
   modulePalette: ["TextInput", "TokenizerSocket", "EmbeddingReadyProbe"],
   initialGraph: createTokenizerGraph("ch1_2_split_merge_budget", { ...splitMergeParams, policy: "char", applyMerges: false }),
   constraints: { maxNodes: 5, maxEdges: 5 },
+  caseStudy: {
+    title: "Make this sentence fit into 8 token slots",
+    narrative: "The model can only read T=8 token slots. Character split is safe, but it turns one readable sentence into too many pieces.",
+    visibleInputFocus: "tokenizers are useful!",
+    dataPanels: [
+      {
+        type: "text_batch",
+        title: "Training texts",
+        inputKey: "texts",
+        focusText: "tokenizers are useful!"
+      },
+      {
+        type: "tokenizer_preview",
+        title: "Current tokenizer output",
+        tokenizerNodeId: "tokenizer",
+        textInputKey: "texts"
+      }
+    ],
+    playerQuestion: "Which split strategy keeps useful words recognizable while staying under T=8?",
+    successObservation: "Subword + merges keeps tokenizers/useful intact and leaves the row inside the token budget."
+  },
   visibleTests: [
     {
       id: "merge_visible_set",

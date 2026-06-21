@@ -155,6 +155,27 @@ export type ModuleContext = {
   testInputs: Record<string, RuntimeValue>;
 };
 
+export type CodeEmitContext = {
+  node: GraphNode;
+  module: ModuleDef;
+  inputVars: Record<string, string>;
+  outputVars: Record<string, string>;
+  testInputs: Record<string, RuntimeValue>;
+  language: "python" | "typescript";
+};
+
+export type CodeLine = {
+  id: string;
+  nodeId?: string;
+  edgeId?: string;
+  text: string;
+  highlightWhenSelected?: boolean;
+};
+
+export type CodeEmitResult = {
+  lines: CodeLine[];
+};
+
 export type InferResult = {
   outputs: Partial<Record<string, TensorShape>>;
   error?: RuntimeError;
@@ -175,6 +196,7 @@ export type ModuleDef = {
   defaultParams: Record<string, unknown>;
   summary: string;
   pseudoCode?: string;
+  emitCode?: (context: CodeEmitContext) => CodeEmitResult;
   infer: (context: ModuleContext) => InferResult;
   execute: (context: ModuleContext) => ExecuteResult;
 };
@@ -186,6 +208,42 @@ export type LevelOnboarding = {
   targetRecipe: string[];
   winCondition: string;
   allowedMistakes?: string[];
+};
+
+export type CaseDataPanel =
+  | {
+      type: "text_batch";
+      title: string;
+      inputKey: string;
+      focusText?: string;
+    }
+  | {
+      type: "tokenizer_preview";
+      title: string;
+      tokenizerNodeId: string;
+      textInputKey: string;
+    }
+  | {
+      type: "tensor_preview";
+      title: string;
+      inputKey: string;
+      maxRows?: number;
+      maxCols?: number;
+    }
+  | {
+      type: "attention_table";
+      title: string;
+      tokensInputKey?: string;
+      scoresNodeId: string;
+    };
+
+export type LevelCaseStudy = {
+  title: string;
+  narrative: string;
+  visibleInputFocus?: string;
+  dataPanels: CaseDataPanel[];
+  playerQuestion: string;
+  successObservation: string;
 };
 
 export type LevelSpec = {
@@ -204,6 +262,7 @@ export type LevelSpec = {
   visibleTests: TestCase[];
   hiddenTests: TestCase[];
   onboarding?: LevelOnboarding;
+  caseStudy?: LevelCaseStudy;
   targetGraph?: GraphSpec;
   debrief: {
     completeTitle: string;
