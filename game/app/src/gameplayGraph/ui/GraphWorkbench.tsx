@@ -1,6 +1,7 @@
 import {
   createContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -14,10 +15,10 @@ import {
 import { AlertTriangle, BookOpenText, CheckCircle2, GitBranchPlus, Minus, MousePointer2, Move, Play, Plus, RotateCcw, Trash2, Wrench, X } from "lucide-react";
 import { graphLevels } from "../levelRegistry";
 import { createGameplayRegistry } from "../modules";
-import type { DType, GraphEdge, GraphNode, GraphSpec, LevelSpec, ModuleDef, PortDef, PortRef, TestAssertion, TestResult, TraceFrame } from "../types";
+import type { DType, GraphEdge, GraphNode, GraphSpec, LevelSpec, ModuleDef, PortDef, PortRef, RuntimeValue, TestAssertion, TestResult, TraceFrame } from "../types";
 import { runTests, type RunTestsResult, type TestCaseRunResult } from "../runtime/testRunner";
 import { graphStatusText, graphText, type GraphLanguage } from "../i18n";
-import { createTokenizerPreview, generateCaseCodeLines, getCaseTexts, type TokenizerCasePreview } from "../codegen";
+import { createTokenizerPreview, generateGraphCodeSections, getCaseTexts, type TokenizerCasePreview } from "../codegen";
 
 type RunState = {
   visible?: RunTestsResult;
@@ -61,6 +62,8 @@ type CanvasViewport = {
   y: number;
   scale: number;
 };
+
+type PortAnchorMap = Record<string, CanvasPoint>;
 
 type PanDragState = {
   startClientX: number;
@@ -135,6 +138,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("summary");
   const [missionOpen, setMissionOpen] = useState(true);
   const [layout, setLayout] = useState<WorkbenchLayout>(defaultWorkbenchLayout);
+  const [portAnchors, setPortAnchors] = useState<PortAnchorMap>({});
   const workbenchRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -186,6 +190,24 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
   useEffect(() => {
     setMissionOpen(true);
   }, [selectedLevel.id]);
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const nextAnchors: PortAnchorMap = {};
+    canvas.querySelectorAll<HTMLElement>("[data-graph-port-dot='true']").forEach((element) => {
+      const nodeId = element.dataset.nodeId;
+      const portId = element.dataset.portId;
+      const direction = element.dataset.portDirection as "in" | "out" | undefined;
+      if (!nodeId || !portId || !direction) return;
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2 - canvasRect.left;
+      const centerY = rect.top + rect.height / 2 - canvasRect.top;
+      nextAnchors[portAnchorKey(nodeId, portId, direction)] = viewportToWorld(centerX, centerY);
+    });
+    setPortAnchors(nextAnchors);
+  }, [graph, selectedLevel.id, viewport.x, viewport.y, viewport.scale, language]);
 
   function selectLevel(level: LevelSpec) {
     const levelGraph = graphs[level.id] ?? level.initialGraph;
@@ -735,7 +757,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
     });
   }
 
-  const wirePreview = wireSource && wirePointer ? getWirePreviewPath(graph, modules, wireSource, wirePointer) : undefined;
+  const wirePreview = wireSource && wirePointer ? getWirePreviewPath(graph, modules, wireSource, wirePointer, portAnchors) : undefined;
   const t = (text: string) => graphText(language, text);
 
   return (
@@ -872,7 +894,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
               transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`
             }}
           >
-            <TargetGhostGraph targetGraph={selectedLevel.targetGraph} currentGraph={graph} modules={modules} />
+            <TargetGhostGraph targetGraph={selectedLevel.targetGraph} currentGraph={graph} />
             <svg className="graphEdgeLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} role="img" aria-label="graph edges">
               {wirePreview ? <path className="graphWirePreview" d={wirePreview} /> : null}
               {graph.edges.map((edge) => {
@@ -881,15 +903,21 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
                 if (!fromNode || !toNode) return null;
                 const fromModule = registry.get(fromNode.moduleId);
                 const toModule = registry.get(toNode.moduleId);
-                const from = getPortAnchor(fromNode, fromModule, edge.from.portId, "out");
-                const to = getPortAnchor(toNode, toModule, edge.to.portId, "in");
+                const from = getPortAnchor(fromNode, fromModule, edge.from.portId, "out", portAnchors);
+                const to = getPortAnchor(toNode, toModule, edge.to.portId, "in", portAnchors);
                 const selected = selectedEdge?.id === edge.id;
+                const edgeCaseLabel = getEdgeCaseLabel(selectedLevel, graph, modules, edge);
                 return (
                   <g key={edge.id} className={`graphEdge ${selected ? "selected" : ""}`} onClick={() => setSelection({ type: "edge", id: edge.id })}>
                     <path d={`M ${from.x} ${from.y} C ${from.x + 88} ${from.y}, ${to.x - 88} ${to.y}, ${to.x} ${to.y}`} />
                     <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}>
                       {`${edge.from.portId} -> ${edge.to.portId}`}
                     </text>
+                    {edgeCaseLabel ? (
+                      <text className="graphEdgeCaseText" x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 + 10}>
+                        {edgeCaseLabel}
+                      </text>
+                    ) : null}
                   </g>
                 );
               })}
@@ -913,6 +941,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
                     <b>{node.id}</b>
                     <small>{t(module.label)}</small>
                   </div>
+                  <GraphNodeCaseChips level={selectedLevel} graph={graph} modules={modules} node={node} module={module} />
                   <div className="graphPorts">
                     <GraphPortColumn
                       node={node}
@@ -1008,7 +1037,7 @@ export function GraphWorkbench({ language = "en" }: { language?: GraphLanguage }
           </section>
         ) : null}
 
-        <GraphCodePanel level={selectedLevel} />
+        <GraphCodePanel level={selectedLevel} graph={graph} modules={modules} />
         <GraphRankPanel level={selectedLevel} graph={graph} runState={runState} />
         <GraphRunPanel title="Visible Tests" result={runState.visible} onLocateNode={focusNode} onShowNextStep={showNextHint} />
         <GraphRunPanel title="Hidden Tests" result={runState.hidden} locked={hiddenLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
@@ -1101,42 +1130,64 @@ function GraphMissionModal({
 
 function TargetGhostGraph({
   targetGraph,
-  currentGraph,
-  modules
+  currentGraph
 }: {
   targetGraph?: GraphSpec;
   currentGraph: GraphSpec;
-  modules: ModuleDef[];
 }) {
   if (!targetGraph) return null;
+  const currentNodeSizes = estimateCurrentNodeSizes(currentGraph);
   return (
     <svg className="targetGhostLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} aria-hidden="true">
-      {targetGraph.edges.map((edge) => {
-        const fromNode = targetGraph.nodes.find((node) => node.id === edge.from.nodeId);
-        const toNode = targetGraph.nodes.find((node) => node.id === edge.to.nodeId);
-        if (!fromNode || !toNode) return null;
-        const fromModule = modules.find((module) => module.id === fromNode.moduleId);
-        const toModule = modules.find((module) => module.id === toNode.moduleId);
-        if (!fromModule || !toModule) return null;
-        const from = getPortAnchor(fromNode, fromModule, edge.from.portId, "out");
-        const to = getPortAnchor(toNode, toModule, edge.to.portId, "in");
-        const matched = graphHasEdge(currentGraph, edge.from, edge.to);
-        return (
-          <g key={edge.id} className={`targetGhostEdge ${matched ? "matched" : ""}`}>
-            <path d={`M ${from.x} ${from.y} C ${from.x + 88} ${from.y}, ${to.x - 88} ${to.y}, ${to.x} ${to.y}`} />
-          </g>
-        );
-      })}
       {targetGraph.nodes.map((node) => {
         const matched = currentGraph.nodes.some((item) => item.id === node.id && item.moduleId === node.moduleId);
+        if (matched) return null;
+        const size = currentNodeSizes[node.moduleId] ?? { width: graphNodeWidth, height: graphNodeMinHeight };
         return (
-          <g key={node.id} className={`targetGhostNode ${matched ? "matched" : ""}`} transform={`translate(${node.position.x} ${node.position.y})`}>
-            <rect width={graphNodeWidth} height={graphNodeMinHeight} rx={8} />
+          <g key={node.id} className="targetGhostNode" transform={`translate(${node.position.x} ${node.position.y})`}>
+            <rect width={size.width} height={size.height} rx={8} />
             <text x={14} y={24}>{node.id}</text>
           </g>
         );
       })}
     </svg>
+  );
+}
+
+type CaseChip = {
+  label: string;
+  value: string;
+  tone?: "ok" | "warn" | "bad" | "muted";
+};
+
+function GraphNodeCaseChips({
+  level,
+  graph,
+  modules,
+  node,
+  module
+}: {
+  level: LevelSpec;
+  graph: GraphSpec;
+  modules: ModuleDef[];
+  node: GraphNode;
+  module: ModuleDef;
+}) {
+  const { t } = useGraphT();
+  const chips = getNodeCaseChips(level, graph, modules, node, module);
+  if (!chips.length) return null;
+  return (
+    <div className="graphNodeCase">
+      <span>{t("Case Flow")}</span>
+      <div>
+        {chips.map((chip) => (
+          <code key={`${chip.label}:${chip.value}`} className={chip.tone ?? "muted"}>
+            <b>{t(chip.label)}</b>
+            {chip.value}
+          </code>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1180,7 +1231,7 @@ function GraphPortColumn({
               onPortClick(node, module, port);
             }}
           >
-            <span />
+            <span data-graph-port-dot="true" data-node-id={node.id} data-port-id={port.id} data-port-direction={direction} />
             <b>{t(port.label)}</b>
           </button>
         );
@@ -1357,20 +1408,36 @@ function TokenRow({ label, values, compact = false }: { label: string; values: s
   );
 }
 
-function GraphCodePanel({ level }: { level: LevelSpec }) {
+function GraphCodePanel({ level, graph, modules }: { level: LevelSpec; graph: GraphSpec; modules: ModuleDef[] }) {
   const { t } = useGraphT();
   const [collapsed, setCollapsed] = useState(false);
-  const lines = useMemo(() => generateCaseCodeLines(level, level.visibleTests[0]), [level]);
+  const sections = useMemo(() => generateGraphCodeSections(level, graph, modules, level.visibleTests[0]), [graph, level, modules]);
 
   return (
     <section className={`graphCodePanel ${collapsed ? "collapsed" : ""}`}>
       <div className="graphRunPanelHeader">
-        <h3>{t("Case Code")}</h3>
+        <h3>{t("Code")}</h3>
         <button className="iconButton" type="button" title={t(collapsed ? "Open code" : "Collapse code")} onClick={() => setCollapsed((current) => !current)}>
           {collapsed ? <BookOpenText size={14} /> : <X size={14} />}
         </button>
       </div>
-      {!collapsed ? <pre className="graphCodeBlock">{lines.map((line) => line.text).join("\n")}</pre> : null}
+      {!collapsed ? (
+        <div className="graphCodeSections">
+          <CodeSection title="Case Code" lines={sections.caseCode} />
+          <CodeSection title="Graph Code" lines={sections.graphCode} />
+          <CodeSection title="Test Code" lines={sections.testCode} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CodeSection({ title, lines }: { title: string; lines: Array<{ id: string; text: string }> }) {
+  const { t } = useGraphT();
+  return (
+    <section className="graphCodeSection">
+      <b>{t(title)}</b>
+      <pre className="graphCodeBlock">{lines.map((line) => line.text).join("\n")}</pre>
     </section>
   );
 }
@@ -1992,6 +2059,228 @@ function graphHasEdge(graph: GraphSpec, from: PortRef, to: PortRef) {
   return graph.edges.some((edge) => edge.from.nodeId === from.nodeId && edge.from.portId === from.portId && edge.to.nodeId === to.nodeId && edge.to.portId === to.portId);
 }
 
+function estimateCurrentNodeSizes(graph: GraphSpec) {
+  const sizes: Record<string, { width: number; height: number }> = {};
+  graph.nodes.forEach((node) => {
+    const chipCount = node.moduleId === "TokenizerSocket" || node.moduleId === "MatMulGate" || node.moduleId === "InputTensor" || node.moduleId === "WeightPlate" ? 3 : 2;
+    sizes[node.moduleId] = {
+      width: graphNodeWidth,
+      height: graphNodeMinHeight + Math.ceil(chipCount / 2) * 32 + 18
+    };
+  });
+  return sizes;
+}
+
+function getNodeCaseChips(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], node: GraphNode, module: ModuleDef): CaseChip[] {
+  const visibleCase = level.visibleTests[0];
+  if (!visibleCase) return [];
+
+  if (node.moduleId === "TextInput") {
+    const inputKey = String(node.params.inputKey ?? "texts");
+    const texts = getCaseTexts(visibleCase, inputKey);
+    const focusText = getFocusText(level, texts);
+    return [
+      ...(focusText ? [{ label: "text", value: quoteShort(focusText), tone: "ok" as const }] : []),
+      ...(texts.length > 1 ? [{ label: "batch", value: `${texts.length} texts`, tone: "muted" as const }] : [])
+    ];
+  }
+
+  if (node.moduleId === "TokenizerSocket") {
+    const preview = tokenizerPreviewForNode(level, graph, modules, node);
+    if (!preview) return [];
+    return [
+      { label: "strategy", value: `${formatPolicy(preview.policy)}${preview.applyMerges ? " + merges" : ""}`, tone: preview.withinBudget ? "ok" : "warn" },
+      { label: "budget", value: `${preview.rawTokenCount}/${preview.maxBudget}`, tone: preview.withinBudget && !preview.truncated ? "ok" : "bad" },
+      { label: "pieces", value: preview.pieces.slice(0, 4).join(" | ") + (preview.pieces.length > 4 ? " ..." : ""), tone: preview.withinBudget ? "ok" : "warn" }
+    ];
+  }
+
+  if (node.moduleId === "EmbeddingReadyProbe") {
+    const tokenizerNode = incomingNode(graph, node, "ids");
+    const preview = tokenizerNode?.moduleId === "TokenizerSocket" ? tokenizerPreviewForNode(level, graph, modules, tokenizerNode) : undefined;
+    if (preview) {
+      return [
+        { label: "ids", value: `int[1,${preview.ids.length}]`, tone: "ok" },
+        { label: "mask", value: preview.mask.slice(0, 8).join(" "), tone: preview.mask.includes(0) ? "ok" : "muted" }
+      ];
+    }
+    return [{ label: "expects", value: "int token IDs", tone: "muted" }];
+  }
+
+  if (node.moduleId === "InputTensor" || node.moduleId === "WeightPlate") {
+    const inputKey = String(node.params.inputKey ?? node.id);
+    const value = visibleCase.inputs[inputKey];
+    return [
+      { label: "input", value: inputKey, tone: "muted" },
+      ...(value?.shape ? [{ label: "shape", value: formatShape(value.shape), tone: "ok" as const }] : []),
+      ...(Array.isArray(value?.data) ? [{ label: "sample", value: formatSmallSample(value.data), tone: "muted" as const }] : [])
+    ];
+  }
+
+  if (node.moduleId === "TransposeSwitch") {
+    const inputShape = estimateOutputShape(level, graph, node, "x");
+    return [
+      ...(inputShape ? [{ label: "in", value: formatShape(inputShape), tone: "muted" as const }] : []),
+      { label: "swap", value: `${node.params.axisA ?? -2} <-> ${node.params.axisB ?? -1}`, tone: "ok" }
+    ];
+  }
+
+  if (node.moduleId === "MatMulGate") {
+    const left = estimateOutputShape(level, graph, node, "left");
+    const right = estimateOutputShape(level, graph, node, "right");
+    const out = estimateNodeOutputShape(level, graph, node);
+    return [
+      ...(left ? [{ label: "left", value: formatShape(left), tone: "muted" as const }] : []),
+      ...(right ? [{ label: "right", value: formatShape(right), tone: left && right && left.dims[left.dims.length - 1] === right.dims[0] ? "ok" as const : "warn" as const }] : []),
+      ...(out ? [{ label: "out", value: formatShape(out), tone: "ok" as const }] : [])
+    ];
+  }
+
+  if (node.moduleId === "OutputContractGate" || node.moduleId === "ScoreBoard" || node.moduleId === "AxisAlignmentRuler" || node.moduleId === "AxisLock") {
+    const expectedAxes = Array.isArray(node.params.expectedAxes)
+      ? node.params.expectedAxes
+      : Array.isArray(node.params.expectedPrefixAxes)
+        ? node.params.expectedPrefixAxes
+        : [];
+    const inputPort = module.inputs[0]?.id ?? "x";
+    const inputShape = estimateOutputShape(level, graph, node, inputPort);
+    return [
+      ...(inputShape ? [{ label: "case", value: formatShape(inputShape), tone: "muted" as const }] : []),
+      ...(expectedAxes.length ? [{ label: "expects", value: `[${expectedAxes.join(",")}]`, tone: "ok" as const }] : [])
+    ];
+  }
+
+  if (node.moduleId === "ReferenceChecker") {
+    const referenceKey = String(node.params.referenceKey ?? "reference");
+    const value = visibleCase.inputs[referenceKey];
+    return value?.shape ? [{ label: "reference", value: formatShape(value.shape), tone: "muted" }] : [];
+  }
+
+  return [];
+}
+
+function getEdgeCaseLabel(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], edge: GraphEdge) {
+  const sourceNode = graph.nodes.find((node) => node.id === edge.from.nodeId);
+  if (!sourceNode) return undefined;
+
+  if (sourceNode.moduleId === "TextInput") {
+    const inputKey = String(sourceNode.params.inputKey ?? "texts");
+    const texts = getCaseTexts(level.visibleTests[0], inputKey);
+    const focusText = getFocusText(level, texts);
+    return focusText ? quoteShort(focusText, 26) : undefined;
+  }
+
+  if (sourceNode.moduleId === "TokenizerSocket") {
+    const preview = tokenizerPreviewForNode(level, graph, modules, sourceNode);
+    if (!preview) return undefined;
+    if (edge.from.portId === "pieces") return `pieces ${preview.rawTokenCount}/${preview.maxBudget}`;
+    if (edge.from.portId === "mask") return `mask[${preview.mask.length}]`;
+    return `ids[1,${preview.ids.length}]`;
+  }
+
+  const shape = estimateNodeOutputShape(level, graph, sourceNode, edge.from.portId);
+  return shape ? formatShape(shape) : undefined;
+}
+
+function tokenizerPreviewForNode(level: LevelSpec, graph: GraphSpec, modules: ModuleDef[], node: GraphNode) {
+  const textInputKey = tokenizerTextInputKey(graph, node) ?? "texts";
+  return createTokenizerPreview(level, graph, modules, level.visibleTests[0], node.id, textInputKey);
+}
+
+function tokenizerTextInputKey(graph: GraphSpec, tokenizerNode: GraphNode) {
+  const textNode = incomingNode(graph, tokenizerNode, "text");
+  return textNode ? String(textNode.params.inputKey ?? "texts") : undefined;
+}
+
+function incomingNode(graph: GraphSpec, node: GraphNode, portId: string) {
+  const edge = graph.edges.find((item) => item.to.nodeId === node.id && item.to.portId === portId);
+  return edge ? graph.nodes.find((item) => item.id === edge.from.nodeId) : undefined;
+}
+
+function estimateOutputShape(level: LevelSpec, graph: GraphSpec, node: GraphNode, inputPortId: string) {
+  const edge = graph.edges.find((item) => item.to.nodeId === node.id && item.to.portId === inputPortId);
+  if (!edge) return undefined;
+  const sourceNode = graph.nodes.find((item) => item.id === edge.from.nodeId);
+  return sourceNode ? estimateNodeOutputShape(level, graph, sourceNode, edge.from.portId) : undefined;
+}
+
+function estimateNodeOutputShape(level: LevelSpec, graph: GraphSpec, node: GraphNode, portId = "out"): RuntimeValue["shape"] | undefined {
+  const visibleCase = level.visibleTests[0];
+  if (!visibleCase) return undefined;
+
+  if (node.moduleId === "InputTensor" || node.moduleId === "WeightPlate" || node.moduleId === "ReferenceChecker") {
+    const inputKey = node.moduleId === "ReferenceChecker" ? String(node.params.referenceKey ?? "reference") : String(node.params.inputKey ?? node.id);
+    return visibleCase.inputs[inputKey]?.shape;
+  }
+
+  if (node.moduleId === "TokenizerSocket") {
+    const preview = tokenizerPreviewForNode(level, graph, [], node);
+    if (!preview) return undefined;
+    if (portId === "mask") return { dtype: "mask", dims: [1, preview.mask.length], axes: ["B", "T"] };
+    if (portId === "pieces") return { dtype: "token_piece", dims: [preview.rawTokenCount], axes: ["T"] };
+    return { dtype: "int", dims: [1, preview.ids.length], axes: ["B", "T"] };
+  }
+
+  if (node.moduleId === "TransposeSwitch") {
+    const input = estimateOutputShape(level, graph, node, "x");
+    if (!input) return undefined;
+    const rank = input.dims.length;
+    const axisA = normalizePreviewAxis(Number(node.params.axisA ?? -2), rank);
+    const axisB = normalizePreviewAxis(Number(node.params.axisB ?? -1), rank);
+    const dims = [...input.dims];
+    const axes = [...input.axes];
+    [dims[axisA], dims[axisB]] = [dims[axisB], dims[axisA]];
+    [axes[axisA], axes[axisB]] = [axes[axisB], axes[axisA]];
+    return { ...input, dims, axes };
+  }
+
+  if (node.moduleId === "MatMulGate") {
+    const left = estimateOutputShape(level, graph, node, "left");
+    const right = estimateOutputShape(level, graph, node, "right");
+    if (!left || !right || left.dims.length < 1 || right.dims.length < 2) return undefined;
+    const outDims = [...left.dims.slice(0, -1), right.dims[right.dims.length - 1]];
+    const outAxes = [...left.axes.slice(0, -1), right.axes[right.axes.length - 1]];
+    return { dtype: "float32", dims: outDims, axes: outAxes };
+  }
+
+  if (
+    node.moduleId === "OutputContractGate" ||
+    node.moduleId === "ScoreBoard" ||
+    node.moduleId === "AxisAlignmentRuler" ||
+    node.moduleId === "AxisLock" ||
+    node.moduleId === "EmbeddingReadyProbe" ||
+    node.moduleId === "GhostExpansionPreview" ||
+    node.moduleId === "SemanticWarningLens"
+  ) {
+    const inputPort = node.moduleId === "ScoreBoard" ? "scores" : node.moduleId === "EmbeddingReadyProbe" ? "ids" : node.moduleId === "AxisAlignmentRuler" ? "x" : "x";
+    return estimateOutputShape(level, graph, node, inputPort);
+  }
+
+  return undefined;
+}
+
+function getFocusText(level: LevelSpec, texts: string[]) {
+  return level.caseStudy?.visibleInputFocus ?? texts[0];
+}
+
+function quoteShort(value: string, maxLength = 32) {
+  return `"${shortText(value, maxLength)}"`;
+}
+
+function shortText(value: string, maxLength = 32) {
+  return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 1))}...` : value;
+}
+
+function formatSmallSample(data: RuntimeValue["data"]) {
+  if (!Array.isArray(data)) return "";
+  return `[${data.slice(0, 3).map((item) => (typeof item === "number" ? Number(item).toFixed(2) : String(item))).join(", ")}${data.length > 3 ? ", ..." : ""}]`;
+}
+
+function normalizePreviewAxis(axis: number, rank: number) {
+  const normalized = axis < 0 ? rank + axis : axis;
+  return clamp(normalized, 0, Math.max(0, rank - 1));
+}
+
 function getNextStepCoach(level: LevelSpec, graph: GraphSpec, runState: RunState, language: GraphLanguage) {
   const firstFail =
     runState.visible?.results.find((result) => result.status !== "pass") ??
@@ -2144,11 +2433,11 @@ function getOutputPort(graph: GraphSpec, modules: ModuleDef[], source: PortRef) 
   return module?.outputs.find((port) => port.id === source.portId);
 }
 
-function getWirePreviewPath(graph: GraphSpec, modules: ModuleDef[], source: PortRef, pointer: CanvasPoint) {
+function getWirePreviewPath(graph: GraphSpec, modules: ModuleDef[], source: PortRef, pointer: CanvasPoint, anchors?: PortAnchorMap) {
   const sourceNode = graph.nodes.find((node) => node.id === source.nodeId);
   const sourceModule = sourceNode ? modules.find((module) => module.id === sourceNode.moduleId) : undefined;
   if (!sourceNode || !sourceModule) return undefined;
-  const from = getPortAnchor(sourceNode, sourceModule, source.portId, "out");
+  const from = getPortAnchor(sourceNode, sourceModule, source.portId, "out", anchors);
   return `M ${from.x} ${from.y} C ${from.x + 88} ${from.y}, ${pointer.x - 88} ${pointer.y}, ${pointer.x} ${pointer.y}`;
 }
 
@@ -2315,7 +2604,13 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function getPortAnchor(node: GraphNode, module: ModuleDef, portId: string, direction: "in" | "out") {
+function portAnchorKey(nodeId: string, portId: string, direction: "in" | "out") {
+  return `${nodeId}:${portId}:${direction}`;
+}
+
+function getPortAnchor(node: GraphNode, module: ModuleDef, portId: string, direction: "in" | "out", anchors?: PortAnchorMap) {
+  const measured = anchors?.[portAnchorKey(node.id, portId, direction)];
+  if (measured) return measured;
   const ports = direction === "in" ? module.inputs : module.outputs;
   const portIndex = Math.max(0, ports.findIndex((port) => port.id === portId));
   const rowY = node.position.y + 76 + portIndex * 24;

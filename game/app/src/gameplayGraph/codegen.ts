@@ -122,32 +122,32 @@ function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCa
 
     if (node.moduleId === "TextInput") {
       const inputKey = String(node.params.inputKey ?? "texts");
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = ${safeVar(inputKey)}` });
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = ${safeVar(inputKey)}` });
       return;
     }
 
     if (node.moduleId === "TokenizerSocket") {
       const textVar = incomingVar(graph, node, "text");
       const params = { ...module.defaultParams, ...node.params };
-      lines.push({ id: `graph-${node.id}-ctor`, nodeId: node.id, text: `${safeVar(node.id)} = ToyTokenizer(` });
+      const tokenizerVar = safeVar(node.id);
+      lines.push({ id: `graph-${node.id}-ctor`, nodeId: node.id, text: `${tokenizerVar} = ToyTokenizer(` });
       tokenizerParamLines(params).forEach((line, index) => lines.push({ id: `graph-${node.id}-param-${index}`, nodeId: node.id, text: line }));
       lines.push({ id: `graph-${node.id}-ctor-close`, nodeId: node.id, text: ")" });
-      lines.push({ id: `graph-${node.id}-pieces`, nodeId: node.id, text: `${outputVar(node.id, "pieces")} = ${safeVar(node.id)}.split(${textVar})` });
-      lines.push({ id: `graph-${node.id}-encode`, nodeId: node.id, text: `${outputVar(node.id, "out")}, ${outputVar(node.id, "mask")} = ${safeVar(node.id)}.encode_batch(${textVar})` });
+      lines.push({ id: `graph-${node.id}-pieces`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "pieces")} = ${tokenizerVar}.split_batch(${textVar})` });
+      lines.push({ id: `graph-${node.id}-encode`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")}, ${graphOutputVar(graph, node.id, "mask")} = ${tokenizerVar}.encode_batch(${textVar})` });
       return;
     }
 
     if (node.moduleId === "EmbeddingReadyProbe") {
       const idsVar = incomingVar(graph, node, "ids");
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = embedding_ready(${idsVar})` });
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = embedding_ready(${idsVar})` });
       return;
     }
 
     if (node.moduleId === "InputTensor") {
       const inputKey = String(node.params.inputKey ?? node.id);
       const value = testCase?.inputs[inputKey];
-      const shapeText = value?.shape ? `, shape=${toPythonLiteral(value.shape.dims)}, axes=${toPythonLiteral(value.shape.axes)}` : "";
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = Tensor(${toPythonLiteral(inputKey)}${shapeText})` });
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = ${tensorInputExpression(inputKey, value, node.params)}` });
       return;
     }
 
@@ -155,40 +155,109 @@ function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCa
       const inputKey = String(node.params.inputKey ?? node.id);
       const orientation = String(node.params.orientation ?? "C,O");
       const value = testCase?.inputs[inputKey];
-      const shapeText = value?.shape ? `, shape=${toPythonLiteral(value.shape.dims)}, axes=${toPythonLiteral(value.shape.axes)}` : "";
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = WeightPlate(${toPythonLiteral(inputKey)}, storage=${toPythonLiteral(orientation)}${shapeText})` });
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "out")} = ${tensorInputExpression(inputKey, value, node.params)}  # storage orientation: ${orientation}`
+      });
       return;
     }
 
     if (node.moduleId === "TransposeSwitch") {
       const xVar = incomingVar(graph, node, "x");
+      const axisA = Number(node.params.axisA ?? -2);
+      const axisB = Number(node.params.axisB ?? -1);
       lines.push({
         id: `graph-${node.id}`,
         nodeId: node.id,
-        text: `${safeVar(node.id)} = transpose(${xVar}, axis_a=${Number(node.params.axisA ?? -2)}, axis_b=${Number(node.params.axisB ?? -1)})`
+        text: `${graphOutputVar(graph, node.id, "out")} = ${xVar}.transpose(${axisA}, ${axisB})`
       });
       return;
     }
 
     if (node.moduleId === "MatMulGate") {
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = matmul(${incomingVar(graph, node, "left")}, ${incomingVar(graph, node, "right")})` });
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "out")} = torch.matmul(${incomingVar(graph, node, "left")}, ${incomingVar(graph, node, "right")})`
+      });
       return;
     }
 
     if (node.moduleId === "OutputContractGate") {
       const expectedAxes = Array.isArray(node.params.expectedAxes) ? node.params.expectedAxes : [];
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = expect_axes(${incomingVar(graph, node, "x")}, ${toPythonLiteral(expectedAxes)})` });
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = expect_axes(${incomingVar(graph, node, "x")}, ${toPythonLiteral(expectedAxes)})` });
       return;
     }
 
     if (node.moduleId === "ReferenceChecker") {
       const referenceKey = String(node.params.referenceKey ?? "reference");
-      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = reference(${toPythonLiteral(referenceKey)})` });
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = reference_tensor(${toPythonLiteral(referenceKey)})` });
+      return;
+    }
+
+    if (node.moduleId === "AxisLock") {
+      const expectedPrefixAxes = Array.isArray(node.params.expectedPrefixAxes) ? node.params.expectedPrefixAxes : [];
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = expect_prefix_axes(${incomingVar(graph, node, "x")}, ${toPythonLiteral(expectedPrefixAxes)})` });
+      return;
+    }
+
+    if (node.moduleId === "AxisAlignmentRuler") {
+      const expectedAxes = Array.isArray(node.params.expectedAxes) ? node.params.expectedAxes : [];
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = expect_axes(${incomingVar(graph, node, "x")}, ${toPythonLiteral(expectedAxes)})` });
+      return;
+    }
+
+    if (node.moduleId === "BroadcastRail") {
+      const alignAxes = Array.isArray(node.params.alignAxes) ? node.params.alignAxes : [];
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "out")} = broadcast_to(${incomingVar(graph, node, "small")}, like=${incomingVar(graph, node, "target")}, align_axes=${toPythonLiteral(alignAxes)})`
+      });
+      return;
+    }
+
+    if (node.moduleId === "GhostExpansionPreview" || node.moduleId === "SemanticWarningLens") {
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = ${incomingVar(graph, node, "x")}` });
+      return;
+    }
+
+    if (node.moduleId === "AddGate") {
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "out")} = ${incomingVar(graph, node, "left")} + ${incomingVar(graph, node, "right")}`
+      });
+      return;
+    }
+
+    if (node.moduleId === "CausalMask") {
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "out")} = causal_mask_like(${incomingVar(graph, node, "target")}, orientation=${toPythonLiteral(node.params.maskOrientation ?? "query_key")}, masked_value=${toPythonLiteral(node.params.maskedValue ?? -10000)})`
+      });
+      return;
+    }
+
+    if (node.moduleId === "ScoreBoard") {
+      const expectedAxes = Array.isArray(node.params.expectedAxes) ? node.params.expectedAxes : [];
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = expect_axes(${incomingVar(graph, node, "scores")}, ${toPythonLiteral(expectedAxes)})` });
+      return;
+    }
+
+    if (node.moduleId === "CellTrace") {
+      const inputs = ["scores", "q", "k", "left", "small"]
+        .map((portId) => graph.edges.some((edge) => edge.to.nodeId === node.id && edge.to.portId === portId) ? `${portId}=${incomingVar(graph, node, portId)}` : undefined)
+        .filter(Boolean)
+        .join(", ");
+      lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = trace_cell(${inputs})` });
       return;
     }
 
     const inputArgs = module.inputs.map((port) => `${port.id}=${incomingVar(graph, node, port.id)}`).join(", ");
-    lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${safeVar(node.id)} = ${safeVar(node.moduleId)}(${inputArgs})` });
+    lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = ${pythonCallName(node.moduleId)}(${inputArgs})` });
   });
 
   return lines.length ? lines : [{ id: "graph-empty", text: "# Empty graph." }];
@@ -227,12 +296,35 @@ function getTokenBudget(testCase: TestCase | undefined, fallback: number) {
 function incomingVar(graph: GraphSpec, node: GraphNode, portId: string) {
   const edge = graph.edges.find((item) => item.to.nodeId === node.id && item.to.portId === portId);
   if (!edge) return `${safeVar(node.id)}_${safeVar(portId)}_missing`;
-  return outputVar(edge.from.nodeId, edge.from.portId);
+  return graphOutputVar(graph, edge.from.nodeId, edge.from.portId);
 }
 
-function outputVar(nodeId: string, portId: string) {
+function graphOutputVar(graph: GraphSpec, nodeId: string, portId: string) {
+  const node = graph.nodes.find((item) => item.id === nodeId);
+  if (node?.moduleId === "TokenizerSocket") {
+    if (portId === "out") return `${safeVar(nodeId)}_ids`;
+    if (portId === "mask") return `${safeVar(nodeId)}_attention_mask`;
+    if (portId === "pieces") return `${safeVar(nodeId)}_pieces`;
+  }
   if (portId === "out") return safeVar(nodeId);
   return `${safeVar(nodeId)}_${safeVar(portId)}`;
+}
+
+function tensorInputExpression(inputKey: string, value: RuntimeValue | undefined, params: Record<string, unknown>) {
+  const shape = value?.shape?.dims ?? arrayParam(params.shape);
+  const axes = value?.shape?.axes ?? arrayParam(params.axes);
+  const args = [toPythonLiteral(inputKey)];
+  if (shape.length) args.push(`shape=${toPythonLiteral(shape)}`);
+  if (axes.length) args.push(`axes=${toPythonLiteral(axes)}`);
+  return `Tensor(${args.join(", ")})`;
+}
+
+function arrayParam(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function pythonCallName(moduleId: string) {
+  return toSnakeCase(moduleId.replace(/Module$/, ""));
 }
 
 function topologicalNodes(graph: GraphSpec) {

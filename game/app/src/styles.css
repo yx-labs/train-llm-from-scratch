@@ -696,7 +696,8 @@ h3 {
 
 .graphCaseDataCard > b,
 .graphCasePreviewHeader b,
-.graphCaseQuestion b {
+.graphCaseQuestion b,
+.graphCodeSection b {
   color: #dbeafe;
   font-size: 0.78rem;
 }
@@ -836,31 +837,15 @@ h3 {
   pointer-events: none;
 }
 
-.targetGhostEdge path {
-  fill: none;
-  stroke: rgba(148, 163, 184, 0.38);
-  stroke-width: 2;
-  stroke-dasharray: 9 8;
-}
-
-.targetGhostEdge.matched path {
-  stroke: rgba(34, 197, 94, 0.34);
-  stroke-dasharray: 0;
-}
-
 .targetGhostNode rect {
-  fill: rgba(15, 23, 42, 0.16);
-  stroke: rgba(148, 163, 184, 0.34);
-  stroke-width: 1.5;
-  stroke-dasharray: 8 7;
-}
-
-.targetGhostNode.matched rect {
-  stroke: rgba(34, 197, 94, 0.28);
+  fill: rgba(15, 23, 42, 0.08);
+  stroke: rgba(125, 211, 252, 0.26);
+  stroke-width: 1.2;
+  stroke-dasharray: 10 9;
 }
 
 .targetGhostNode text {
-  fill: rgba(203, 213, 225, 0.42);
+  fill: rgba(191, 219, 254, 0.3);
   font-family: "Fira Code", Consolas, ui-monospace, monospace;
   font-size: 12px;
   font-weight: 800;
@@ -913,6 +898,15 @@ h3 {
   fill: #fde68a;
 }
 
+.graphEdgeLayer .graphEdgeCaseText {
+  fill: #fde68a;
+  font-size: 10px;
+  font-weight: 850;
+  paint-order: stroke;
+  stroke: rgba(4, 10, 19, 0.92);
+  stroke-width: 4px;
+}
+
 .graphNode {
   position: absolute;
   display: grid;
@@ -938,6 +932,65 @@ h3 {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.graphNodeCase {
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid rgba(49, 95, 148, 0.5);
+  border-radius: 7px;
+  background: rgba(4, 10, 19, 0.58);
+  user-select: text;
+}
+
+.graphNodeCase > span {
+  color: #93c5fd;
+  font-size: 0.62rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.graphNodeCase > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.graphNodeCase code {
+  display: inline-flex;
+  max-width: 100%;
+  gap: 4px;
+  padding: 3px 5px;
+  border: 1px solid rgba(49, 95, 148, 0.58);
+  border-radius: 6px;
+  background: #07111f;
+  color: #c7dcf2;
+  font-size: 0.61rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.graphNodeCase code b {
+  color: #8aa6bf;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.graphNodeCase code.ok {
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #bbf7d0;
+}
+
+.graphNodeCase code.warn {
+  border-color: rgba(251, 191, 36, 0.52);
+  color: #fde68a;
+}
+
+.graphNodeCase code.bad {
+  border-color: rgba(251, 113, 133, 0.56);
+  color: #fecdd3;
 }
 
 .graphNodeHeader span {
@@ -1354,8 +1407,18 @@ h3 {
   background: #07111f;
 }
 
-.graphCodePanel .graphCodeBlock {
-  max-height: 240px;
+.graphCodeSections {
+  display: grid;
+  gap: 8px;
+}
+
+.graphCodeSection {
+  display: grid;
+  gap: 6px;
+}
+
+.graphCodeSection .graphCodeBlock {
+  max-height: 155px;
   font-size: 0.68rem;
 }
 

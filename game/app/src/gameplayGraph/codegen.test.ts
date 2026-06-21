@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generateCaseCodeLines, createTokenizerPreview } from "./codegen";
+import { createTokenizerPreview, generateCaseCodeLines, generateGraphCodeSections } from "./codegen";
+import { ch0MatMulGraph, createCh0MatMulSolutionGraph } from "./levels/ch0MatMulGraph";
 import { ch1SplitMergeBudget, createCh1SplitMergeCharGraph, createCh1SplitMergeSolutionGraph } from "./levels/ch1TokenizerMachine";
 import { createGameplayRegistry } from "./modules";
 
@@ -32,5 +33,30 @@ describe("gameplay graph codegen", () => {
     expect(caseCode).toContain('focus_text = "tokenizers are useful!"');
     expect(caseCode).not.toContain("assert ");
     expect(caseCode).not.toContain("ToyTokenizer(");
+  });
+
+  it("emits tokenizer graph code as Python instead of overwriting the tokenizer object", () => {
+    const graphCode = generateGraphCodeSections(ch1SplitMergeBudget, createCh1SplitMergeCharGraph(), modules, ch1SplitMergeBudget.visibleTests[0])
+      .graphCode.map((line) => line.text)
+      .join("\n");
+
+    expect(graphCode).toContain("tokenizer = ToyTokenizer(");
+    expect(graphCode).toContain("tokenizer_pieces = tokenizer.split_batch(text)");
+    expect(graphCode).toContain("tokenizer_ids, tokenizer_attention_mask = tokenizer.encode_batch(text)");
+    expect(graphCode).toContain("token_ids = embedding_ready(tokenizer_ids)");
+    expect(graphCode).not.toContain("tokenizer, tokenizer_mask");
+  });
+
+  it("emits MatMul graph code as Python/PyTorch-style tensor operations", () => {
+    const graphCode = generateGraphCodeSections(ch0MatMulGraph, createCh0MatMulSolutionGraph(), modules, ch0MatMulGraph.visibleTests[0])
+      .graphCode.map((line) => line.text)
+      .join("\n");
+
+    expect(graphCode).toContain('hidden = Tensor("hidden", shape=[2, 4, 3], axes=["B", "T", "C"])');
+    expect(graphCode).toContain('weight = Tensor("weight", shape=[5, 3], axes=["O", "C"])  # storage orientation: O,C');
+    expect(graphCode).toContain("weight_transpose = weight.transpose(0, 1)");
+    expect(graphCode).toContain("matmul = torch.matmul(hidden, weight_transpose)");
+    expect(graphCode).not.toContain("WeightPlate(");
+    expect(graphCode).not.toContain("MatMulGate(");
   });
 });
