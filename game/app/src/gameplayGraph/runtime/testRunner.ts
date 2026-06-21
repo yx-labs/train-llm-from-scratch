@@ -21,7 +21,7 @@ export type TestCaseRunResult = {
 export function runTestCaseDetailed(graph: GraphSpec, registry: ModuleRegistry, testCase: TestCase): TestCaseRunResult {
   const execution = executeGraph(graph, registry, testCase.inputs);
   const results = testCase.assertions.map((assertion, index) =>
-    evaluateAssertion(assertion, execution, testCase.visibility, `${testCase.id}:${index}`)
+    evaluateAssertion(assertion, execution, testCase.visibility, `${testCase.id}:${index}`, graph)
   );
   return {
     id: testCase.id,

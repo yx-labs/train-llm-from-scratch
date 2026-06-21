@@ -571,7 +571,10 @@ h3 {
   position: relative;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   background:
     linear-gradient(rgba(37, 99, 235, 0.08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(37, 99, 235, 0.08) 1px, transparent 1px),
@@ -579,10 +582,38 @@ h3 {
   background-size: 32px 32px;
 }
 
+.graphChallengeMapCanvas.panning {
+  cursor: grabbing;
+}
+
 .graphChallengeMapWorld {
   position: relative;
   min-width: 100%;
   min-height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.graphChallengeMapControls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(49, 95, 148, 0.58);
+  border-radius: 9px;
+  background: rgba(7, 17, 31, 0.88);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+}
+
+.graphChallengeMapControls code {
+  min-width: 44px;
+  color: #bfdbfe;
+  font-size: 0.68rem;
+  text-align: center;
 }
 
 .graphChallengeMapRegion {
@@ -621,16 +652,16 @@ h3 {
 .graphChallengeRoutePath {
   fill: none;
   stroke: #60a5fa;
-  stroke-width: 3.5px;
+  stroke-width: 1.8px;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.9;
+  opacity: 0.86;
 }
 
 .graphChallengeRoutePath.shadow {
   stroke: rgba(14, 165, 233, 0.3);
-  stroke-width: 9px;
-  opacity: 0.72;
+  stroke-width: 4.5px;
+  opacity: 0.36;
 }
 
 .graphChallengeMapNode {
@@ -680,6 +711,29 @@ h3 {
   font-weight: 900;
 }
 
+.graphChallengeMapPort {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: 1px solid rgba(125, 211, 252, 0.9);
+  border-radius: 50%;
+  background: #07111f;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.12), 0 0 12px rgba(96, 165, 250, 0.18);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.graphChallengeMapPort.in {
+  left: -5px;
+}
+
+.graphChallengeMapPort.out {
+  right: -5px;
+  border-color: rgba(134, 239, 172, 0.92);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.12), 0 0 12px rgba(34, 197, 94, 0.18);
+}
+
 .graphChallengeMapNode.active {
   border-color: #facc15;
   background: #2d2208;
@@ -694,10 +748,27 @@ h3 {
   opacity: 0.54;
 }
 
+.graphChallengeMapNode.roadmap {
+  border-color: rgba(71, 85, 105, 0.78);
+  background: #08111f;
+  color: #94a3b8;
+  opacity: 0.68;
+}
+
+.graphChallengeMapNode:disabled {
+  cursor: not-allowed;
+}
+
 .graphChallengeMapNode:hover,
 .graphChallengeMapNode:focus-visible {
   border-color: rgba(125, 211, 252, 0.9);
   transform: translateY(-1px);
+}
+
+.graphChallengeMapNode:disabled:hover,
+.graphChallengeMapNode:disabled:focus-visible {
+  border-color: rgba(71, 85, 105, 0.78);
+  transform: none;
 }
 
 .graphStage {

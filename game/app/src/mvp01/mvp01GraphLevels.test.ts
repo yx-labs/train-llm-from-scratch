@@ -5,10 +5,11 @@ import { runTests } from "../gameplayGraph/runtime/testRunner";
 import { mvp01ComponentFlowSpecs, mvp01GraphLevels } from "./mvp01GraphLevels";
 
 const registry = createGameplayRegistry();
+const playableMvp01GraphLevels = mvp01GraphLevels.filter((level) => level.routeStatus !== "roadmap");
 
 describe("MVP0.1 graph component arc", () => {
   it("passes visible and hidden certification tests with every target graph", () => {
-    mvp01GraphLevels.forEach((level) => {
+    playableMvp01GraphLevels.forEach((level) => {
       expect(level.targetGraph, `${level.id} should define a target graph`).toBeDefined();
       const graph = level.targetGraph ?? level.initialGraph;
       const visible = runTests(graph, registry, level.visibleTests);
@@ -20,7 +21,7 @@ describe("MVP0.1 graph component arc", () => {
   });
 
   it("does not ship the initial graphs as already certified", () => {
-    mvp01GraphLevels.forEach((level) => {
+    playableMvp01GraphLevels.forEach((level) => {
       const visible = runTests(level.initialGraph, registry, level.visibleTests);
 
       expect(visible.status, `${level.id} initial graph`).not.toBe("pass");
@@ -32,7 +33,11 @@ describe("MVP0.1 graph component arc", () => {
     const tutorial = mvp01GraphLevels.find((level) => level.id === "mvp01_0_wire_probe");
     const scalar = mvp01GraphLevels.find((level) => level.id === "mvp01_1_scalar_cell");
     const vector = mvp01GraphLevels.find((level) => level.id === "mvp01_2_vector_rail");
+    const scalarAdd = mvp01GraphLevels.find((level) => level.id === "mvp01_ch0_02_scalar_add");
+    const dotProduct = mvp01GraphLevels.find((level) => level.id === "mvp01_ch0_04_dot_product");
+    const splitter = mvp01GraphLevels.find((level) => level.id === "mvp01_ch1_01_splitter");
     const linear = mvp01GraphLevels.find((level) => level.id === "mvp01_6_linear");
+    const qkScore = mvp01GraphLevels.find((level) => level.id === "mvp01_ch4_03_qk_score");
 
     expect(mvp01GraphLevels[0].id).toBe("mvp01_0_wire_probe");
     expect(tutorial?.modulePalette).toEqual([]);
@@ -43,15 +48,111 @@ describe("MVP0.1 graph component arc", () => {
 
     expect(mvp01GraphLevels).toHaveLength(74);
     expect(mvp01GraphLevels.map((level) => level.title)).toContain("Chapter 9-6 Tiny Chat Loop");
-    expect(specs.mvp01_ch0_02_scalar_add.requires).toContain("component.scalar_cell.v1");
-    expect(specs.mvp01_2_vector_rail.requires).toContain("component.scalar_add.v1");
+    expect(scalarAdd?.routeStatus).toBe("roadmap");
+    expect(specs.mvp01_ch0_02_scalar_add).toBeUndefined();
+    expect(specs.mvp01_2_vector_rail.requires).toContain("component.scalar_cell.v1");
     expect(vector?.modulePalette).toContain("component.scalar_cell.v1");
     expect(vector?.modulePalette).not.toContain("ScalarCell");
+    expect(dotProduct?.routeStatus).toBe("playable");
+    expect(dotProduct?.modulePalette).toEqual(["InputTensor", "ElementwiseMultiply", "SumReduce", "OutputContractGate", "ReferenceChecker"]);
+    expect(dotProduct?.modulePalette).not.toContain("component.dot_product.v1");
+    expect(dotProduct?.targetGraph?.nodes.find((node) => node.id === "multiply")?.moduleId).toBe("ElementwiseMultiply");
+    expect(dotProduct?.targetGraph?.nodes.find((node) => node.id === "sum")?.moduleId).toBe("SumReduce");
 
-    expect(specs.mvp01_6_linear.requires).toContain("component.bias_add.v1");
+    expect(specs.mvp01_ch1_01_splitter.requires).toContain("component.tensor_box.v1");
+    expect(splitter?.routeStatus).toBe("playable");
+    expect(splitter?.modulePalette).toEqual(["TextInput", "BoundarySplitter", "PieceBuffer", "TypeContractGate"]);
+    expect(splitter?.modulePalette).not.toContain("component.splitter.v1");
+    expect(splitter?.targetGraph?.nodes.find((node) => node.id === "splitter")?.moduleId).toBe("BoundarySplitter");
+    expect(splitter?.targetGraph?.nodes.find((node) => node.id === "piece_buffer")?.moduleId).toBe("PieceBuffer");
+
+    expect(specs.mvp01_6_linear.requires).toContain("component.matmul_gate.v1");
     expect(linear?.modulePalette).toContain("component.matmul_gate.v1");
     expect(linear?.modulePalette).not.toContain("MatMulGate");
     expect(linear?.targetGraph?.nodes.find((node) => node.id === "matmul")?.moduleId).toBe("component.matmul_gate.v1");
+
+    expect(specs.mvp01_ch4_03_qk_score.requires).toContain("component.linear.v1");
+    expect(qkScore?.routeStatus).toBe("playable");
+    expect(qkScore?.modulePalette).toContain("component.matmul_gate.v1");
+    expect(qkScore?.modulePalette).not.toContain("component.qk_score.v1");
+    expect(qkScore?.targetGraph?.nodes.find((node) => node.id === "k_transpose")?.moduleId).toBe("TransposeSwitch");
+    expect(qkScore?.targetGraph?.nodes.find((node) => node.id === "qk_matmul")?.moduleId).toBe("component.matmul_gate.v1");
+  });
+
+  it("keeps roadmap levels visible but out of the playable component flow", () => {
+    const roadmapLevels = mvp01GraphLevels.filter((level) => level.routeStatus === "roadmap");
+    const playableLevels = mvp01GraphLevels.filter((level) => level.routeStatus !== "roadmap");
+
+    expect(roadmapLevels.length).toBeGreaterThan(0);
+    expect(playableLevels.map((level) => level.id)).toEqual([
+      "mvp01_0_wire_probe",
+      "mvp01_1_scalar_cell",
+      "mvp01_2_vector_rail",
+      "mvp01_ch0_04_dot_product",
+      "mvp01_3_matrix_struct",
+      "mvp01_5_matmul_gate",
+      "mvp01_4_tensor_box",
+      "mvp01_ch1_01_splitter",
+      "mvp01_6_linear",
+      "mvp01_ch4_03_qk_score"
+    ]);
+    expect(roadmapLevels.every((level) => level.modulePalette.length === 0)).toBe(true);
+    expect(mvp01ComponentFlowSpecs.map((component) => component.levelId)).toEqual(playableLevels.filter((level) => level.id !== "mvp01_0_wire_probe").map((level) => level.id));
+  });
+
+  it("rejects DotProduct graphs that bypass the multiply and reduce implementation", () => {
+    const dotProduct = mvp01GraphLevels.find((level) => level.id === "mvp01_ch0_04_dot_product");
+    expect(dotProduct?.targetGraph).toBeDefined();
+    const graph = {
+      ...dotProduct!.targetGraph!,
+      nodes: dotProduct!.targetGraph!.nodes.filter((node) => !["multiply", "sum"].includes(node.id)),
+      edges: [
+        { id: "e_query_out", from: { nodeId: "query", portId: "out" }, to: { nodeId: "dot_out", portId: "x" } },
+        { id: "e_dot_ref", from: { nodeId: "dot_out", portId: "out" }, to: { nodeId: "reference", portId: "x" } }
+      ]
+    };
+
+    const visible = runTests(graph, registry, dotProduct!.visibleTests);
+
+    expect(visible.status).toBe("fail");
+    expect(visible.results.some((result) => result.assertion?.type === "requires_node" && result.firstBadNodeId === "multiply")).toBe(true);
+  });
+
+  it("rejects Splitter graphs that bypass boundary split and piece buffer", () => {
+    const splitter = mvp01GraphLevels.find((level) => level.id === "mvp01_ch1_01_splitter");
+    expect(splitter?.targetGraph).toBeDefined();
+    const graph = {
+      ...splitter!.targetGraph!,
+      nodes: splitter!.targetGraph!.nodes.filter((node) => !["splitter", "piece_buffer"].includes(node.id)),
+      edges: [{ id: "e_text_out", from: { nodeId: "text", portId: "out" }, to: { nodeId: "pieces_out", portId: "x" } }]
+    };
+
+    const visible = runTests(graph, registry, splitter!.visibleTests);
+
+    expect(visible.status).toBe("fail");
+    expect(visible.results.some((result) => result.assertion?.type === "requires_node" && result.firstBadNodeId === "splitter")).toBe(true);
+  });
+
+  it("rejects QKScore graphs that connect K directly into MatMul", () => {
+    const qkScore = mvp01GraphLevels.find((level) => level.id === "mvp01_ch4_03_qk_score");
+    expect(qkScore?.targetGraph).toBeDefined();
+    const graph = {
+      ...qkScore!.targetGraph!,
+      nodes: qkScore!.targetGraph!.nodes.filter((node) => node.id !== "k_transpose"),
+      edges: qkScore!.targetGraph!.edges
+        .filter((edge) => edge.from.nodeId !== "k_transpose" && edge.to.nodeId !== "k_transpose")
+        .map((edge) =>
+          edge.id === "e_k_transpose"
+            ? edge
+            : edge
+        )
+        .concat([{ id: "e_k_direct_matmul", from: { nodeId: "k", portId: "out" }, to: { nodeId: "qk_matmul", portId: "right" } }])
+    };
+
+    const visible = runTests(graph, registry, qkScore!.visibleTests);
+
+    expect(visible.status).toBe("fail");
+    expect(visible.results.some((result) => result.assertion?.type === "requires_node" && result.firstBadNodeId === "k_transpose")).toBe(true);
   });
 
   it("defines public certification variants for every buildable MVP0.1 component", () => {
@@ -72,7 +173,7 @@ describe("MVP0.1 graph component arc", () => {
   });
 
   it("certifies target graphs with public variants plus system variants", () => {
-    mvp01GraphLevels.forEach((level) => {
+    playableMvp01GraphLevels.forEach((level) => {
       if (!level.certification) return;
       const graph = level.targetGraph ?? level.initialGraph;
       const values = Object.fromEntries(level.certification.controls.map((control) => [control.id, control.defaultValue]));
@@ -87,7 +188,7 @@ describe("MVP0.1 graph component arc", () => {
   });
 
   it("uses generated certification controls instead of handwritten large tensor inputs", () => {
-    const advancedLevels = ["mvp01_3_matrix_struct", "mvp01_4_tensor_box", "mvp01_5_matmul_gate", "mvp01_6_linear"];
+    const advancedLevels = ["mvp01_3_matrix_struct", "mvp01_4_tensor_box", "mvp01_5_matmul_gate", "mvp01_6_linear", "mvp01_ch4_03_qk_score"];
 
     advancedLevels.forEach((levelId) => {
       const level = mvp01GraphLevels.find((item) => item.id === levelId);
@@ -119,7 +220,7 @@ describe("MVP0.1 graph component arc", () => {
   });
 
   it("keeps MVP0.1 level copy off the removed manual availability step", () => {
-    const copy = mvp01GraphLevels
+    const copy = playableMvp01GraphLevels
       .map((level) =>
         [
           level.goal,
@@ -140,7 +241,7 @@ describe("MVP0.1 graph component arc", () => {
   });
 
   it("keeps every MVP0.1 level case-first with readable scenario text and concrete tensor data", () => {
-    mvp01GraphLevels.forEach((level) => {
+    playableMvp01GraphLevels.forEach((level) => {
       const panelTypes = level.caseStudy?.dataPanels.map((panel) => panel.type) ?? [];
 
       expect(level.caseStudy?.title, `${level.id} case title`).toBeTruthy();
@@ -164,7 +265,7 @@ describe("MVP0.1 graph component arc", () => {
   });
 
   it("keeps MVP0.1 case copy bilingual through the shared graphText table", () => {
-    mvp01GraphLevels.forEach((level) => {
+    playableMvp01GraphLevels.forEach((level) => {
       expect(level.caseStudy?.title, `${level.id} case title`).toBeTruthy();
       expect(graphText("en", level.caseStudy!.title), `${level.id} english title`).toBe(level.caseStudy!.title);
       expect(graphText("zh", level.caseStudy!.title), `${level.id} chinese title`).not.toBe(level.caseStudy!.title);

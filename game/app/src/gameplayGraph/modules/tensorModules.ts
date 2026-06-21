@@ -3,6 +3,7 @@ import { valueKey } from "../types";
 import {
   addTensors,
   broadcastTo,
+  elementCount,
   getValue,
   makeTensor,
   matmul,
@@ -206,6 +207,84 @@ export const matMulGateModule: ModuleDef = {
           dtype: "float32",
           dims: outDims,
           axes: outAxes
+        }
+      }
+    };
+  }
+};
+
+export const elementwiseMultiplyModule: ModuleDef = {
+  id: "ElementwiseMultiply",
+  label: "Elementwise Multiply",
+  category: "tensor",
+  inputs: [
+    { id: "left", label: "left", direction: "in", accepts: ["float32"], required: true },
+    { id: "right", label: "right", direction: "in", accepts: ["float32"], required: true }
+  ],
+  outputs: [{ id: "out", label: "left*right", direction: "out", emits: "float32" }],
+  defaultParams: {},
+  summary: "Multiplies two same-shape float32 tensors cell by cell.",
+  pseudoCode: "out[i] = left[i] * right[i]",
+  execute: ({ node, inputs }) => {
+    const left = tensorFromValue(inputs.left);
+    const right = tensorFromValue(inputs.right);
+    if (!left || !right) {
+      return { outputs: {}, error: error("missing_input", node.id, "ElementwiseMultiply requires left and right float32 tensors") };
+    }
+    if (left.dims.join(",") !== right.dims.join(",") || left.axes.join(",") !== right.axes.join(",")) {
+      return {
+        outputs: {},
+        error: error("shape_mismatch", node.id, "ElementwiseMultiply requires identical shape and axes", shapeOf(left), shapeOf(right))
+      };
+    }
+    const out = makeTensor("float32", left.dims, left.axes, left.data.map((value, index) => Number((value * right.data[index]).toFixed(6))));
+    return { outputs: { out: tensorValue(out) }, samples: { out: sampleValues(out) } };
+  },
+  infer: ({ inputs }) => {
+    const left = inputs.left?.shape;
+    const right = inputs.right?.shape;
+    if (!left || !right) return { outputs: {} };
+    if (left.dims.join(",") !== right.dims.join(",") || left.axes.join(",") !== right.axes.join(",")) {
+      return { outputs: {}, error: error("shape_mismatch", "ElementwiseMultiply", "ElementwiseMultiply requires identical shape and axes", left, right) };
+    }
+    return { outputs: { out: left } };
+  }
+};
+
+export const sumReduceModule: ModuleDef = {
+  id: "SumReduce",
+  label: "Sum Reduce",
+  category: "tensor",
+  inputs: [{ id: "x", label: "x", direction: "in", accepts: ["float32"], required: true }],
+  outputs: [{ id: "out", label: "sum", direction: "out", emits: "float32" }],
+  defaultParams: { axis: "C" },
+  summary: "Sums a tensor along one named axis, removing that axis from the output.",
+  pseudoCode: "out = x.sum(axis='C')",
+  execute: ({ node, inputs }) => {
+    const input = tensorFromValue(inputs.x);
+    if (!input) return { outputs: {}, error: error("missing_input", node.id, "SumReduce requires a float32 tensor", "float32 tensor", inputs.x, "x") };
+    const axis = String(node.params.axis ?? "C") as AxisName;
+    const axisIndex = input.axes.indexOf(axis);
+    if (axisIndex < 0) {
+      return { outputs: {}, error: error("axis_semantic_error", node.id, `SumReduce axis ${axis} is missing`, axis, input.axes, "x") };
+    }
+    const out = reduceSum(input, axisIndex);
+    return { outputs: { out: tensorValue(out, { reducedAxis: axis }) }, samples: { out: sampleValues(out), reducedAxis: axis } };
+  },
+  infer: ({ node, inputs }) => {
+    const shape = inputs.x?.shape;
+    if (!shape) return { outputs: {} };
+    const axis = String(node.params.axis ?? "C") as AxisName;
+    const axisIndex = shape.axes.indexOf(axis);
+    if (axisIndex < 0) {
+      return { outputs: {}, error: error("axis_semantic_error", "SumReduce", `SumReduce axis ${axis} is missing`, axis, shape.axes, "x") };
+    }
+    return {
+      outputs: {
+        out: {
+          dtype: "float32",
+          dims: shape.dims.filter((_, index) => index !== axisIndex),
+          axes: shape.axes.filter((_, index) => index !== axisIndex)
         }
       }
     };
@@ -636,6 +715,8 @@ export const tensorModules = [
   weightPlateModule,
   transposeSwitchModule,
   matMulGateModule,
+  elementwiseMultiplyModule,
+  sumReduceModule,
   outputContractGateModule,
   axisLockModule,
   axisAlignmentRulerModule,
@@ -653,6 +734,40 @@ function normalizeAxis(axis: number, rank: number) {
   const normalized = axis < 0 ? rank + axis : axis;
   if (normalized < 0 || normalized >= rank) throw new Error(`Axis ${axis} is out of range for rank ${rank}`);
   return normalized;
+}
+
+function reduceSum(tensor: TinyTensor, axisIndex: number) {
+  const outDims = tensor.dims.filter((_, index) => index !== axisIndex);
+  const outAxes = tensor.axes.filter((_, index) => index !== axisIndex);
+  const outCount = Math.max(1, elementCount(outDims));
+  const data = Array.from({ length: outCount }, () => 0);
+  tensor.data.forEach((value, flatIndex) => {
+    const inputIndex = unravelTensorIndex(flatIndex, tensor.dims);
+    const outputIndex = inputIndex.filter((_, index) => index !== axisIndex);
+    const outputFlat = ravelTensorIndex(outputIndex, outDims);
+    data[outputFlat] = Number((data[outputFlat] + value).toFixed(6));
+  });
+  return makeTensor("float32", outDims, outAxes, data);
+}
+
+function ravelTensorIndex(index: number[], dims: number[]) {
+  if (!dims.length) return 0;
+  let flat = 0;
+  for (let dimIndex = 0; dimIndex < dims.length; dimIndex += 1) {
+    flat = flat * dims[dimIndex] + index[dimIndex];
+  }
+  return flat;
+}
+
+function unravelTensorIndex(flatIndex: number, dims: number[]) {
+  if (!dims.length) return [];
+  const index = Array.from({ length: dims.length }, () => 0);
+  let remainder = flatIndex;
+  for (let dimIndex = dims.length - 1; dimIndex >= 0; dimIndex -= 1) {
+    index[dimIndex] = remainder % dims[dimIndex];
+    remainder = Math.floor(remainder / dims[dimIndex]);
+  }
+  return index;
 }
 
 export function getNodeOutput(values: Record<string, RuntimeValue>, nodeId: string) {

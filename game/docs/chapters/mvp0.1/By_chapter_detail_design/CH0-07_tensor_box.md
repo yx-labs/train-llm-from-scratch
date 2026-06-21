@@ -1,45 +1,116 @@
-# Chapter 0-7 Tensor Box：Tensor
+# Chapter 0-7 TensorBox
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 0 Graph OS 与数字基础
-- 构建组件：`Tensor`
-- 输入来源：data buffer + shape
-- 学习目标：rank、shape、索引
-- 后续用途：所有模型数据
+TensorBox 把多个 token 向量组织成 rank-3 数据结构 `float32[B,T,C]`。它是模型输入 hidden state 的最小形态。
 
-## 2. 当前案例
+本关重点不是“tensor 是多维数组”这句抽象定义，而是让玩家看到：
 
-Tensor 把「data buffer + shape」变成可复用的图组件。
+```text
+两个 vector[C] 进入 T 轴
+B 表示 batch
+C 必须留在最后一轴
+```
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Tensor 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[1,2,3]`。
+- `component.vector_rail.v1`
+- `component.matrix_struct.v1`
 
-## 3. 玩家操作
+本关不允许使用 `component.tensor_box.v1`。玩家使用 `TensorBox` primitive 构建可用组件。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Tensor` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `InputTensor` 提供两个 token vector。
+- `TensorBox` 把 token rows 组装为 `[B,T,C]`。
+- `OutputContractGate` 检查 B/T/C 轴顺序。
+- `ReferenceChecker` 检查具体布局。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+t0[C] = [ 1, 0, 2]
+t1[C] = [-1, 3, 0.5]
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+tensor[B=1,T=2,C=3]
+  B0,T0 = [ 1, 0, 2]
+  B0,T1 = [-1, 3, 0.5]
+```
 
-## 6. 通过标准
+输出合约：
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+```text
+dtype = float32
+axes  = [B,T,C]
+dims  = [1,2,3]
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 5. 初始错误图
+
+画布给出：
+
+- `t0: InputTensor`
+- `t1: InputTensor`
+- `tensor_out: OutputContractGate`
+- `reference: ReferenceChecker`
+
+缺少 `tensor: TensorBox`。
+
+## 6. 目标内部实现
+
+```text
+t0.out -> tensor.t0
+t1.out -> tensor.t1
+tensor.out -> tensor_out.x
+tensor_out.out -> reference.x
+```
+
+其中：
+
+- `tensor.moduleId = TensorBox`
+- `tensor_out.expectedAxes = [B,T,C]`
+
+## 7. 玩家操作
+
+1. 拖入 `TensorBox`。
+2. 将 `t0` 接入第一条 token row。
+3. 将 `t1` 接入第二条 token row。
+4. 接合约和 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 把两个 token 拼成 `[C=6]`：不是 rank-3 tensor。
+- 输出 `[T,B,C]`：shape 数量类似，但轴语义错。
+- 把 C 放到中间：后续 MatMulGate 无法消费最后一维 C。
+- t0/t1 反接：shape 通过，但 reference 数值失败。
+
+## 9. 测试设计
+
+当前任务：
+
+- `tensor_out` 必须是 `float32[B=1,T=2,C=3]`。
+- 输出值必须与 reference 完全对应。
+
+Hidden / certification：
+
+- hidden 改变 C 宽度为 4，但 B/T 语义保持。
+- 公开认证选择 C 宽度和 seed，系统生成两个 token vector。
+- 认证只改变输入 vector/reference，不改变玩家图。
+
+## 10. 认证后接口
+
+```text
+component.tensor_box.v1
+inputs:
+  t0: float32[C]
+  t1: float32[C]
+output:
+  tensor: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+Linear、Q/K/V projection、Embedding output 都会使用 `[B,T,C]`。TensorBox 是玩家第一次把“序列位置 T”和“通道 C”区分开。

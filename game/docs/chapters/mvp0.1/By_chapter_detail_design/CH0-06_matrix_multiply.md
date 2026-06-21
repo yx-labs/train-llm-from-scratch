@@ -1,45 +1,126 @@
-# Chapter 0-6 Matrix Multiply：MatMul2D
+# Chapter 0-6 MatMulGate
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 0 Graph OS 与数字基础
-- 构建组件：`MatMul2D`
-- 输入来源：DotProduct 网格
-- 学习目标：矩阵乘法是很多 dot cells
-- 后续用途：Linear / QK
+MatMulGate 是第一条完整数值弧线的核心计算门。它把左侧 `hidden[B,T,C]` 和右侧 `weight[C,O]` 相乘，输出 `projected[B,T,O]`。
 
-## 2. 当前案例
+本关要让玩家理解 MatMul 的轴合约：
 
-MatMul2D 把「DotProduct 网格」变成可复用的图组件。
+```text
+left last axis C  ==  right first axis C
+C 被消耗
+O 成为输出通道
+B/T 原样保留
+```
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 MatMul2D 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[M,O]`，示例 shape 为 `[2,2]`。
+- `component.tensor_box.v1`
+- `component.matrix_struct.v1`
 
-## 3. 玩家操作
+本关不允许使用 `component.matmul_gate.v1`。玩家构建的就是这个组件；可用模块是 `MatMulGate` primitive。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `MatMul2D` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `InputTensor` 提供 `hidden[B,T,C]`。
+- `WeightPlate` 提供 `weight[C,O]`。
+- `MatMulGate` 执行真实矩阵乘法。
+- `OutputContractGate` 检查输出轴。
+- `ReferenceChecker` 检查数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=2,C=3]
+  token0 = [ 1, 0, 2]
+  token1 = [-1, 3, 0.5]
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[M,O]`
-- shape 可以随认证宽度变化，但语义不变。
+weight[C=3,O=2]
+  C0 = [ 0.4, -0.2]
+  C1 = [ 1.1,  0.3]
+  C2 = [-0.7,  0.8]
+```
 
-## 6. 通过标准
+输出：
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [M,O]。
+```text
+projected[token0] = [-1.0, 1.4]
+projected[token1] = [ 2.55, 1.5]
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+输出合约：
+
+```text
+float32[B,T,O] = [1,2,2]
+```
+
+## 5. 初始错误图
+
+画布给出：
+
+- `hidden: InputTensor`
+- `weight: WeightPlate`
+- `matmul_out: OutputContractGate`
+- `reference: ReferenceChecker`
+
+缺少 `matmul: MatMulGate`。
+
+## 6. 目标内部实现
+
+```text
+hidden.out -> matmul.left
+weight.out -> matmul.right
+matmul.out -> matmul_out.x
+matmul_out.out -> reference.x
+```
+
+其中：
+
+- `matmul.moduleId = MatMulGate`
+- `matmul_out.expectedAxes = [B,T,O]`
+
+## 7. 玩家操作
+
+1. 拖入 `MatMulGate`。
+2. 将 hidden 接到 left。
+3. 将 weight 接到 right。
+4. 将 matmul 输出接到合约，再接 reference。
+5. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- left/right 反接：`weight[C,O] @ hidden[B,T,C]` 不符合当前合约。
+- weight 轴写成 `[O,C]`：inner dim 位置错。
+- 直接 `hidden -> matmul_out`：输出仍是 `[B,T,C]`，没有 O。
+- 只检查 shape：可能漏掉 operand 顺序错误；必须 allclose reference。
+
+## 9. 测试设计
+
+当前任务：
+
+- `matmul_out` 必须是 `float32[B=1,T=2,O=2]`。
+- 输出必须 allclose 到 reference。
+
+Hidden / certification：
+
+- hidden 使用 `[B=2,T=3,C=4]`。
+- weight 使用 `[C=4,O=3]`。
+- 输出必须变成 `[B=2,T=3,O=3]`。
+- 公开认证让玩家选择 B/T/C/O 和 seed；系统生成输入和 reference。
+
+## 10. 认证后接口
+
+```text
+component.matmul_gate.v1
+inputs:
+  left: float32[...,C]
+  right: float32[C,O] or float32[...,C,O]
+output:
+  out: float32[...,O]
+```
+
+## 11. 后续调用
+
+Linear 会复用 `component.matmul_gate.v1`，QKScore 也会复用它。MatMulGate 是从基础数据结构走向可组合模型层的关键门。

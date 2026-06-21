@@ -120,7 +120,10 @@ export type TestAssertion =
   | { type: "shape"; nodeId: string; expectedAxes: AxisName[]; expectedDims?: number[] }
   | { type: "axis_semantics"; nodeId: string; expectedAxes: AxisName[] }
   | { type: "allclose"; nodeId: string; referenceNodeId: string; atol: number }
+  | { type: "requires_node"; nodeId: string; moduleId?: string }
+  | { type: "requires_edge_path"; from: string; through: string; to: string }
   | { type: "pieces_non_empty"; nodeId: string }
+  | { type: "pieces_equal"; nodeId: string; expected: string[] }
   | { type: "no_oov"; nodeId: string }
   | { type: "tokens_include"; nodeId: string; token: string }
   | { type: "eos_preserved"; nodeId: string; eosToken?: string; padToken?: string }
@@ -279,6 +282,7 @@ export type LevelSpec = {
   id: string;
   title: string;
   mode: "graph_challenge";
+  routeStatus?: "playable" | "roadmap";
   chapter: string;
   goal: string;
   modulePalette: string[];

@@ -1,45 +1,111 @@
-# Chapter 1-4 Vocab Lookup：VocabLookup
+# Chapter 1-4 Vocab Lookup
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 1 Text → Token Pipeline
-- 构建组件：`VocabLookup`
-- 输入来源：pieces + vocab
-- 学习目标：pieces 变成 integer ids
-- 后续用途：token_ids
+VocabLookup 把 `token_piece[T]` 映射成 `int[B,T]` token IDs。它是文本进入模型前的类型边界：字符串片段必须变成整数索引。
 
-## 2. 当前案例
+本关核心认知：
 
-VocabLookup 把「pieces + vocab」变成可复用的图组件。
+```text
+piece surface -> vocab row id
+"tokenizers" -> 12
+"are"        -> 9
+"useful"     -> 15
+"!"          -> 4
+```
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 VocabLookup 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[1,6]`。
+- `component.merge_forge.v1`
+- `component.vocab_table.v1`
 
-## 3. 玩家操作
+本关不允许使用 `component.vocab_lookup.v1`。玩家要搭出 table lookup、fallback 和 ID buffer。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `VocabLookup` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 建议内部节点
 
-## 4. 挑战设计
+- `PieceInput`：提供 `token_piece[T]`。
+- `VocabTable`：提供 piece -> id 映射。
+- `LookupGate`：逐个 piece 查表。
+- `FallbackResolver`：处理 unknown piece。
+- `IdBuffer`：把 id 排成 `int[B,T]`。
+- `TypeContractGate`：检查输出。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+pieces = ["tokenizers", "are", "useful", "!"]
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+vocab:
+  tokenizers -> 12
+  are        -> 9
+  useful     -> 15
+  !          -> 4
+  <unk>      -> 1
 
-## 6. 通过标准
+expected ids[B=1,T=4] = [[12, 9, 15, 4]]
+```
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布只给出 pieces source、vocab table、id contract、reference。没有 lookup 和 fallback。
+
+如果玩家直接把 pieces 接到 int contract，dtype 失败；如果拖答案组件，违反构建规则。
+
+## 6. 目标内部实现
+
+```text
+pieces.out -> lookup.pieces
+vocab.out -> lookup.table
+lookup.ids -> fallback.ids
+lookup.oov -> fallback.oov
+fallback.out -> id_buffer.ids
+id_buffer.out -> ids_out.x
+ids_out.out -> reference.x
+```
+
+## 7. 错误路径
+
+- 输出 piece 字符串而不是 int：dtype fail。
+- 对 unknown piece 直接报错：hidden OOV case blocked。
+- fallback 全部映射到 `<unk>`：visible 中已知词的行为失败。
+- 忽略顺序：ids shape 正确，但序列和 reference 不一致。
+
+## 8. 测试设计
+
+当前任务：
+
+- 结构断言：必须经过 lookup 和 id buffer。
+- dtype/shape：`int[B=1,T=4]`。
+- 行为：ID 序列精确等于 `[[12,9,15,4]]`。
+
+Hidden cases：
+
+- 包含 unknown piece：`["we", "train", "glyph?"]`，unknown 必须映射 `<unk>`。
+- vocab 行顺序变化：不能依赖数组 index，必须按 surface lookup。
+
+## 9. 认证变体
+
+公开认证提供三个 fixture：
+
+- all known pieces
+- one unknown piece
+- punctuation-heavy pieces
+
+系统生成 pieces/vocab/reference。玩家不手写完整 vocab，但必须保留 lookup + fallback 机制。
+
+## 10. 认证后接口
+
+```text
+component.vocab_lookup.v1
+inputs:
+  pieces: token_piece[T]
+  vocab: vocab_table[V]
+output:
+  ids: int[B,T]
+```
+
+## 11. 后续调用
+
+TokenBuffer、Padder、EmbeddingLookup 都要求整数 token IDs。VocabLookup 是从文本符号世界进入 tensor 世界的边界。

@@ -1,45 +1,117 @@
-# Chapter 2-2 Embedding Lookup：EmbeddingLookup
+# Chapter 2-2 Embedding Lookup
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 2 Embedding 与 Hidden Tensor
-- 构建组件：`EmbeddingLookup`
-- 输入来源：token_ids + table
-- 学习目标：int ids → float vectors
-- 后续用途：hidden[B,T,C]
+EmbeddingLookup 把 token IDs 映射成 hidden vectors：
 
-## 2. 当前案例
+```text
+ids[B,T] + table[V,C] -> hidden[B,T,C]
+```
 
-EmbeddingLookup 把「token_ids + table」变成可复用的图组件。
+每个整数 id 都是 vocab table 的一行索引。输出不是计算出来的新数，而是从 table 中 gather 对应行。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 EmbeddingLookup 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,4]`。
+- `component.tokenizer.v1`
+- `component.embedding_table.v1`
 
-## 3. 玩家操作
+本关不允许使用 `component.embedding_lookup.v1`。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `EmbeddingLookup` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 建议内部节点
 
-## 4. 挑战设计
+- `TokenIdInput`
+- `EmbeddingTable`
+- `RowGather`
+- `PadRowPolicy`
+- `HiddenBuffer`
+- `TypeContractGate`
+- `ReferenceChecker`
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+ids[B=1,T=4] = [[2, 5, 1, 0]]
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+table[V=6,C=3]:
+  row0 <pad> = [0.0, 0.0, 0.0]
+  row1 <unk> = [0.1, 0.1, 0.1]
+  row2 we    = [0.2, 0.0, 0.5]
+  row5 llm   = [0.7, 0.3, 0.2]
 
-## 6. 通过标准
+expected hidden:
+  T0 -> table[2]
+  T1 -> table[5]
+  T2 -> table[1]
+  T3 -> table[0]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+输出合约：
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+float32[B,T,C] = [1,4,3]
+```
+
+## 5. 初始错误图
+
+画布给出 ids、table、hidden contract、reference。缺少 row gather 和 hidden buffer。
+
+直接把 ids 接到 hidden contract 会 dtype 失败；直接输出 table 会 shape `[V,C]` 错。
+
+## 6. 目标内部实现
+
+```text
+ids.out -> row_gather.ids
+table.out -> row_gather.table
+row_gather.rows -> hidden_buffer.rows
+hidden_buffer.out -> hidden_out.x
+hidden_out.out -> reference.x
+```
+
+## 7. 错误路径
+
+- 把 id 当作数值特征直接转 float：shape 可能接近，但不等于 table rows。
+- 忽略 batch 维：只输出 `[T,C]`。
+- PAD id 没有拿到 zero row：mask 之后仍可能泄漏 padding 信息。
+- id 越界不报错：hidden case 应 blocked 或 fallback 到 `<unk>`，由关卡策略明确。
+
+## 8. 测试设计
+
+当前任务：
+
+- `hidden_out` 必须是 `float32[B,T,C]`。
+- 行为断言：每个输出 row 必须等于对应 `table[id]`。
+- allclose 到 reference。
+
+Hidden cases：
+
+- B=2 多行 batch。
+- C 宽度变化。
+- ids 中包含 PAD 和 `<unk>`。
+
+## 9. 认证变体
+
+公开认证选择：
+
+- B/T 尺寸
+- C 宽度
+- seed
+- 是否包含 PAD
+
+系统生成 ids/table/reference。认证只改变输入，不改变 row gather 图。
+
+## 10. 认证后接口
+
+```text
+component.embedding_lookup.v1
+inputs:
+  ids: int[B,T]
+  table: float32[V,C]
+output:
+  hidden: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+PositionEmbedding 和 Linear 都会消费 `hidden[B,T,C]`。EmbeddingLookup 是 token IDs 到模型 hidden state 的边界。

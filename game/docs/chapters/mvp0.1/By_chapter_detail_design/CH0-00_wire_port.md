@@ -1,45 +1,83 @@
-# Chapter 0-0 Wire & Port：Wire / InputPort / OutputPort
+# Chapter 0-0 Wire & Probe
 
-## 1. 关卡定位
+## 1. 关卡真实用途
 
-- 所属章节：Chapter 0 Graph OS 与数字基础
-- 构建组件：`Wire / InputPort / OutputPort`
-- 输入来源：空画布、输入、输出
-- 学习目标：数据沿边流动，端口有方向
-- 后续用途：所有关卡
+这是 MVP0.1 的入口教学关，不构建可复用组件。它只教玩家理解 Graph OS 的三个基础事实：
 
-## 2. 当前案例
+- 数据只能从 output port 流向 input port。
+- 合约节点是测试设备，不是玩家要封装的组件。
+- reference/probe 节点提供期望值，用来证明当前数据路径是否正确。
 
-Wire / InputPort / OutputPort 把「空画布、输入、输出」变成可复用的图组件。
+本关必须避免和 `ScalarCell` 重复。它不解释标量、不讲 rank-0，只解释“线”和“探针”。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Wire / InputPort / OutputPort 连接到合约探针。
+## 2. 预制节点
 
-案例数据输出合约：`float32[B,T]`，示例 shape 为 `[1,2]`。
+画布给出三个预制节点：
 
-## 3. 玩家操作
+- `packet_input: InputTensor`，从测试案例读取一个 `float32[B,T]` packet。
+- `port_gate: OutputContractGate`，检查 packet 是否进入输出合约。
+- `reference: ReferenceChecker`，预制参考探针，提供期望 packet。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Wire / InputPort / OutputPort` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+这些节点都是测试设备。本关没有组件库，也不会产出 `BuiltComponent`。
 
-## 4. 挑战设计
+## 3. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+packet = [[0.25, -0.75]]
+dtype  = float32
+axes   = [B,T]
+dims   = [1,2]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+玩家需要让这份 packet 经过合约节点，再接入 reference 探针。
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+## 4. 初始错误图
 
-## 6. 通过标准
+初始图中三个节点都在画布上，但没有任何边：
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T]。
+```text
+packet_input    port_gate    reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+运行检查会因为 `port_gate.x` 没有输入而 blocked。
+
+## 5. 目标图
+
+目标不是新增节点，而是建立测试电路：
+
+```text
+packet_input.out -> port_gate.x
+port_gate.out -> reference.x
+```
+
+`reference` 的输入 `x` 表示“被检查值已经到达 probe 入口”，reference 输出本身来自测试案例。
+
+## 6. 玩家操作
+
+1. 从 `packet_input.out` 拖线到 `port_gate.x`。
+2. 从 `port_gate.out` 拖线到 `reference.x`。
+3. 点击“检查当前任务”。
+4. 通过后自动进入 ScalarCell。
+
+## 7. 错误路径
+
+- 只连 `packet_input -> port_gate`：packet 到达合约，但 reference 没接上，无法完成比较。
+- 直接 `packet_input -> reference`：绕过了合约，不能证明输出端口方向。
+- 反向拖线：Graph OS 应拒绝 input -> output。
+- 误以为 reference 是玩家组件：后续关卡会再次说明 probe 不是封装对象。
+
+## 8. 测试设计
+
+本关测试仍然使用 shape + reference，但它的目标是验证测试电路：
+
+- `port_gate` 输出必须保持 `float32[B,T]=[1,2]`。
+- `reference` 必须连接在合约之后。
+- hidden case 会把 packet 换成 `[[1.25, 0.5]]`，检查连线是否仍然有效。
+
+## 9. 通过后状态
+
+本关通过后不解锁组件。玩家只获得 Graph OS 的基本操作认知：端口方向、数据流、合约、探针。
+
+下一关 `ScalarCell` 才开始构建第一个可用组件。

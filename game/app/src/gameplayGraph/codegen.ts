@@ -197,6 +197,27 @@ function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCa
       return;
     }
 
+    if (node.moduleId === "BoundarySplitter") {
+      const textVar = incomingVar(graph, node, "text");
+      const preservePunctuation = Boolean(node.params.preservePunctuation ?? true);
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "pieces")} = split_boundaries(${textVar}, keep_punctuation=${toPythonLiteral(preservePunctuation)})`
+      });
+      return;
+    }
+
+    if (node.moduleId === "PieceBuffer") {
+      const maxPieces = Number(node.params.maxPieces ?? 12);
+      lines.push({
+        id: `graph-${node.id}`,
+        nodeId: node.id,
+        text: `${graphOutputVar(graph, node.id, "out")} = expect_piece_buffer(${incomingVar(graph, node, "pieces")}, max_pieces=${maxPieces})`
+      });
+      return;
+    }
+
     if (node.moduleId === "EmbeddingReadyProbe") {
       const idsVar = incomingVar(graph, node, "ids");
       lines.push({ id: `graph-${node.id}`, nodeId: node.id, text: `${graphOutputVar(graph, node.id, "out")} = embedding_ready(${idsVar})` });
@@ -234,7 +255,7 @@ function buildGraphCode(graph: GraphSpec, modules: ModuleDef[], testCase: TestCa
       return;
     }
 
-    if (node.moduleId === "MatMulGate") {
+    if (node.moduleId === "MatMulGate" || node.moduleId === "component.matmul_gate.v1") {
       lines.push({
         id: `graph-${node.id}`,
         nodeId: node.id,
@@ -436,8 +457,14 @@ function assertionToCode(assertion: TestAssertion) {
       return `assert axes(${nodeRefToVar(assertion.nodeId)}) == ${toPythonLiteral(assertion.expectedAxes)}`;
     case "allclose":
       return `assert allclose(${nodeRefToVar(assertion.nodeId)}, ${nodeRefToVar(assertion.referenceNodeId)}, atol=${assertion.atol})`;
+    case "requires_node":
+      return `assert graph_has_node(${toPythonLiteral(assertion.nodeId)}${assertion.moduleId ? `, module=${toPythonLiteral(assertion.moduleId)}` : ""})`;
+    case "requires_edge_path":
+      return `assert path_exists(graph, ${toPythonLiteral(assertion.from)}, through=${toPythonLiteral(assertion.through)}, to=${toPythonLiteral(assertion.to)})`;
     case "pieces_non_empty":
       return `assert len(${nodeRefToVar(assertion.nodeId)}) > 0`;
+    case "pieces_equal":
+      return `assert ${nodeRefToVar(assertion.nodeId)} == ${toPythonLiteral(assertion.expected)}`;
     case "no_oov":
       return `assert no_oov(${nodeRefToVar(assertion.nodeId)})`;
     case "tokens_include":

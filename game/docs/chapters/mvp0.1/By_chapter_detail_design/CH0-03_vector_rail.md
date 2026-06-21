@@ -1,45 +1,114 @@
-# Chapter 0-3 Vector Rail：Vector
+# Chapter 0-3 Vector Rail
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 0 Graph OS 与数字基础
-- 构建组件：`Vector`
-- 输入来源：多个 ScalarCell + length
-- 学习目标：一排数字，长度是第一种 shape
-- 后续用途：token vector
+VectorRail 把多个已认证 ScalarCell 按顺序放到同一条 C 轴上，形成 `float32[C]`。
 
-## 2. 当前案例
+本关要让玩家理解：vector 不是“一堆数字”，而是“有顺序的一排数字”。顺序就是轴位置。
 
-Vector 把「多个 ScalarCell + length」变成可复用的图组件。
+```text
+c0 = 0.5
+c1 = -1
+c2 = 2
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Vector 连接到合约探针。
+vector[C] = [0.5, -1, 2]
+```
 
-案例数据输出合约：`float32[C]`，示例 shape 为 `[3]`。
+## 2. 前置组件
 
-## 3. 玩家操作
+- `component.scalar_cell.v1`
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Vector` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+本关不允许使用 `component.vector_rail.v1`。组件库提供的是三个 `ScalarCell v1` 实例和 `VectorRail` primitive。
 
-## 4. 挑战设计
+## 3. 本关新增能力
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+- 复用可用组件：`component.scalar_cell.v1`
+- 内部结构节点：`VectorRail`
+- 输出合约：`OutputContractGate(expectedAxes=[C])`
+- 行为证明：`ReferenceChecker`
 
-## 5. 认证变体
+这里第一次体现“之前构建的组件进入组件库，并作为后续组件的内部材料”。
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 4. 具体案例
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[C]`
-- shape 可以随认证宽度变化，但语义不变。
+Visible case:
 
-## 6. 通过标准
+```text
+scalar_c0 = 0.5
+scalar_c1 = -1
+scalar_c2 = 2
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [C]。
+expected vector = [0.5, -1, 2]
+dtype = float32
+axes  = [C]
+dims  = [3]
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 5. 初始错误图
+
+画布给出三个 ScalarCell 和输出合约/参考探针，但缺少把它们排成 C 轴的 `vector` 节点。
+
+```text
+scalar_c0
+scalar_c1      vector missing      vector_out      reference
+scalar_c2
+```
+
+## 6. 目标内部实现
+
+```text
+scalar_c0.out -> vector.c0
+scalar_c1.out -> vector.c1
+scalar_c2.out -> vector.c2
+vector.out -> vector_out.x
+vector_out.out -> reference.x
+```
+
+其中：
+
+- `vector.moduleId = VectorRail`
+- `vector_out.expectedAxes = [C]`
+
+## 7. 玩家操作
+
+1. 拖入 `VectorRail`。
+2. 按 c0/c1/c2 顺序连接三个 scalar。
+3. 将 `vector.out` 接到 `vector_out.x`。
+4. 将 `vector_out.out` 接到 `reference.x`。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- c0/c1/c2 顺序接反：shape 仍是 `[C]`，但 allclose reference 失败。
+- 少接一个 scalar：VectorRail blocked 或输出长度错误。
+- 把三个 scalar 直接分别接到合约：合约只有一个输入，不构成 vector。
+- 使用目标组件 `component.vector_rail.v1`：本关应该构建它，而不是调用它。
+
+## 9. 测试设计
+
+当前任务：
+
+- shape contract：`vector_out` 是 `float32[C=3]`。
+- behavior contract：输出值必须等于 `[0.5, -1, 2]`。
+
+公开认证：
+
+- 玩家可编辑 c0/c1/c2 三个数值。
+- 系统只改变 ScalarCell 输入值，不改变 VectorRail 或合约。
+- 认证重点是顺序保持，而不是固定示例值。
+
+## 10. 认证后接口
+
+```text
+component.vector_rail.v1
+inputs:
+  c0: float32[]
+  c1: float32[]
+  c2: float32[]
+output:
+  vector: float32[C]
+```
+
+## 11. 后续调用
+
+MatrixStruct 会把多个 `vector[C]` 组织成 `matrix[C,O]`。VectorRail 的核心价值是把“位置顺序”升级成明确的轴语义。

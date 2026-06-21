@@ -168,6 +168,14 @@ function useGraphT() {
   };
 }
 
+function isLevelPlayable(level: LevelSpec) {
+  return level.routeStatus !== "roadmap";
+}
+
+function firstPlayableLevel(levels: LevelSpec[]) {
+  return levels.find(isLevelPlayable) ?? levels[0];
+}
+
 export function GraphWorkbench({
   language = "en",
   levels = graphLevels,
@@ -180,12 +188,13 @@ export function GraphWorkbench({
   const registry = useMemo(() => createGameplayRegistry(), []);
   const modules = useMemo(() => registry.list(), [registry]);
   const availableComponentIds = useMemo(() => new Set(componentFlow?.availableComponentIds ?? []), [componentFlow?.availableComponentIds]);
-  const [selectedLevelId, setSelectedLevelId] = useState(levels[0].id);
-  const selectedLevel = levels.find((level) => level.id === selectedLevelId) ?? levels[0];
+  const [selectedLevelId, setSelectedLevelId] = useState(() => firstPlayableLevel(levels).id);
+  const selectedLevel = levels.find((level) => level.id === selectedLevelId) ?? firstPlayableLevel(levels);
+  const selectedLevelPlayable = isLevelPlayable(selectedLevel);
   const selectedComponent = componentFlow?.specs[selectedLevel.id];
   const [graphs, setGraphs] = useState<Record<string, GraphSpec>>(() => initialGraphsByLevel(levels));
   const [selection, setSelection] = useState<GraphSelection | undefined>(() => {
-    const firstNodeId = levels[0].initialGraph.nodes[0]?.id;
+    const firstNodeId = firstPlayableLevel(levels).initialGraph.nodes[0]?.id;
     return firstNodeId ? { type: "node", id: firstNodeId } : undefined;
   });
   const [wireSource, setWireSource] = useState<WireSource>();
@@ -216,7 +225,7 @@ export function GraphWorkbench({
   const certificationValues = certificationValuesForLevel(selectedLevel, certificationValuesByLevel[selectedLevel.id]);
   const certificationErrors = certificationControlErrors(selectedLevel.certification, certificationValues);
   const missingComponentRequirements = selectedComponent?.requires.filter((componentId) => !availableComponentIds.has(componentId)) ?? [];
-  const componentLevelLocked = missingComponentRequirements.length > 0;
+  const componentLevelLocked = !selectedLevelPlayable || missingComponentRequirements.length > 0;
   const componentAvailable = selectedComponent ? availableComponentIds.has(selectedComponent.componentId) : false;
   const selectedNode = selection?.type === "node" ? graph.nodes.find((node) => node.id === selection.id) : undefined;
   const selectedEdge = selection?.type === "edge" ? graph.edges.find((edge) => edge.id === selection.id) : undefined;
@@ -292,6 +301,10 @@ export function GraphWorkbench({
   }, [graph, selectedLevel.id, viewport.x, viewport.y, viewport.scale, language]);
 
   function selectLevel(level: LevelSpec) {
+    if (!isLevelPlayable(level)) {
+      setCanvasNotice("roadmap level is not playable yet");
+      return;
+    }
     if (autoAdvanceTimerRef.current) {
       window.clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = undefined;
@@ -416,7 +429,7 @@ export function GraphWorkbench({
   function nextLevelAfter(levelId: string) {
     const currentIndex = levels.findIndex((level) => level.id === levelId);
     if (currentIndex < 0) return undefined;
-    return levels[currentIndex + 1];
+    return levels.slice(currentIndex + 1).find(isLevelPlayable);
   }
 
   function updateCertificationValue(controlId: string, value: CertificationControlValue) {
@@ -1523,7 +1536,7 @@ type ChallengeMapNode = {
   y: number;
   cx: number;
   cy: number;
-  status: "active" | "available" | "locked" | "draft";
+  status: "active" | "available" | "locked" | "draft" | "roadmap";
   lifecycle?: string;
 };
 
@@ -1541,6 +1554,20 @@ type ChallengeMapPoint = {
   y: number;
 };
 
+type ChallengeMapView = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
+type ChallengeMapPanState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+};
+
 type ChallengeMapChapterGroup = {
   id: string;
   title: string;
@@ -1549,6 +1576,9 @@ type ChallengeMapChapterGroup = {
 
 const challengeMapNodeWidth = 164;
 const challengeMapNodeHeight = 70;
+const challengeMapMinScale = 0.42;
+const challengeMapMaxScale = 1.25;
+const challengeMapDefaultScale = 0.72;
 const challengeMapJitterPattern = [
   { x: 0, y: 0 },
   { x: 18, y: -10 },
@@ -1580,10 +1610,95 @@ function GraphChallengeMapOverlay({
   onClose: () => void;
 }) {
   const { t } = useGraphT();
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const panStateRef = useRef<ChallengeMapPanState | undefined>(undefined);
+  const [mapView, setMapView] = useState<ChallengeMapView>({ x: 18, y: 18, scale: challengeMapDefaultScale });
+  const [panning, setPanning] = useState(false);
   const layout = useMemo(
     () => buildChallengeMapLayout(levels, selectedLevelId, componentFlow, availableComponentIds),
     [availableComponentIds, componentFlow, levels, selectedLevelId]
   );
+
+  useLayoutEffect(() => {
+    centerChallengeMapOnActiveNode();
+    // Recenter when a different challenge opens; user pan/zoom remains local to the open map session otherwise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.width, layout.height, selectedLevelId]);
+
+  function centerChallengeMapOnActiveNode(scale = challengeMapDefaultScale) {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const activeNode = layout.nodes.find((node) => node.level.id === selectedLevelId) ?? layout.nodes[0];
+    if (!rect || !activeNode) {
+      setMapView({ x: 18, y: 18, scale });
+      return;
+    }
+    setMapView({
+      scale,
+      x: rect.width * 0.46 - activeNode.cx * scale,
+      y: rect.height * 0.38 - activeNode.cy * scale
+    });
+  }
+
+  function zoomChallengeMap(factor: number, anchor?: ChallengeMapPoint) {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMapView((current) => {
+      const nextScale = clamp(current.scale * factor, challengeMapMinScale, challengeMapMaxScale);
+      const anchorPoint = anchor ?? { x: rect.width / 2, y: rect.height / 2 };
+      const worldX = (anchorPoint.x - current.x) / current.scale;
+      const worldY = (anchorPoint.y - current.y) / current.scale;
+      return {
+        scale: nextScale,
+        x: anchorPoint.x - worldX * nextScale,
+        y: anchorPoint.y - worldY * nextScale
+      };
+    });
+  }
+
+  function handleMapWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomChallengeMap(event.deltaY < 0 ? 1.1 : 0.9, {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    });
+  }
+
+  function handleMapPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    if (target.closest(".graphChallengeMapNode, .graphChallengeMapControls")) return;
+    event.preventDefault();
+    panStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: mapView.x,
+      originY: mapView.y
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanning(true);
+  }
+
+  function handleMapPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const state = panStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    setMapView((current) => ({
+      ...current,
+      x: state.originX + event.clientX - state.startX,
+      y: state.originY + event.clientY - state.startY
+    }));
+  }
+
+  function endMapPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const state = panStateRef.current;
+    if (state?.pointerId === event.pointerId) {
+      panStateRef.current = undefined;
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      setPanning(false);
+    }
+  }
+
   return (
     <div className="graphChallengeMapOverlay" role="dialog" aria-modal="true" aria-label={t("Challenge Map")} onClick={onClose}>
       <section className="graphChallengeMapPanel" onClick={(event) => event.stopPropagation()}>
@@ -1596,8 +1711,38 @@ function GraphChallengeMapOverlay({
             <X size={16} />
           </button>
         </header>
-        <div className="graphChallengeMapCanvas">
-          <div className="graphChallengeMapWorld" style={{ width: layout.width, height: layout.height }}>
+        <div
+          ref={canvasRef}
+          className={`graphChallengeMapCanvas${panning ? " panning" : ""}`}
+          onWheel={handleMapWheel}
+          onPointerDown={handleMapPointerDown}
+          onPointerMove={handleMapPointerMove}
+          onPointerUp={endMapPan}
+          onPointerCancel={endMapPan}
+        >
+          <div className="graphChallengeMapControls" onPointerDown={(event) => event.stopPropagation()}>
+            <button className="iconButton" type="button" title={t("Zoom out")} onClick={() => zoomChallengeMap(0.9)}>
+              <Minus size={15} />
+            </button>
+            <code>{Math.round(mapView.scale * 100)}%</code>
+            <button className="iconButton" type="button" title={t("Zoom in")} onClick={() => zoomChallengeMap(1.1)}>
+              <Plus size={15} />
+            </button>
+            <button className="iconButton" type="button" title={t("Center active challenge")} onClick={() => centerChallengeMapOnActiveNode(mapView.scale)}>
+              <Move size={15} />
+            </button>
+            <button className="iconButton" type="button" title={t("Reset map view")} onClick={() => centerChallengeMapOnActiveNode()}>
+              <RotateCcw size={15} />
+            </button>
+          </div>
+          <div
+            className="graphChallengeMapWorld"
+            style={{
+              width: layout.width,
+              height: layout.height,
+              transform: `translate3d(${mapView.x}px, ${mapView.y}px, 0) scale(${mapView.scale})`
+            }}
+          >
             {layout.regions.map((region) => (
               <section
                 key={region.id}
@@ -1618,8 +1763,13 @@ function GraphChallengeMapOverlay({
                 type="button"
                 className={`graphChallengeMapNode ${node.status}`}
                 style={{ left: node.x, top: node.y }}
-                onClick={() => onSelect(node.level)}
+                disabled={!isLevelPlayable(node.level)}
+                onClick={() => {
+                  if (isLevelPlayable(node.level)) onSelect(node.level);
+                }}
               >
+                <span className="graphChallengeMapPort in" aria-hidden="true" />
+                <span className="graphChallengeMapPort out" aria-hidden="true" />
                 <b>{t(node.level.title)}</b>
                 <small>{t(node.level.chapter)}</small>
                 {node.lifecycle ? <code>{t(node.lifecycle)}</code> : null}
@@ -1696,8 +1846,9 @@ function buildChallengeMapLayout(
       const component = componentFlow?.specs[level.id];
       const missingCount = component?.requires.filter((componentId) => !availableComponentIds.has(componentId)).length ?? 0;
       const available = component ? availableComponentIds.has(component.componentId) : false;
-      const lifecycle = component ? lifecycleLabel({ available, missingCount }) : undefined;
-      const status = level.id === selectedLevelId ? "active" : missingCount > 0 ? "locked" : available ? "available" : "draft";
+      const roadmap = !isLevelPlayable(level);
+      const lifecycle = roadmap ? "Roadmap" : component ? lifecycleLabel({ available, missingCount }) : undefined;
+      const status = level.id === selectedLevelId ? "active" : roadmap ? "roadmap" : missingCount > 0 ? "locked" : available ? "available" : "draft";
       nodes.push({ level, x, y, cx: x + nodeWidth / 2, cy: y + nodeHeight / 2, status, lifecycle });
       routeIndex += 1;
     });
@@ -1744,55 +1895,36 @@ function challengeMapRoutePath(nodes: ChallengeMapNode[]) {
 }
 
 function challengeMapRouteSegment(from: ChallengeMapNode, to: ChallengeMapNode, index: number) {
-  const dx = to.cx - from.cx;
-  const dy = to.cy - from.cy;
-  const horizontal = Math.abs(dx) >= Math.abs(dy);
-  const edgePad = 10;
-  const edgeShift = ((index % 3) - 1) * 5;
-  const start: ChallengeMapPoint = horizontal
-    ? {
-        x: from.cx + Math.sign(dx || 1) * (challengeMapNodeWidth / 2 + edgePad),
-        y: from.cy + edgeShift
-      }
-    : {
-        x: from.cx + edgeShift,
-        y: from.cy + Math.sign(dy || 1) * (challengeMapNodeHeight / 2 + edgePad)
-      };
-  const end: ChallengeMapPoint = horizontal
-    ? {
-        x: to.cx - Math.sign(dx || 1) * (challengeMapNodeWidth / 2 + edgePad),
-        y: to.cy - edgeShift
-      }
-    : {
-        x: to.cx - edgeShift,
-        y: to.cy - Math.sign(dy || 1) * (challengeMapNodeHeight / 2 + edgePad)
-      };
-  return horizontal
-    ? challengeMapHorizontalCurve(start, end, index)
-    : challengeMapVerticalCurve(start, end, index);
+  const start = challengeMapOutPoint(from);
+  const end = challengeMapInPoint(to);
+  return challengeMapInOutCurve(start, end, index);
 }
 
-function challengeMapHorizontalCurve(start: ChallengeMapPoint, end: ChallengeMapPoint, index: number) {
+function challengeMapInPoint(node: ChallengeMapNode): ChallengeMapPoint {
+  return { x: node.x, y: node.cy };
+}
+
+function challengeMapOutPoint(node: ChallengeMapNode): ChallengeMapPoint {
+  return { x: node.x + challengeMapNodeWidth, y: node.cy };
+}
+
+function challengeMapInOutCurve(start: ChallengeMapPoint, end: ChallengeMapPoint, index: number) {
   const dx = end.x - start.x;
-  const midX = start.x + dx * 0.5;
-  const waveSize = Math.min(120, 30 + Math.abs(dx) * 0.08 + Math.abs(end.y - start.y) * 0.05);
-  const wave = (index % 2 === 0 ? 1 : -1) * waveSize;
-  return [
-    `M ${start.x} ${start.y}`,
-    `C ${start.x + dx * 0.22} ${start.y + wave}, ${midX - dx * 0.08} ${start.y + wave}, ${midX} ${start.y + wave * 0.35}`,
-    `C ${midX + dx * 0.08} ${end.y - wave * 0.35}, ${end.x - dx * 0.22} ${end.y - wave}, ${end.x} ${end.y}`
-  ].join(" ");
-}
-
-function challengeMapVerticalCurve(start: ChallengeMapPoint, end: ChallengeMapPoint, index: number) {
   const dy = end.y - start.y;
-  const midY = start.y + dy * 0.5;
-  const waveSize = Math.min(128, 34 + Math.abs(dy) * 0.08 + Math.abs(end.x - start.x) * 0.05);
-  const wave = (index % 2 === 0 ? -1 : 1) * waveSize;
+  const waveSize = Math.min(112, 28 + Math.abs(dy) * 0.08 + Math.abs(dx) * 0.035);
+  const wave = (index % 2 === 0 ? 1 : -1) * waveSize;
+  if (dx >= 60) {
+    const lead = Math.min(180, Math.max(58, dx * 0.34));
+    return [
+      `M ${start.x} ${start.y}`,
+      `C ${start.x + lead} ${start.y + wave}, ${end.x - lead} ${end.y - wave}, ${end.x} ${end.y}`
+    ].join(" ");
+  }
+  const loop = Math.min(220, 104 + Math.abs(dx) * 0.12 + Math.abs(dy) * 0.06);
   return [
     `M ${start.x} ${start.y}`,
-    `C ${start.x + wave} ${start.y + dy * 0.22}, ${start.x + wave} ${midY - dy * 0.08}, ${start.x + wave * 0.35} ${midY}`,
-    `C ${end.x - wave * 0.35} ${midY + dy * 0.08}, ${end.x - wave} ${end.y - dy * 0.22}, ${end.x} ${end.y}`
+    `C ${start.x + loop} ${start.y + wave}, ${start.x + loop} ${start.y + dy * 0.34}, ${(start.x + end.x) / 2} ${start.y + dy * 0.5}`,
+    `C ${end.x - loop} ${end.y - dy * 0.34}, ${end.x - loop} ${end.y - wave}, ${end.x} ${end.y}`
   ].join(" ");
 }
 
@@ -3391,6 +3523,7 @@ function assertionTouchesNode(assertion: TestAssertion | undefined, nodeId: stri
     case "shape":
     case "axis_semantics":
     case "pieces_non_empty":
+    case "pieces_equal":
     case "no_oov":
     case "tokens_include":
     case "eos_preserved":
@@ -3402,6 +3535,10 @@ function assertionTouchesNode(assertion: TestAssertion | undefined, nodeId: stri
       return assertion.nodeId.split(".")[0] === nodeId || assertion.referenceNodeId.split(".")[0] === nodeId;
     case "mask_pad":
       return assertion.idsNodeId.split(".")[0] === nodeId || assertion.maskNodeId.split(".")[0] === nodeId;
+    case "requires_node":
+      return assertion.nodeId === nodeId;
+    case "requires_edge_path":
+      return assertion.from === nodeId || assertion.through === nodeId || assertion.to === nodeId;
     default:
       return false;
   }
@@ -3579,6 +3716,13 @@ function getLevelNodeTemplate(levelId: string, graph: GraphSpec, moduleId: strin
       if (moduleId === "OutputContractGate" && !taken.has("tensor_out")) return { id: "tensor_out", params: { expectedAxes: ["B", "T", "C"] } };
     }
 
+    if (levelId === "mvp01_ch1_01_splitter") {
+      if (moduleId === "TextInput" && !taken.has("text")) return { id: "text", params: { inputKey: "texts" } };
+      if (moduleId === "BoundarySplitter" && !taken.has("splitter")) return { id: "splitter", params: { policy: "word", preservePunctuation: true, expectedT: 4 } };
+      if (moduleId === "PieceBuffer" && !taken.has("piece_buffer")) return { id: "piece_buffer", params: { maxPieces: 12 } };
+      if (moduleId === "TypeContractGate" && !taken.has("pieces_out")) return { id: "pieces_out", params: { expectedDType: "string_piece", expectedDims: [4], expectedAxes: ["T"] } };
+    }
+
     if (levelId === "mvp01_5_matmul_gate") {
       if (moduleId === "InputTensor" && !taken.has("hidden")) return { id: "hidden", params: { inputKey: "hidden", shape: [1, 2, 3], axes: ["B", "T", "C"] } };
       if (moduleId === "WeightPlate" && !taken.has("weight")) return { id: "weight", params: { inputKey: "weight", shape: [3, 2], axes: ["C", "O"], orientation: "C,O" } };
@@ -3594,6 +3738,16 @@ function getLevelNodeTemplate(levelId: string, graph: GraphSpec, moduleId: strin
       if (moduleId === "BroadcastRail" && !taken.has("bias_broadcast")) return { id: "bias_broadcast", params: { alignAxes: ["O"] } };
       if (moduleId === "AddGate" && !taken.has("linear_add")) return { id: "linear_add" };
       if (moduleId === "OutputContractGate" && !taken.has("linear_out")) return { id: "linear_out", params: { expectedAxes: ["B", "T", "O"] } };
+    }
+
+    if (levelId === "mvp01_ch4_03_qk_score") {
+      if (moduleId === "InputTensor" && !taken.has("q")) return { id: "q", params: { inputKey: "q", shape: [1, 1, 3, 2], axes: ["B", "H", "T", "D"] } };
+      if (moduleId === "InputTensor" && !taken.has("k")) return { id: "k", params: { inputKey: "k", shape: [1, 1, 3, 2], axes: ["B", "H", "T", "D"] } };
+      if (moduleId === "TransposeSwitch" && !taken.has("k_transpose")) return { id: "k_transpose", params: { axisA: -2, axisB: -1 } };
+      if ((moduleId === "MatMulGate" || moduleId === "component.matmul_gate.v1") && !taken.has("qk_matmul")) return { id: "qk_matmul" };
+      if (moduleId === "ScoreBoard" && !taken.has("score_board")) return { id: "score_board", params: { expectedAxes: ["B", "H", "T", "T"] } };
+      if (moduleId === "CellTrace" && !taken.has("cell_trace")) return { id: "cell_trace", params: { b: 0, h: 0, i: 0, j: 1 } };
+      if (moduleId === "ReferenceChecker" && !taken.has("reference")) return { id: "reference", params: { referenceKey: "reference" } };
     }
   }
 

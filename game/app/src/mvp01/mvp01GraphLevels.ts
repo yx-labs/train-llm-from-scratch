@@ -1,4 +1,5 @@
-import type { AxisName, CertificationControlValue, CertificationTestSpec, GraphSpec, LevelCertificationSpec, LevelSpec, RuntimeValue, TestCase } from "../gameplayGraph/types";
+import type { AxisName, CertificationControlValue, CertificationTestSpec, GraphSpec, LevelCertificationSpec, LevelSpec, RuntimeValue, TestAssertion, TestCase } from "../gameplayGraph/types";
+import { referenceQKScores } from "../gameplayGraph/runtime/reference";
 import { addTensors, broadcastTo, makeTensor, matmul, seededTensor, type TinyTensor } from "../gameplayGraph/runtime/tinyTensor";
 import { mvp01CourseInputCount, mvp01CourseLevels, type Mvp01CourseLevelDef } from "./mvp01CourseCatalog";
 
@@ -13,15 +14,28 @@ export type Mvp01ComponentFlowSpec = {
   shelf: string;
 };
 
+const playableCourseCodes = new Set(["0-0", "0-1", "0-3", "0-4", "0-5", "0-6", "0-7", "1-1", "3-2", "4-3"]);
+
+const componentRequirementOverrides: Record<string, string[]> = {
+  mvp01_2_vector_rail: ["component.scalar_cell.v1"],
+  mvp01_ch0_04_dot_product: ["component.vector_rail.v1"],
+  mvp01_3_matrix_struct: ["component.dot_product.v1"],
+  mvp01_5_matmul_gate: ["component.matrix_struct.v1"],
+  mvp01_4_tensor_box: ["component.matmul_gate.v1"],
+  mvp01_ch1_01_splitter: ["component.tensor_box.v1"],
+  mvp01_6_linear: ["component.matmul_gate.v1"],
+  mvp01_ch4_03_qk_score: ["component.linear.v1"]
+};
+
 export const mvp01ComponentFlowSpecs: Mvp01ComponentFlowSpec[] = mvp01CourseLevels
-  .filter((level) => level.buildable)
+  .filter((level) => level.buildable && playableCourseCodes.has(level.code))
   .map((level) => ({
     levelId: level.id,
     componentId: level.componentId,
     title: `${level.component} v1`,
     version: 1,
     exportModuleId: level.componentId,
-    requires: level.requires,
+    requires: componentRequirementOverrides[level.id] ?? level.requires,
     unlocks: level.unlocks,
     shelf: level.shelf
   }));
@@ -34,6 +48,13 @@ const wirePacketHidden = makeTensor("float32", [1, 2], ["B", "T"], [1.25, 0.5]);
 const vectorValues = [0.5, -1, 2];
 const vectorVisible = vector(vectorValues);
 const vectorHidden = vector(vectorValues);
+
+const dotQueryVisible = vector([0.2, -0.5, 1.0]);
+const dotKeyVisible = vector([0.4, 0.1, -0.3]);
+const dotVisible = dotProduct(dotQueryVisible, dotKeyVisible);
+const dotQueryHidden = vector([0.4, -0.2, 1.1, 0.75, -0.6]);
+const dotKeyHidden = vector([-0.5, 0.25, 0.9, -1.2, 0.3]);
+const dotHidden = dotProduct(dotQueryHidden, dotKeyHidden);
 
 const matrixCol0 = vector([0.4, 1.1, -0.7]);
 const matrixCol1 = vector([-0.2, 0.3, 0.8]);
@@ -61,17 +82,39 @@ const linearHiddenWeight = seededTensor([4, 3], ["C", "O"], "mvp01-linear-hidden
 const linearHiddenBias = seededTensor([3], ["O"], "mvp01-linear-hidden-bias");
 const linearHidden = linear(linearHiddenInput, linearHiddenWeight, linearHiddenBias);
 
+const splitterVisibleText = "tokenizers are useful!";
+const splitterVisiblePieces = ["tokenizers", "are", "useful", "!"];
+const splitterHiddenText = "shape, token buffer";
+const splitterHiddenPieces = ["shape", ",", "token", "buffer"];
+
+const qkVisibleQ = seededTensor([1, 1, 3, 2], ["B", "H", "T", "D"], "mvp01-qk-visible-q");
+const qkVisibleK = seededTensor([1, 1, 3, 2], ["B", "H", "T", "D"], "mvp01-qk-visible-k");
+const qkVisibleReference = referenceQKScores(qkVisibleQ, qkVisibleK);
+const qkHiddenEqualQ = seededTensor([1, 1, 3, 3], ["B", "H", "T", "D"], "mvp01-qk-hidden-equal-q");
+const qkHiddenEqualK = seededTensor([1, 1, 3, 3], ["B", "H", "T", "D"], "mvp01-qk-hidden-equal-k");
+const qkHiddenEqualReference = referenceQKScores(qkHiddenEqualQ, qkHiddenEqualK);
+const qkHiddenCarryQ = seededTensor([2, 2, 4, 3], ["B", "H", "T", "D"], "mvp01-qk-hidden-carry-q");
+const qkHiddenCarryK = seededTensor([2, 2, 4, 3], ["B", "H", "T", "D"], "mvp01-qk-hidden-carry-k");
+const qkHiddenCarryReference = referenceQKScores(qkHiddenCarryQ, qkHiddenCarryK);
+
 const manualCourseLevelFactories: Record<string, () => LevelSpec> = {
   "0-0": wireAndProbeTutorialLevel,
   "0-1": scalarCellLevel,
   "0-3": vectorRailLevel,
+  "0-4": dotProductLevel,
   "0-5": matrixStructLevel,
   "0-6": matMulGateLevel,
   "0-7": tensorBoxLevel,
-  "3-2": linearBuildLevel
+  "1-1": splitterLevel,
+  "3-2": linearBuildLevel,
+  "4-3": qkScoreLevel
 };
 
-export const mvp01GraphLevels: LevelSpec[] = mvp01CourseLevels.map((courseLevel) => manualCourseLevelFactories[courseLevel.code]?.() ?? courseCatalogLevel(courseLevel));
+export const mvp01GraphLevels: LevelSpec[] = mvp01CourseLevels.map((courseLevel) => {
+  const playable = playableCourseCodes.has(courseLevel.code);
+  const level = manualCourseLevelFactories[courseLevel.code]?.() ?? courseCatalogLevel(courseLevel);
+  return playable ? { ...level, routeStatus: "playable" } : { ...level, routeStatus: "roadmap", modulePalette: [], certification: undefined };
+});
 
 function wireAndProbeTutorialLevel(): LevelSpec {
   return {
@@ -262,6 +305,78 @@ function vectorRailLevel(): LevelSpec {
   };
 }
 
+function dotProductLevel(): LevelSpec {
+  return {
+    id: "mvp01_ch0_04_dot_product",
+    title: "MVP0.1-4 DotProduct",
+    mode: "graph_challenge",
+    chapter: "MVP0.1 Component Arc",
+    goal: "Build DotProduct from elementwise multiply plus SumReduce; do not use a prebuilt DotProduct node.",
+    modulePalette: ["InputTensor", "ElementwiseMultiply", "SumReduce", "OutputContractGate", "ReferenceChecker"],
+    initialGraph: createMvp01DotProductInitialGraph(),
+    targetGraph: createMvp01DotProductSolutionGraph(),
+    constraints: { maxNodes: 6, maxEdges: 5, forbiddenModules: ["component.dot_product.v1"] },
+    visibleTests: [
+      shapeAndReferenceCase(
+        "dot_product_visible",
+        "multiply matching C cells, then reduce to scalar",
+        {
+          case: textBatch([
+            "Concept: DotProduct multiplies matching vector cells and sums over C.",
+            "Task: Build score = sum(query[C] * key[C]).",
+            "Check: The output must be one scalar float32[] and match the numeric reference."
+          ]),
+          query: runtimeValue(dotQueryVisible),
+          key: runtimeValue(dotKeyVisible),
+          reference: runtimeValue(dotVisible)
+        },
+        "dot_out",
+        [],
+        [],
+        dotProductStructureAssertions()
+      )
+    ],
+    hiddenTests: [
+      shapeAndReferenceCase(
+        "dot_product_hidden_c5",
+        "DotProduct generalizes when C changes",
+        { query: runtimeValue(dotQueryHidden), key: runtimeValue(dotKeyHidden), reference: runtimeValue(dotHidden) },
+        "dot_out",
+        [],
+        [],
+        dotProductStructureAssertions()
+      )
+    ],
+    certification: dotProductCertification(),
+    onboarding: {
+      story: "A dot product is the first numeric component that must compute, not just reshape.",
+      startingProblem: "query and key vectors are on the canvas, but the graph has no multiply-then-sum implementation.",
+      firstAction: "Add ElementwiseMultiply and SumReduce. Feed query/key into multiply, then reduce the product over C.",
+      targetRecipe: ["query.out -> multiply.left", "key.out -> multiply.right", "multiply.out -> sum.x", "sum.out -> dot_out.x", "dot_out.out -> reference.x"],
+      winCondition: "dot_out is a rank-0 float32 scalar and allclose to the reference."
+    },
+    caseStudy: {
+      title: "Create a valid DotProduct",
+      narrative: "DotProduct compares two equal-length vectors. Each C cell is multiplied with its matching partner, then all C products collapse into one score.",
+      visibleInputFocus: "Task: Build score = sum(query[C] * key[C]).",
+      dataPanels: [
+        { type: "text_batch", title: "Task Brief", inputKey: "case", focusText: "Task: Build score = sum(query[C] * key[C])." },
+        { type: "tensor_preview", title: "Query vector", inputKey: "query" },
+        { type: "tensor_preview", title: "Key vector", inputKey: "key" },
+        { type: "tensor_preview", title: "Expected scalar score", inputKey: "reference" }
+      ],
+      playerQuestion: "Did the graph multiply every matching C cell and then remove the C axis by summing?",
+      successObservation: "The output is float32[] and numerically matches sum(query * key)."
+    },
+    debrief: {
+      completeTitle: "DotProduct certified",
+      fixedProblem: "The score is now computed by a real multiply-then-reduce graph.",
+      learned: "A component certification must prove behavior, not just dtype and shape.",
+      nextUse: "MatrixStruct and MatMulGate will build larger tables from repeated dot-product thinking."
+    }
+  };
+}
+
 function matrixStructLevel(): LevelSpec {
   return {
     id: "mvp01_3_matrix_struct",
@@ -398,6 +513,64 @@ function tensorBoxLevel(): LevelSpec {
       fixedProblem: "Token vectors now form a batch-token-feature tensor.",
       learned: "Tensor rank is not decoration; later MatMul depends on C being the innermost axis.",
       nextUse: "MatMulGate will consume C and emit O."
+    }
+  };
+}
+
+function splitterLevel(): LevelSpec {
+  return {
+    id: "mvp01_ch1_01_splitter",
+    title: "Chapter 1-1 Splitter",
+    mode: "graph_challenge",
+    chapter: "Chapter 1: Text to Token Pipeline",
+    goal: "Build BoundarySplitter from raw text into ordered string_piece[T] without using a prebuilt Splitter component.",
+    modulePalette: ["TextInput", "BoundarySplitter", "PieceBuffer", "TypeContractGate"],
+    initialGraph: createMvp01SplitterInitialGraph(),
+    targetGraph: createMvp01SplitterSolutionGraph(),
+    constraints: { maxNodes: 4, maxEdges: 3, forbiddenModules: ["component.splitter.v1"] },
+    visibleTests: [
+      splitterCase(
+        "splitter_visible",
+        "split words and punctuation into pieces",
+        splitterVisibleText,
+        splitterVisiblePieces,
+        [
+          "Concept: BoundarySplitter cuts raw text into ordered pieces along word and punctuation boundaries.",
+          "Task: Split the sentence into string_piece[T] without dropping punctuation.",
+          "Check: The output pieces must be tokenizers | are | useful | !"
+        ]
+      )
+    ],
+    hiddenTests: [
+      splitterCase("splitter_hidden_punctuation", "punctuation remains its own piece", splitterHiddenText, splitterHiddenPieces)
+    ],
+    certification: splitterCertification(),
+    onboarding: {
+      story: "Text cannot enter tensor modules as one opaque string; it first needs a stable boundary split.",
+      startingProblem: "A raw text source and a string_piece contract are present, but there is no splitter path between them.",
+      firstAction: "Add BoundarySplitter and PieceBuffer. Route raw text into the splitter, then buffer the produced pieces before the contract.",
+      targetRecipe: ["text.out -> splitter.text", "splitter.pieces -> piece_buffer.pieces", "piece_buffer.out -> pieces_out.x"],
+      winCondition: "pieces_out is string_piece[T] and exactly matches the expected word/punctuation pieces.",
+      allowedMistakes: ["Dropping punctuation", "Connecting raw_text directly into the contract", "Skipping PieceBuffer so the implementation path cannot be certified"]
+    },
+    caseStudy: {
+      title: "Create a valid BoundarySplitter",
+      narrative:
+        "BoundarySplitter is the first text component. It does not tokenize into IDs yet; it only turns one raw sentence into an ordered T-axis list of string pieces.",
+      visibleInputFocus: "Task: Split the sentence into string_piece[T] without dropping punctuation.",
+      dataPanels: [
+        { type: "text_batch", title: "Task Brief", inputKey: "case", focusText: "Task: Split the sentence into string_piece[T] without dropping punctuation." },
+        { type: "text_batch", title: "Raw text", inputKey: "texts" },
+        { type: "tensor_preview", title: "Expected pieces", inputKey: "expected" }
+      ],
+      playerQuestion: "Does every word and punctuation mark become a separate ordered piece?",
+      successObservation: "The output is string_piece[T=4] and the sequence is tokenizers | are | useful | !."
+    },
+    debrief: {
+      completeTitle: "BoundarySplitter certified",
+      fixedProblem: "Raw text now has a reusable graph-built boundary splitter.",
+      learned: "Text components also need behavior certification: dtype and T shape are not enough unless the actual pieces are correct.",
+      nextUse: "Merge rules and tokenizer sockets will build on these ordered pieces."
     }
   };
 }
@@ -554,6 +727,98 @@ function linearBuildLevel(): LevelSpec {
       fixedProblem: "Linear is now a graph-built component, not a prebuilt shortcut.",
       learned: "Available components can preserve their internal graph while exposing a clean interface.",
       nextUse: "The same component system can support upgrades, certification variants, and Expand Inside."
+    }
+  };
+}
+
+function qkScoreLevel(): LevelSpec {
+  return {
+    id: "mvp01_ch4_03_qk_score",
+    title: "Chapter 4-3 QK Score",
+    mode: "graph_challenge",
+    chapter: "Chapter 4: Attention Core",
+    goal: "Build QKScore from K transpose plus certified MatMulGate, then prove the score board numerically.",
+    modulePalette: ["InputTensor", "TransposeSwitch", "component.matmul_gate.v1", "ScoreBoard", "CellTrace", "ReferenceChecker"],
+    initialGraph: createMvp01QkScoreInitialGraph(),
+    targetGraph: createMvp01QkScoreSolutionGraph(),
+    constraints: { maxNodes: 7, maxEdges: 8, forbiddenModules: ["component.qk_score.v1"] },
+    visibleTests: [
+      shapeAndReferenceCase(
+        "qk_score_visible",
+        "K transpose creates token-to-token score board",
+        {
+          case: textBatch([
+            "Concept: QKScore compares every query token with every key token.",
+            "Task: Transpose only K's last two axes, then compute Q @ K^T.",
+            "Check: The score board must be float32[B,H,T,T] and match the reference."
+          ]),
+          q: runtimeValue(qkVisibleQ),
+          k: runtimeValue(qkVisibleK),
+          reference: runtimeValue(qkVisibleReference)
+        },
+        "score_board",
+        ["B", "H", "T", "T"],
+        [1, 1, 3, 3],
+        qkScoreStructureAssertions()
+      )
+    ],
+    hiddenTests: [
+      shapeAndReferenceCase(
+        "qk_score_hidden_equal_td",
+        "T==D still requires a real K transpose",
+        { q: runtimeValue(qkHiddenEqualQ), k: runtimeValue(qkHiddenEqualK), reference: runtimeValue(qkHiddenEqualReference) },
+        "score_board",
+        ["B", "H", "T", "T"],
+        [1, 1, 3, 3],
+        qkScoreStructureAssertions()
+      ),
+      shapeAndReferenceCase(
+        "qk_score_hidden_carry_axes",
+        "B/H carrier axes survive the QK score",
+        { q: runtimeValue(qkHiddenCarryQ), k: runtimeValue(qkHiddenCarryK), reference: runtimeValue(qkHiddenCarryReference) },
+        "score_board",
+        ["B", "H", "T", "T"],
+        [2, 2, 4, 4],
+        qkScoreStructureAssertions()
+      )
+    ],
+    certification: qkScoreCertification(),
+    onboarding: {
+      story: "Attention scores are not Q @ K directly; K must present feature D as the inner dimension and key token T as the output column.",
+      startingProblem: "Q and K sources are ready, but the score board cannot be certified until K is transposed before MatMul.",
+      firstAction: "Add TransposeSwitch, certified MatMulGate, ScoreBoard, CellTrace, and ReferenceChecker. Route K through the transpose before qk_matmul.right.",
+      targetRecipe: [
+        "q.out -> qk_matmul.left",
+        "k.out -> k_transpose.x",
+        "k_transpose.out -> qk_matmul.right",
+        "qk_matmul.out -> score_board.scores",
+        "score_board.out -> reference.x",
+        "score_board.out -> cell_trace.scores",
+        "q.out -> cell_trace.q",
+        "k.out -> cell_trace.k"
+      ],
+      winCondition: "score_board and cell_trace output [B,H,T,T] and allclose to the reference.",
+      allowedMistakes: ["Connecting K directly to MatMul", "Transposing Q instead of K", "Dropping B/H carrier axes"]
+    },
+    caseStudy: {
+      title: "Create a valid QKScore",
+      narrative:
+        "QKScore builds an attention score board. Each output cell compares one query token row against one key token row by dotting over D.",
+      visibleInputFocus: "Task: Transpose only K's last two axes, then compute Q @ K^T.",
+      dataPanels: [
+        { type: "text_batch", title: "Task Brief", inputKey: "case", focusText: "Task: Transpose only K's last two axes, then compute Q @ K^T." },
+        { type: "tensor_preview", title: "Query Q[B,H,T,D]", inputKey: "q", maxRows: 4, maxCols: 6 },
+        { type: "tensor_preview", title: "Key K[B,H,T,D]", inputKey: "k", maxRows: 4, maxCols: 6 },
+        { type: "tensor_preview", title: "Expected scores[B,H,T,T]", inputKey: "reference", maxRows: 4, maxCols: 6 }
+      ],
+      playerQuestion: "Did K become [B,H,D,T] before MatMul while Q stayed [B,H,T,D]?",
+      successObservation: "The score board is float32[B,H,T,T] and matches Q @ K^T."
+    },
+    debrief: {
+      completeTitle: "QKScore certified",
+      fixedProblem: "The attention score board now uses the correct K transpose path and certified MatMulGate.",
+      learned: "QKScore certification needs a numerical hidden trap: when T==D, shape alone can look plausible while the score cells are wrong.",
+      nextUse: "Scale, mask, softmax, and weighted value sum will consume this score board."
     }
   };
 }
@@ -841,6 +1106,69 @@ function vectorCertification(): LevelCertificationSpec {
   };
 }
 
+function dotProductCertification(): LevelCertificationSpec {
+  return {
+    title: "Certification variant",
+    narrative: "The current task checks one dot product. Certification changes the C width and data while requiring the same multiply-then-sum graph.",
+    publicVariantLabel: "Public variant",
+    publicVariantDescription: "Choose C width and a data seed. The system generates compatible query/key vectors.",
+    systemVariantDescription: "System variants mutate C again and still require numeric allclose, not just scalar shape.",
+    controls: [cWidthControl(5), seedControl("dot-public")],
+    makePublicTests: (_graph, values) => {
+      const c = controlInteger(values, "c", 5);
+      const seed = controlString(values, "seed", "dot-public");
+      const query = seededTensor([c], ["C"], `${seed}-query`);
+      const key = seededTensor([c], ["C"], `${seed}-key`);
+      const reference = dotProduct(query, key);
+      return [
+        {
+          testCase: shapeAndReferenceCase(
+            "dot_product_public_variant",
+            "public certification: generated C-width dot product",
+            { query: runtimeValue(query), key: runtimeValue(key), reference: runtimeValue(reference) },
+            "dot_out",
+            [],
+            [],
+            dotProductStructureAssertions()
+          )
+        }
+      ];
+    }
+  };
+}
+
+function splitterCertification(): LevelCertificationSpec {
+  return {
+    title: "Certification variant",
+    narrative: "The current task checks one sentence. Certification changes the raw text while requiring the same boundary split graph and exact pieces.",
+    publicVariantLabel: "Public variant",
+    publicVariantDescription: "Choose a compact text fixture. The system supplies raw text and expected pieces so you do not handwrite arrays.",
+    systemVariantDescription: "System variants keep punctuation and word boundaries private while checking the same string_piece[T] contract.",
+    controls: [
+      {
+        id: "text_case",
+        label: "Text fixture",
+        kind: "select",
+        defaultValue: "shape-buffer",
+        help: "Changes the raw text case while keeping the BoundarySplitter contract.",
+        options: [
+          { value: "shape-buffer", label: "shape, token buffer" },
+          { value: "we-train", label: "we train llm." },
+          { value: "tokenizers", label: "tokenizers are useful!" }
+        ]
+      }
+    ],
+    makePublicTests: (_graph, values) => {
+      const fixture = splitterFixture(controlString(values, "text_case", "shape-buffer"));
+      return [
+        {
+          testCase: splitterCase("splitter_public_variant", "public certification: text fixture split", fixture.text, fixture.pieces)
+        }
+      ];
+    }
+  };
+}
+
 function matrixCertification(): LevelCertificationSpec {
   return {
     title: "Certification variant",
@@ -968,6 +1296,40 @@ function linearCertification(): LevelCertificationSpec {
   };
 }
 
+function qkScoreCertification(): LevelCertificationSpec {
+  return {
+    title: "Certification variant",
+    narrative: "The current task checks one QK score board. Certification mutates B/H/T/D and seed while requiring the same K-transpose implementation path.",
+    publicVariantLabel: "Public variant",
+    publicVariantDescription: "Choose B/H/T/D and a seed. The system generates compatible Q/K tensors and reference scores.",
+    systemVariantDescription: "System variants include equal T/D traps and carrier-axis mutations.",
+    controls: [bSizeControl(1), hSizeControl(2), tLengthControl(3), dWidthControl(3), seedControl("qk-public")],
+    makePublicTests: (_graph, values) => {
+      const b = controlInteger(values, "b", 1);
+      const h = controlInteger(values, "h", 2);
+      const t = controlInteger(values, "t", 3);
+      const d = controlInteger(values, "d", 3);
+      const seed = controlString(values, "seed", "qk-public");
+      const q = seededTensor([b, h, t, d], ["B", "H", "T", "D"], `${seed}-q`);
+      const k = seededTensor([b, h, t, d], ["B", "H", "T", "D"], `${seed}-k`);
+      const reference = referenceQKScores(q, k);
+      return [
+        {
+          testCase: shapeAndReferenceCase(
+            "qk_score_public_variant",
+            "public certification: generated QK score board",
+            { q: runtimeValue(q), k: runtimeValue(k), reference: runtimeValue(reference) },
+            "score_board",
+            ["B", "H", "T", "T"],
+            [b, h, t, t],
+            qkScoreStructureAssertions()
+          )
+        }
+      ];
+    }
+  };
+}
+
 function cWidthControl(defaultValue: number) {
   return { id: "c", label: "C width", kind: "integer" as const, defaultValue, min: 2, max: 6, step: 1, help: "Feature/channel width used by the generated certification variant." };
 }
@@ -978,6 +1340,14 @@ function bSizeControl(defaultValue: number) {
 
 function tLengthControl(defaultValue: number) {
   return { id: "t", label: "T length", kind: "integer" as const, defaultValue, min: 1, max: 4, step: 1, help: "Token length for the generated certification variant." };
+}
+
+function hSizeControl(defaultValue: number) {
+  return { id: "h", label: "H heads", kind: "integer" as const, defaultValue, min: 1, max: 3, step: 1, help: "Attention head count for the generated certification variant." };
+}
+
+function dWidthControl(defaultValue: number) {
+  return { id: "d", label: "D width", kind: "integer" as const, defaultValue, min: 2, max: 5, step: 1, help: "Feature width reduced inside QK dot products." };
 }
 
 function oWidthControl(defaultValue: number) {
@@ -1082,6 +1452,38 @@ export function createMvp01VectorInitialGraph(): GraphSpec {
   };
 }
 
+export function createMvp01DotProductSolutionGraph(): GraphSpec {
+  return {
+    levelId: "mvp01_ch0_04_dot_product",
+    version: 1,
+    nodes: [
+      { id: "query", moduleId: "InputTensor", params: { inputKey: "query", shape: [3], axes: ["C"] }, position: { x: 90, y: 130 } },
+      { id: "key", moduleId: "InputTensor", params: { inputKey: "key", shape: [3], axes: ["C"] }, position: { x: 90, y: 310 } },
+      { id: "multiply", moduleId: "ElementwiseMultiply", params: {}, position: { x: 370, y: 220 } },
+      { id: "sum", moduleId: "SumReduce", params: { axis: "C" }, position: { x: 640, y: 220 } },
+      { id: "dot_out", moduleId: "OutputContractGate", params: { expectedAxes: [] }, position: { x: 910, y: 220 } },
+      { id: "reference", moduleId: "ReferenceChecker", params: { referenceKey: "reference" }, position: { x: 1180, y: 220 } }
+    ],
+    edges: [
+      { id: "e_query_multiply", from: { nodeId: "query", portId: "out" }, to: { nodeId: "multiply", portId: "left" } },
+      { id: "e_key_multiply", from: { nodeId: "key", portId: "out" }, to: { nodeId: "multiply", portId: "right" } },
+      { id: "e_multiply_sum", from: { nodeId: "multiply", portId: "out" }, to: { nodeId: "sum", portId: "x" } },
+      { id: "e_sum_out", from: { nodeId: "sum", portId: "out" }, to: { nodeId: "dot_out", portId: "x" } },
+      { id: "e_dot_ref", from: { nodeId: "dot_out", portId: "out" }, to: { nodeId: "reference", portId: "x" } }
+    ],
+    outputNodes: ["dot_out", "reference"]
+  };
+}
+
+export function createMvp01DotProductInitialGraph(): GraphSpec {
+  const graph = createMvp01DotProductSolutionGraph();
+  return {
+    ...graph,
+    nodes: graph.nodes.filter((node) => !["multiply", "sum"].includes(node.id)),
+    edges: []
+  };
+}
+
 export function createMvp01MatrixSolutionGraph(): GraphSpec {
   return {
     levelId: "mvp01_3_matrix_struct",
@@ -1138,6 +1540,39 @@ export function createMvp01TensorInitialGraph(): GraphSpec {
   return {
     ...graph,
     nodes: graph.nodes.filter((node) => node.id !== "tensor"),
+    edges: []
+  };
+}
+
+export function createMvp01SplitterSolutionGraph(): GraphSpec {
+  return {
+    levelId: "mvp01_ch1_01_splitter",
+    version: 1,
+    nodes: [
+      { id: "text", moduleId: "TextInput", params: { inputKey: "texts" }, position: { x: 90, y: 220 } },
+      { id: "splitter", moduleId: "BoundarySplitter", params: { policy: "word", preservePunctuation: true, expectedT: 4 }, position: { x: 360, y: 220 } },
+      { id: "piece_buffer", moduleId: "PieceBuffer", params: { maxPieces: 12 }, position: { x: 640, y: 220 } },
+      {
+        id: "pieces_out",
+        moduleId: "TypeContractGate",
+        params: { expectedDType: "string_piece", expectedDims: [4], expectedAxes: ["T"] },
+        position: { x: 920, y: 220 }
+      }
+    ],
+    edges: [
+      { id: "e_text_splitter", from: { nodeId: "text", portId: "out" }, to: { nodeId: "splitter", portId: "text" } },
+      { id: "e_splitter_buffer", from: { nodeId: "splitter", portId: "pieces" }, to: { nodeId: "piece_buffer", portId: "pieces" } },
+      { id: "e_buffer_out", from: { nodeId: "piece_buffer", portId: "out" }, to: { nodeId: "pieces_out", portId: "x" } }
+    ],
+    outputNodes: ["pieces_out"]
+  };
+}
+
+export function createMvp01SplitterInitialGraph(): GraphSpec {
+  const graph = createMvp01SplitterSolutionGraph();
+  return {
+    ...graph,
+    nodes: graph.nodes.filter((node) => !["splitter", "piece_buffer"].includes(node.id)),
     edges: []
   };
 }
@@ -1209,13 +1644,50 @@ export function createMvp01LinearInitialGraph(): GraphSpec {
   };
 }
 
+export function createMvp01QkScoreSolutionGraph(): GraphSpec {
+  return {
+    levelId: "mvp01_ch4_03_qk_score",
+    version: 1,
+    nodes: [
+      { id: "q", moduleId: "InputTensor", params: { inputKey: "q", shape: [1, 1, 3, 2], axes: ["B", "H", "T", "D"] }, position: { x: 80, y: 130 } },
+      { id: "k", moduleId: "InputTensor", params: { inputKey: "k", shape: [1, 1, 3, 2], axes: ["B", "H", "T", "D"] }, position: { x: 80, y: 340 } },
+      { id: "k_transpose", moduleId: "TransposeSwitch", params: { axisA: -2, axisB: -1 }, position: { x: 360, y: 340 } },
+      { id: "qk_matmul", moduleId: "component.matmul_gate.v1", params: {}, position: { x: 640, y: 230 } },
+      { id: "score_board", moduleId: "ScoreBoard", params: { expectedAxes: ["B", "H", "T", "T"] }, position: { x: 910, y: 230 } },
+      { id: "cell_trace", moduleId: "CellTrace", params: { b: 0, h: 0, i: 0, j: 1 }, position: { x: 1170, y: 110 } },
+      { id: "reference", moduleId: "ReferenceChecker", params: { referenceKey: "reference" }, position: { x: 1170, y: 330 } }
+    ],
+    edges: [
+      { id: "e_q_matmul", from: { nodeId: "q", portId: "out" }, to: { nodeId: "qk_matmul", portId: "left" } },
+      { id: "e_k_transpose", from: { nodeId: "k", portId: "out" }, to: { nodeId: "k_transpose", portId: "x" } },
+      { id: "e_transpose_matmul", from: { nodeId: "k_transpose", portId: "out" }, to: { nodeId: "qk_matmul", portId: "right" } },
+      { id: "e_matmul_score", from: { nodeId: "qk_matmul", portId: "out" }, to: { nodeId: "score_board", portId: "scores" } },
+      { id: "e_score_reference", from: { nodeId: "score_board", portId: "out" }, to: { nodeId: "reference", portId: "x" } },
+      { id: "e_score_trace", from: { nodeId: "score_board", portId: "out" }, to: { nodeId: "cell_trace", portId: "scores" } },
+      { id: "e_q_trace", from: { nodeId: "q", portId: "out" }, to: { nodeId: "cell_trace", portId: "q" } },
+      { id: "e_k_trace", from: { nodeId: "k", portId: "out" }, to: { nodeId: "cell_trace", portId: "k" } }
+    ],
+    outputNodes: ["score_board", "cell_trace", "reference"]
+  };
+}
+
+export function createMvp01QkScoreInitialGraph(): GraphSpec {
+  const graph = createMvp01QkScoreSolutionGraph();
+  return {
+    ...graph,
+    nodes: graph.nodes.filter((node) => !["k_transpose", "qk_matmul", "score_board", "cell_trace", "reference"].includes(node.id)),
+    edges: []
+  };
+}
+
 function shapeAndReferenceCase(
   id: string,
   title: string,
   inputs: Record<string, RuntimeValue>,
   outputNodeId: string,
   expectedAxes: AxisName[],
-  expectedDims: number[]
+  expectedDims: number[],
+  extraAssertions: TestAssertion[] = []
 ): TestCase {
   return {
     id,
@@ -1224,10 +1696,65 @@ function shapeAndReferenceCase(
     inputSeed: id,
     inputs,
     assertions: [
+      ...extraAssertions,
       { type: "shape", nodeId: outputNodeId, expectedAxes, expectedDims },
       { type: "allclose", nodeId: outputNodeId, referenceNodeId: "reference", atol: 1e-5 }
     ]
   };
+}
+
+function splitterCase(id: string, title: string, text: string, expected: string[], caseLines?: string[]): TestCase {
+  return {
+    id,
+    title,
+    visibility: id.includes("hidden") ? "hidden" : "visible",
+    inputSeed: id,
+    inputs: {
+      ...(caseLines ? { case: textBatch(caseLines) } : {}),
+      texts: rawText(text),
+      expected: stringPieces(expected)
+    },
+    assertions: [
+      ...splitterStructureAssertions(),
+      { type: "dtype", nodeId: "pieces_out", expected: "string_piece" },
+      { type: "shape", nodeId: "pieces_out", expectedAxes: ["T"], expectedDims: [expected.length] },
+      { type: "pieces_equal", nodeId: "pieces_out", expected }
+    ]
+  };
+}
+
+function dotProductStructureAssertions(): TestAssertion[] {
+  return [
+    { type: "requires_node", nodeId: "multiply", moduleId: "ElementwiseMultiply" },
+    { type: "requires_node", nodeId: "sum", moduleId: "SumReduce" },
+    { type: "requires_edge_path", from: "query", through: "multiply", to: "sum" },
+    { type: "requires_edge_path", from: "key", through: "multiply", to: "sum" },
+    { type: "requires_edge_path", from: "sum", through: "dot_out", to: "reference" }
+  ];
+}
+
+function splitterStructureAssertions(): TestAssertion[] {
+  return [
+    { type: "requires_node", nodeId: "splitter", moduleId: "BoundarySplitter" },
+    { type: "requires_node", nodeId: "piece_buffer", moduleId: "PieceBuffer" },
+    { type: "requires_edge_path", from: "text", through: "splitter", to: "piece_buffer" },
+    { type: "requires_edge_path", from: "splitter", through: "piece_buffer", to: "pieces_out" }
+  ];
+}
+
+function qkScoreStructureAssertions(): TestAssertion[] {
+  return [
+    { type: "requires_node", nodeId: "k_transpose", moduleId: "TransposeSwitch" },
+    { type: "requires_node", nodeId: "qk_matmul", moduleId: "component.matmul_gate.v1" },
+    { type: "requires_node", nodeId: "score_board", moduleId: "ScoreBoard" },
+    { type: "requires_node", nodeId: "cell_trace", moduleId: "CellTrace" },
+    { type: "requires_edge_path", from: "k", through: "k_transpose", to: "qk_matmul" },
+    { type: "requires_edge_path", from: "q", through: "qk_matmul", to: "score_board" },
+    { type: "requires_edge_path", from: "qk_matmul", through: "score_board", to: "reference" },
+    { type: "requires_edge_path", from: "score_board", through: "cell_trace", to: "cell_trace" },
+    { type: "requires_edge_path", from: "q", through: "cell_trace", to: "cell_trace" },
+    { type: "requires_edge_path", from: "k", through: "cell_trace", to: "cell_trace" }
+  ];
 }
 
 function shapeContractCase(
@@ -1248,12 +1775,41 @@ function shapeContractCase(
   };
 }
 
+function splitterFixture(id: string) {
+  const fixtures: Record<string, { text: string; pieces: string[] }> = {
+    "shape-buffer": { text: "shape, token buffer", pieces: ["shape", ",", "token", "buffer"] },
+    "we-train": { text: "we train llm.", pieces: ["we", "train", "llm", "."] },
+    tokenizers: { text: "tokenizers are useful!", pieces: ["tokenizers", "are", "useful", "!"] }
+  };
+  return fixtures[id] ?? fixtures["shape-buffer"];
+}
+
+function rawText(text: string): RuntimeValue {
+  return { dtype: "raw_text", data: text, meta: { batch: [text] } };
+}
+
+function stringPieces(pieces: string[]): RuntimeValue {
+  return {
+    dtype: "string_piece",
+    shape: { dtype: "string_piece", dims: [pieces.length], axes: ["T"] },
+    data: pieces
+  };
+}
+
 function scalar(value: number) {
   return makeTensor("float32", [], [], [value]);
 }
 
 function vector(values: number[]) {
   return makeTensor("float32", [values.length], ["C"], values);
+}
+
+function dotProduct(left: TinyTensor, right: TinyTensor) {
+  if (left.dims.length !== 1 || right.dims.length !== 1 || left.dims[0] !== right.dims[0]) {
+    throw new Error("dotProduct requires two same-length vector[C] tensors");
+  }
+  const sum = left.data.reduce((total, value, index) => total + value * right.data[index], 0);
+  return makeTensor("float32", [], [], [Number(sum.toFixed(6))]);
 }
 
 function matrixFromColumns(...columns: TinyTensor[]) {

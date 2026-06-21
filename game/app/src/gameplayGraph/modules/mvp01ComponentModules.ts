@@ -1,6 +1,6 @@
 import type { AxisName, DType, ModuleDef, RuntimeError, RuntimeValue, TensorShape } from "../types";
 import { makeTensor, sampleValues, shapeOf, type TinyTensor } from "../runtime/tinyTensor";
-import { mvp01CourseInputCount, mvp01CourseLevels, type Mvp01CourseLevelDef } from "../../mvp01/mvp01CourseCatalog";
+import { mvp01CourseInputCount, type Mvp01CourseLevelDef } from "../../mvp01/mvp01CourseCatalog";
 import { matMulGateModule } from "./tensorModules";
 
 function tensorValue(tensor: TinyTensor, meta?: Record<string, unknown>): RuntimeValue {
@@ -204,10 +204,7 @@ export const typeContractGateModule: ModuleDef = {
   }
 };
 
-const existingPackedComponentIds = new Set(["component.scalar_cell.v1", "component.vector_rail.v1", "component.matrix_struct.v1", "component.tensor_box.v1", "component.matmul_gate.v1"]);
-const courseComponentModules = mvp01CourseLevels
-  .filter((level) => level.buildable && !existingPackedComponentIds.has(level.componentId))
-  .map(createCourseComponentModule);
+const courseComponentModules: ModuleDef[] = [];
 
 export const mvp01ComponentModules = [
   float32LiteralModule,

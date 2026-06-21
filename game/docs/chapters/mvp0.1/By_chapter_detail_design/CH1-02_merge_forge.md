@@ -1,45 +1,116 @@
-# Chapter 1-2 Merge Forge：MergeRules
+# Chapter 1-2 Merge Forge
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 1 Text → Token Pipeline
-- 构建组件：`MergeRules`
-- 输入来源：adjacent pair merge
-- 学习目标：subword 的压缩思想
-- 后续用途：BPE-like tokenizer
+MergeForge 把 BoundarySplitter 产出的细粒度 `string_piece[T]` 合并成更稳定的 `token_piece[T]`。它是 BPE-like tokenizer 的核心压缩步骤。
 
-## 2. 当前案例
+本关要让玩家看到：
 
-MergeRules 把「adjacent pair merge」变成可复用的图组件。
+```text
+["token", "izer", "s", "are", "use", "ful", "!"]
+-> ["tokenizers", "are", "useful", "!"]
+```
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 MergeRules 连接到合约探针。
+合并不是随便拼接字符串，而是按照规则表对相邻 pieces 做有序 merge。
 
-案例数据输出合约：`token_piece[T]`，示例 shape 为 `[6]`。
+## 2. 前置组件
 
-## 3. 玩家操作
+- `component.splitter.v1`
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `MergeRules` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+本关不允许使用 `component.merge_forge.v1`。玩家要搭出 pair scan -> rule lookup -> apply merge -> output buffer 的内部结构。
 
-## 4. 挑战设计
+## 3. 建议内部节点
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+- `PieceCaseSource`：提供 `string_piece[T]`。
+- `AdjacentPairScanner`：扫描相邻 pair。
+- `MergeRuleTable`：保存允许合并的 pair，例如 `token + izer -> tokenizer`。
+- `MergeApplyGate`：按规则应用合并。
+- `PieceBuffer`：输出 `token_piece[T]`。
+- `TypeContractGate`：检查 dtype/axis。
 
-## 5. 认证变体
+## 4. 具体案例
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+Visible case:
 
-- dtype 必须保持：`token_piece`
-- axis 必须保持：`[T]`
-- shape 可以随认证宽度变化，但语义不变。
+```text
+input pieces:
+["token", "izer", "s", "are", "use", "ful", "!"]
 
-## 6. 通过标准
+merge rules:
+token + izer -> tokenizer
+tokenizer + s -> tokenizers
+use + ful -> useful
 
-当前任务通过：输出必须保持 dtype=token_piece，轴为 [T]。
+expected:
+["tokenizers", "are", "useful", "!"]
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+输出合约：
+
+```text
+dtype = token_piece
+axes  = [T]
+dims  = [4]
+```
+
+## 5. 初始错误图
+
+只给出 pieces 输入、合约和 reference。缺少 pair scanner、rule table 和 merge apply。
+
+玩家必须搭出合并过程，而不是拖一个 `MergeRules` 答案组件。
+
+## 6. 目标内部实现
+
+```text
+pieces.out -> pair_scanner.pieces
+pair_scanner.pairs -> rule_table.pairs
+rule_table.matches -> merge_apply.matches
+pieces.out -> merge_apply.pieces
+merge_apply.out -> token_buffer.pieces
+token_buffer.out -> merge_out.x
+merge_out.out -> reference.x
+```
+
+## 7. 错误路径
+
+- 只做 word split 不做 merge：会得到 7 个 pieces，token budget 变差。
+- 只应用一轮 merge：`token + izer` 后没有继续合并 `tokenizer + s`。
+- 把所有字母片段强行拼成一个 token：`are` 和 `useful` 边界丢失。
+- 丢掉标点：`!` 必须保留为独立 token_piece。
+
+## 8. 测试设计
+
+当前任务：
+
+- 结构断言：必须经过 pair scanner、rule table、merge apply。
+- 合约断言：输出是 `token_piece[T=4]`。
+- 行为断言：pieces 精确等于 `["tokenizers", "are", "useful", "!"]`。
+
+Hidden cases：
+
+- `["train", "ing", "token", "izer", "s"] -> ["training", "tokenizers"]`
+- 没有规则的 piece 必须原样保留。
+
+## 9. 认证变体
+
+公开认证不让玩家手写数组。玩家选择规则集：
+
+- tiny tokenizer rules
+- training suffix rules
+- no-merge baseline
+
+系统生成 input pieces 和 expected output。认证只改变输入和规则表数据，不改变玩家内部图。
+
+## 10. 认证后接口
+
+```text
+component.merge_forge.v1
+input:
+  pieces: string_piece[T]
+output:
+  pieces: token_piece[T']
+```
+
+## 11. 后续调用
+
+VocabLookup 会把 `token_piece[T]` 映射到 integer IDs。MergeForge 如果只检查 dtype/shape，后续 vocab 会因为 pieces 表面不稳定而失败。

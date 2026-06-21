@@ -1,4 +1,4 @@
-import type { AxisName, GraphExecutionResult, RuntimeValue, TestAssertion, TestResult, TestVisibility } from "../types";
+import type { AxisName, GraphSpec, GraphExecutionResult, RuntimeValue, TestAssertion, TestResult, TestVisibility } from "../types";
 import { valueKey } from "../types";
 import { allclose, makeTensor, sameAxes, sameDims, type TinyTensor } from "./tinyTensor";
 
@@ -6,8 +6,16 @@ export function evaluateAssertion(
   assertion: TestAssertion,
   execution: GraphExecutionResult,
   visibility: TestVisibility,
-  id: string
+  id: string,
+  graph?: GraphSpec
 ): TestResult {
+  if (assertion.type === "requires_node") {
+    return assertRequiresNode(assertion.nodeId, assertion.moduleId, graph, visibility, id, assertion);
+  }
+  if (assertion.type === "requires_edge_path") {
+    return assertRequiresEdgePath(assertion.from, assertion.through, assertion.to, graph, visibility, id, assertion);
+  }
+
   if (execution.error) {
     return {
       id,
@@ -39,6 +47,8 @@ export function evaluateAssertion(
       return assertAllclose(assertion.nodeId, assertion.referenceNodeId, assertion.atol, execution, visibility, id, assertion);
     case "pieces_non_empty":
       return assertPiecesNonEmpty(assertion.nodeId, execution, visibility, id, assertion);
+    case "pieces_equal":
+      return assertPiecesEqual(assertion.nodeId, assertion.expected, execution, visibility, id, assertion);
     case "no_oov":
       return assertNoOov(assertion.nodeId, execution, visibility, id, assertion);
     case "tokens_include":
@@ -60,6 +70,79 @@ export function evaluateAssertion(
         assertion
       };
   }
+}
+
+function assertRequiresNode(
+  nodeId: string,
+  moduleId: string | undefined,
+  graph: GraphSpec | undefined,
+  visibility: TestVisibility,
+  id: string,
+  assertion: TestAssertion
+): TestResult {
+  const node = graph?.nodes.find((item) => item.id === nodeId);
+  const passed = Boolean(node) && (!moduleId || node?.moduleId === moduleId);
+  return {
+    id,
+    visibility,
+    status: passed ? "pass" : "fail",
+    message: passed ? `required node ${nodeId} is present` : `Required node ${nodeId}${moduleId ? `:${moduleId}` : ""} is missing`,
+    firstBadNodeId: passed ? undefined : nodeId,
+    assertion,
+    diagnostic: passed
+      ? undefined
+      : {
+          errorType: "assertion_failed",
+          expected: { nodeId, moduleId },
+          received: node ? { nodeId: node.id, moduleId: node.moduleId } : "missing",
+          possibleCause: "The graph bypasses the required implementation node.",
+          suggestedProbe: "Use the required primitive/component instead of wiring inputs directly to the contract."
+        }
+  };
+}
+
+function assertRequiresEdgePath(
+  from: string,
+  through: string,
+  to: string,
+  graph: GraphSpec | undefined,
+  visibility: TestVisibility,
+  id: string,
+  assertion: TestAssertion
+): TestResult {
+  const passed = Boolean(graph && hasDirectedPath(graph, from, through) && hasDirectedPath(graph, through, to));
+  return {
+    id,
+    visibility,
+    status: passed ? "pass" : "fail",
+    message: passed ? `path ${from} -> ${through} -> ${to} exists` : `Missing required path ${from} -> ${through} -> ${to}`,
+    firstBadNodeId: passed ? undefined : through,
+    assertion,
+    diagnostic: passed
+      ? undefined
+      : {
+          errorType: "assertion_failed",
+          expected: { from, through, to },
+          received: graph?.edges.map((edge) => `${edge.from.nodeId}->${edge.to.nodeId}`) ?? "missing graph",
+          possibleCause: "The output contract can receive data without the intended implementation graph.",
+          suggestedProbe: "Trace the data path and make sure it flows through the required component or primitive."
+        }
+  };
+}
+
+function hasDirectedPath(graph: GraphSpec, from: string, to: string) {
+  if (from === to) return true;
+  const seen = new Set<string>();
+  const queue = [from];
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    const nextNodes = graph.edges.filter((edge) => edge.from.nodeId === current).map((edge) => edge.to.nodeId);
+    if (nextNodes.includes(to)) return true;
+    queue.push(...nextNodes.filter((nodeId) => !seen.has(nodeId)));
+  }
+  return false;
 }
 
 function assertPiecesNonEmpty(
@@ -87,6 +170,37 @@ function assertPiecesNonEmpty(
           received: pieces,
           possibleCause: "Text did not reach TokenizerSocket or the split policy dropped all content.",
           suggestedProbe: "Inspect TokenizerSocket pieces output and preservePunctuation policy."
+        }
+  };
+}
+
+function assertPiecesEqual(
+  nodeId: string,
+  expected: string[],
+  execution: GraphExecutionResult,
+  visibility: TestVisibility,
+  id: string,
+  assertion: TestAssertion
+): TestResult {
+  const value = outputValue(execution, nodeId);
+  if (!value) return missingValue(id, visibility, nodeId, assertion);
+  const pieces = Array.isArray(value.data) ? value.data : [];
+  const passed = pieces.length === expected.length && pieces.every((piece, index) => piece === expected[index]);
+  return {
+    id,
+    visibility,
+    status: passed ? "pass" : "fail",
+    message: passed ? `pieces matched: ${expected.join(" | ")}` : "Pieces differ from the expected split",
+    firstBadNodeId: passed ? undefined : nodeId,
+    assertion,
+    diagnostic: passed
+      ? undefined
+      : {
+          errorType: "assertion_failed",
+          expected,
+          received: pieces,
+          possibleCause: "The boundary split policy kept, dropped, or merged a text piece incorrectly.",
+          suggestedProbe: "Inspect BoundarySplitter output pieces and punctuation settings."
         }
   };
 }

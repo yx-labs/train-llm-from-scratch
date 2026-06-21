@@ -1,45 +1,135 @@
-# Chapter 3-2 Linear Module：Linear
+# Chapter 3-2 Linear Module
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 3 Linear、Activation、MLP
-- 构建组件：`Linear`
-- 输入来源：MatMul + Bias
-- 学习目标：封装常用投影层
-- 后续用途：所有模型层
+Linear 是第一个由多个已认证组件组合出的完整层：
 
-## 2. 当前案例
+```text
+Linear(hidden, weight, bias) = MatMul(hidden, weight) + bias
+```
 
-Linear 把「MatMul + Bias」变成可复用的图组件。
+本关不是拖一个 Linear 节点，而是把 `component.matmul_gate.v1`、`BroadcastRail` 和 `AddGate` 组合成可认证的 `component.linear.v1`。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Linear 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,O]`，示例 shape 为 `[2,6,5]`。
+- `component.matmul_gate.v1`
 
-## 3. 玩家操作
+本关不允许使用预制 Linear。MatMulGate 必须来自组件库，证明玩家之前构建的资产可以被复用。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Linear` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `component.matmul_gate.v1`：执行 `hidden[B,T,C] @ weight[C,O]`。
+- `BroadcastRail`：把 `bias[O]` 扩展到 `matmul[B,T,O]` 的 B/T 位置。
+- `AddGate`：把 matmul 输出和 broadcast bias 相加。
+- `OutputContractGate` + `ReferenceChecker`：证明 shape 和数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case 使用前面已经出现过的 hidden 和 weight：
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=2,C=3]
+weight[C=3,O=2]
+bias[O=2] = [0.2, -0.1]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,O]`
-- shape 可以随认证宽度变化，但语义不变。
+MatMul 结果：
 
-## 6. 通过标准
+```text
+matmul[token0] = [-1.0, 1.4]
+matmul[token1] = [ 2.55, 1.5]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,O]。
+加 bias 后：
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+linear[token0] = [-0.8, 1.3]
+linear[token1] = [ 2.75, 1.4]
+```
+
+输出合约：
+
+```text
+float32[B,T,O] = [1,2,2]
+```
+
+## 5. 初始错误图
+
+画布给出：
+
+- `hidden: InputTensor`
+- `weight: WeightPlate`
+- `bias: InputTensor`
+- `linear_out: OutputContractGate`
+- `reference: ReferenceChecker`
+
+缺少 matmul、broadcast、add 三个内部实现节点。
+
+## 6. 目标内部实现
+
+```text
+hidden.out -> matmul.left
+weight.out -> matmul.right
+matmul.out -> bias_broadcast.target
+bias.out -> bias_broadcast.small
+matmul.out -> linear_add.left
+bias_broadcast.out -> linear_add.right
+linear_add.out -> linear_out.x
+linear_out.out -> reference.x
+```
+
+其中：
+
+- `matmul.moduleId = component.matmul_gate.v1`
+- `bias_broadcast.moduleId = BroadcastRail`
+- `bias_broadcast.alignAxes = [O]`
+- `linear_add.moduleId = AddGate`
+
+## 7. 玩家操作
+
+1. 拖入 `MatMulGate v1`。
+2. 拖入 `BroadcastRail`。
+3. 拖入 `AddGate`。
+4. 先完成 matmul，再把 bias 按 O 轴 broadcast 到 matmul 输出形状。
+5. 将 matmul 和 broadcast bias 输入 AddGate。
+6. 将 AddGate 输出接入合约和 reference。
+7. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 只做 MatMul：shape 是 `[B,T,O]`，但数值少了 bias，allclose 失败。
+- bias 沿 B 或 T 对齐：shape 可能可广播，但语义错，hidden 变体失败。
+- 直接 `bias -> AddGate`：AddGate 要求两侧 shape 完全一致，未 broadcast 会 shape mismatch。
+- 使用原生 `MatMulGate` 而不是 `component.matmul_gate.v1`：没有体现组件复用。
+- 使用预制 Linear：目标组件不能出现在自己的构建关 palette。
+
+## 9. 测试设计
+
+当前任务：
+
+- `linear_out` 必须是 `float32[B=1,T=2,O=2]`。
+- 输出必须 allclose 到 `matmul(hidden, weight) + bias`。
+
+Hidden / certification：
+
+- hidden 使用 `[B=2,T=3,C=4]`。
+- weight 使用 `[C=4,O=3]`。
+- bias 使用 `[O=3]`。
+- 输出必须是 `[B=2,T=3,O=3]`。
+- 公开认证允许选择 B/T/C/O 和 seed，系统生成输入和 reference。
+
+## 10. 认证后接口
+
+```text
+component.linear.v1
+inputs:
+  hidden: float32[B,T,C]
+  weight: float32[C,O]
+  bias: float32[O]
+output:
+  out: float32[B,T,O]
+```
+
+## 11. 后续调用
+
+Q/K/V projection、MLP up/down projection、LM head 都是 Linear 的变体。Linear 文档必须强调“组件复用 + 内部图保留”，否则玩家会回到拖答案节点的旧体验。

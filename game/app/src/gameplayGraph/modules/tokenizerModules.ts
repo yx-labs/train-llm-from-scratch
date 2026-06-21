@@ -1,5 +1,5 @@
 import type { ModuleDef, RuntimeError, RuntimeValue, TensorShape } from "../types";
-import { encodeToyBatch, encodeToyText, type TokenizerPolicy } from "../../toyTokenizer";
+import { encodeToyBatch, encodeToyText, splitTextToPieces, type TokenizerPolicy } from "../../toyTokenizer";
 
 function error(type: RuntimeError["type"], nodeId: string, message: string, expected?: unknown, received?: unknown, portId?: string): RuntimeError {
   return {
@@ -135,6 +135,90 @@ export const tokenizerSocketModule: ModuleDef = {
   }
 };
 
+export const boundarySplitterModule: ModuleDef = {
+  id: "BoundarySplitter",
+  label: "Boundary Splitter",
+  category: "tokenizer",
+  inputs: [{ id: "text", label: "text", direction: "in", accepts: ["raw_text"], required: true }],
+  outputs: [{ id: "pieces", label: "pieces", direction: "out", emits: "string_piece" }],
+  defaultParams: { policy: "word", preservePunctuation: true, expectedT: 4 },
+  summary: "Splits raw text into ordered string pieces along word and punctuation boundaries.",
+  pseudoCode: "pieces = split_words_and_punctuation(text)\nshape(pieces) == string_piece[T]",
+  execute: ({ node, inputs }) => {
+    const texts = extractTexts(inputs.text);
+    if (!texts.length) {
+      return { outputs: {}, error: error("missing_input", node.id, "BoundarySplitter requires raw text", "raw_text", inputs.text, "text") };
+    }
+    const policy = (node.params.policy ?? "word") as TokenizerPolicy;
+    const preservePunctuation = Boolean(node.params.preservePunctuation ?? true);
+    const pieces = texts.flatMap((text) => splitTextToPieces(text, policy, preservePunctuation));
+    const value: RuntimeValue = {
+      dtype: "string_piece",
+      shape: { dtype: "string_piece", dims: [pieces.length], axes: ["T"] },
+      data: pieces,
+      meta: { texts, policy, preservePunctuation }
+    };
+    return { outputs: { pieces: value }, samples: { pieces } };
+  },
+  infer: ({ node }) => ({
+    outputs: {
+      pieces: {
+        dtype: "string_piece",
+        dims: [Number(node.params.expectedT ?? 4)],
+        axes: ["T"]
+      }
+    }
+  })
+};
+
+export const pieceBufferModule: ModuleDef = {
+  id: "PieceBuffer",
+  label: "Piece Buffer",
+  category: "contract",
+  inputs: [{ id: "pieces", label: "pieces", direction: "in", accepts: ["string_piece"], required: true }],
+  outputs: [{ id: "out", label: "pieces", direction: "out", emits: "string_piece" }],
+  defaultParams: { maxPieces: 12 },
+  summary: "Checks that a splitter produced a finite ordered string_piece[T] buffer.",
+  pseudoCode: "assert dtype(pieces) == string_piece\nassert len(pieces) <= max_pieces",
+  execute: ({ node, inputs }) => {
+    const value = inputs.pieces;
+    if (value?.dtype !== "string_piece") {
+      return {
+        outputs: {},
+        error: error("dtype_mismatch", node.id, "PieceBuffer expects string_piece input", "string_piece[T]", value?.dtype, "pieces")
+      };
+    }
+    const pieces = Array.isArray(value.data) ? value.data : [];
+    if (!pieces.every((piece) => typeof piece === "string")) {
+      return {
+        outputs: {},
+        error: error("dtype_mismatch", node.id, "PieceBuffer only accepts string pieces", "string[]", pieces, "pieces")
+      };
+    }
+    const maxPieces = Number(node.params.maxPieces ?? 12);
+    if (pieces.length > maxPieces) {
+      return {
+        outputs: {},
+        error: error("budget_exceeded", node.id, `PieceBuffer maxPieces exceeded: ${pieces.length} > ${maxPieces}`, maxPieces, pieces.length, "pieces")
+      };
+    }
+    const shape = value.shape ?? { dtype: "string_piece" as const, dims: [pieces.length], axes: ["T" as const] };
+    return { outputs: { out: { ...value, shape } }, samples: { pieces } };
+  },
+  infer: ({ node, inputs }) => {
+    const shape = inputs.pieces?.shape;
+    return {
+      outputs: {
+        out: shape ?? {
+          dtype: "string_piece",
+          dims: [Number(node.params.maxPieces ?? 12)],
+          axes: ["T"]
+        }
+      }
+    };
+  }
+};
+
 export const embeddingReadyProbeModule: ModuleDef = {
   id: "EmbeddingReadyProbe",
   label: "Embedding Ready Probe",
@@ -159,7 +243,7 @@ export const embeddingReadyProbeModule: ModuleDef = {
   }
 };
 
-export const tokenizerModules = [textInputModule, tokenizerSocketModule, embeddingReadyProbeModule];
+export const tokenizerModules = [textInputModule, tokenizerSocketModule, boundarySplitterModule, pieceBufferModule, embeddingReadyProbeModule];
 
 function extractTexts(value: RuntimeValue | undefined) {
   if (!value) return [];

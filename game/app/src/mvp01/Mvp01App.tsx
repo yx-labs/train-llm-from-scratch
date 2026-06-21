@@ -90,8 +90,8 @@ export function Mvp01App() {
       <header className="mvp01GraphTopbar">
         <div>
           <p className="eyebrow">{t("MVP0.1 Component Builder")}</p>
-          <h1>Chapter 0-9 Component Course</h1>
-          <small>{t("Build every core LLM component through graph operations, task checks, and certification variants.")}</small>
+          <h1>Chapter 0-9 Component Map</h1>
+          <small>{t("Build key LLM components deeply; roadmap nodes stay visible until their internal challenges are ready.")}</small>
         </div>
         <nav className="mvp01GraphActions" aria-label="MVP0.1 navigation">
           <div className="modeSwitch mvp01LanguageSwitch" aria-label={t("Language")}>
