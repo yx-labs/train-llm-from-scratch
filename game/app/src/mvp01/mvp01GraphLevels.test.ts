@@ -41,11 +41,14 @@ describe("MVP0.1 graph component arc", () => {
     expect(scalar?.modulePalette).not.toContain("ScalarCell");
     expect(scalar?.targetGraph?.nodes.find((node) => node.id === "scalar_source")?.moduleId).toBe("Float32Literal");
 
-    expect(specs.mvp01_2_vector_rail.requires).toContain("component.scalar_cell.v1");
+    expect(mvp01GraphLevels).toHaveLength(74);
+    expect(mvp01GraphLevels.map((level) => level.title)).toContain("Chapter 9-6 Tiny Chat Loop");
+    expect(specs.mvp01_ch0_02_scalar_add.requires).toContain("component.scalar_cell.v1");
+    expect(specs.mvp01_2_vector_rail.requires).toContain("component.scalar_add.v1");
     expect(vector?.modulePalette).toContain("component.scalar_cell.v1");
     expect(vector?.modulePalette).not.toContain("ScalarCell");
 
-    expect(specs.mvp01_6_linear.requires).toContain("component.matmul_gate.v1");
+    expect(specs.mvp01_6_linear.requires).toContain("component.bias_add.v1");
     expect(linear?.modulePalette).toContain("component.matmul_gate.v1");
     expect(linear?.modulePalette).not.toContain("MatMulGate");
     expect(linear?.targetGraph?.nodes.find((node) => node.id === "matmul")?.moduleId).toBe("component.matmul_gate.v1");

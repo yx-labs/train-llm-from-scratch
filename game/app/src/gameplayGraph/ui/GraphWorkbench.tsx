@@ -198,6 +198,7 @@ export function GraphWorkbench({
   const [traceSelection, setTraceSelection] = useState<TraceSelection>();
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("summary");
   const [missionOpen, setMissionOpen] = useState(false);
+  const [challengeMapOpen, setChallengeMapOpen] = useState(false);
   const [completionNotice, setCompletionNotice] = useState<CompletionNotice>();
   const [layout, setLayout] = useState<WorkbenchLayout>(defaultWorkbenchLayout);
   const [portAnchors, setPortAnchors] = useState<PortAnchorMap>({});
@@ -536,7 +537,7 @@ export function GraphWorkbench({
   function beginCanvasPan(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest(".graphNode, .graphCanvasToolbar, .graphCanvasHud, .graphCanvasModulePalette, button, input, select, textarea")) return;
+    if (target.closest(".graphNode, .graphCanvasToolbar, .graphCanvasHud, .graphComponentLibrary, button, input, select, textarea")) return;
     if (wireSourceRef.current) return;
     panDragRef.current = {
       startClientX: event.clientX,
@@ -762,16 +763,6 @@ export function GraphWorkbench({
     setCanvasNotice("layout applied");
   }
 
-  function addModuleAtCenter(moduleId: string) {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) {
-      addModuleNode(moduleId);
-      return;
-    }
-    const center = viewportToWorld(rect.width / 2, rect.height / 2);
-    addModuleNode(moduleId, center.x - graphNodeWidth / 2, center.y - graphNodeMinHeight / 2);
-  }
-
   function updateWirePointer(event: ReactPointerEvent<HTMLElement>) {
     if (!wireSourceRef.current) return;
     const point = clientToWorld(event.clientX, event.clientY);
@@ -939,29 +930,19 @@ export function GraphWorkbench({
       <aside className="graphSidebar panel">
         <div className="panelHeader">
           <Wrench size={18} />
-          <h2>{t("Graph Levels")}</h2>
+          <h2>{t("Component Library")}</h2>
         </div>
-        <div className="graphLevelList">
-          {levels.map((level) => {
-            const component = componentFlow?.specs[level.id];
-            const missing = component?.requires.filter((componentId) => !availableComponentIds.has(componentId)) ?? [];
-            const available = component ? availableComponentIds.has(component.componentId) : false;
-            const lifecycle = component ? lifecycleLabel({ available, missingCount: missing.length }) : undefined;
-            return (
-              <button
-                key={level.id}
-                className={`graphLevelButton ${level.id === selectedLevel.id ? "active" : ""} ${missing.length ? "locked" : ""} ${available ? "available" : ""}`}
-                onClick={() => selectLevel(level)}
-              >
-                <span>
-                  <b>{t(level.title)}</b>
-                  <small>{t(level.goal)}</small>
-                  {lifecycle ? <code className="graphLifecyclePill">{t(lifecycle)}</code> : null}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <GraphComponentLibrary level={selectedLevel} registry={registry} />
+        <section className="graphChallengeMapLauncher">
+          <button className="graphChallengeMapToggle" type="button" onClick={() => setChallengeMapOpen((current) => !current)}>
+            <BookOpenText size={16} />
+            <span>
+              <b>{t("Challenge Map")}</b>
+              <small>{challengeMapOpen ? t("Hide level route") : t("Open level route")}: {t(selectedLevel.title)}</small>
+            </span>
+            <code>{levels.length}</code>
+          </button>
+        </section>
       </aside>
 
       <div
@@ -1037,6 +1018,19 @@ export function GraphWorkbench({
         ) : null}
 
         {completionNotice ? <GraphCompletionNotice notice={completionNotice} /> : null}
+        {challengeMapOpen ? (
+          <GraphChallengeMapOverlay
+            levels={levels}
+            selectedLevelId={selectedLevel.id}
+            componentFlow={componentFlow}
+            availableComponentIds={availableComponentIds}
+            onSelect={(level) => {
+              selectLevel(level);
+              setChallengeMapOpen(false);
+            }}
+            onClose={() => setChallengeMapOpen(false)}
+          />
+        ) : null}
 
         <div
           ref={canvasRef}
@@ -1093,11 +1087,6 @@ export function GraphWorkbench({
               <Plus size={15} />
             </button>
           </div>
-          <GraphCanvasModulePalette
-            level={selectedLevel}
-            registry={registry}
-            onAddModule={addModuleAtCenter}
-          />
           <div
             className="graphWorld"
             style={{
@@ -1488,32 +1477,31 @@ function GraphPortColumn({
   );
 }
 
-function GraphCanvasModulePalette({
+function GraphComponentLibrary({
   level,
-  registry,
-  onAddModule
+  registry
 }: {
   level: LevelSpec;
   registry: ReturnType<typeof createGameplayRegistry>;
-  onAddModule: (moduleId: string) => void;
 }) {
   const { t } = useGraphT();
   return (
-    <section className="graphCanvasModulePalette">
-      <div className="graphCanvasModulePaletteHeader">
+    <section className="graphComponentLibrary">
+      <div className="graphComponentLibraryHeader">
         <b>{t("Available Modules")}</b>
         <code>{level.modulePalette.length}</code>
       </div>
-      <div className="graphCanvasModuleList">
+      <small className="graphComponentLibraryHint">{t("Drag a module onto the canvas to add it.")}</small>
+      <div className="graphComponentLibraryList">
         {level.modulePalette.map((moduleId) => {
           const module = registry.get(moduleId);
           return (
             <button
               key={module.id}
-              className="graphModuleItem canvas"
+              className="graphModuleItem library"
+              type="button"
               draggable
               title={t(module.summary)}
-              onDoubleClick={() => onAddModule(module.id)}
               onDragStart={(event) => {
                 event.dataTransfer.setData(moduleDragMime, module.id);
                 event.dataTransfer.effectAllowed = "copy";
@@ -1527,6 +1515,285 @@ function GraphCanvasModulePalette({
       </div>
     </section>
   );
+}
+
+type ChallengeMapNode = {
+  level: LevelSpec;
+  x: number;
+  y: number;
+  cx: number;
+  cy: number;
+  status: "active" | "available" | "locked" | "draft";
+  lifecycle?: string;
+};
+
+type ChallengeMapRegion = {
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type ChallengeMapPoint = {
+  x: number;
+  y: number;
+};
+
+type ChallengeMapChapterGroup = {
+  id: string;
+  title: string;
+  levels: LevelSpec[];
+};
+
+const challengeMapNodeWidth = 164;
+const challengeMapNodeHeight = 70;
+const challengeMapJitterPattern = [
+  { x: 0, y: 0 },
+  { x: 18, y: -10 },
+  { x: -14, y: 13 },
+  { x: 24, y: 8 },
+  { x: -22, y: -8 },
+  { x: 10, y: 16 },
+  { x: -8, y: -12 },
+  { x: 22, y: 10 },
+  { x: -18, y: 4 },
+  { x: 12, y: -14 },
+  { x: -26, y: 12 },
+  { x: 16, y: 2 }
+];
+
+function GraphChallengeMapOverlay({
+  levels,
+  selectedLevelId,
+  componentFlow,
+  availableComponentIds,
+  onSelect,
+  onClose
+}: {
+  levels: LevelSpec[];
+  selectedLevelId: string;
+  componentFlow?: ComponentFlowConfig;
+  availableComponentIds: Set<string>;
+  onSelect: (level: LevelSpec) => void;
+  onClose: () => void;
+}) {
+  const { t } = useGraphT();
+  const layout = useMemo(
+    () => buildChallengeMapLayout(levels, selectedLevelId, componentFlow, availableComponentIds),
+    [availableComponentIds, componentFlow, levels, selectedLevelId]
+  );
+  return (
+    <div className="graphChallengeMapOverlay" role="dialog" aria-modal="true" aria-label={t("Challenge Map")} onClick={onClose}>
+      <section className="graphChallengeMapPanel" onClick={(event) => event.stopPropagation()}>
+        <header className="graphChallengeMapHeader">
+          <span>
+            <p className="eyebrow">{t("Challenge Map")}</p>
+            <h3>{t("Chapter route")}</h3>
+          </span>
+          <button className="iconButton" type="button" title={t("Collapse map")} onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <div className="graphChallengeMapCanvas">
+          <div className="graphChallengeMapWorld" style={{ width: layout.width, height: layout.height }}>
+            {layout.regions.map((region) => (
+              <section
+                key={region.id}
+                className="graphChallengeMapRegion"
+                style={{ left: region.x, top: region.y, width: region.width, height: region.height }}
+                aria-hidden="true"
+              >
+                <span>{t(region.title)}</span>
+              </section>
+            ))}
+            <svg className="graphChallengeRouteLayer" width={layout.width} height={layout.height} viewBox={`0 0 ${layout.width} ${layout.height}`}>
+              <path className="graphChallengeRoutePath shadow" d={layout.path} />
+              <path className="graphChallengeRoutePath" d={layout.path} />
+            </svg>
+            {layout.nodes.map((node) => (
+              <button
+                key={node.level.id}
+                type="button"
+                className={`graphChallengeMapNode ${node.status}`}
+                style={{ left: node.x, top: node.y }}
+                onClick={() => onSelect(node.level)}
+              >
+                <b>{t(node.level.title)}</b>
+                <small>{t(node.level.chapter)}</small>
+                {node.lifecycle ? <code>{t(node.lifecycle)}</code> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function buildChallengeMapLayout(
+  levels: LevelSpec[],
+  selectedLevelId: string,
+  componentFlow: ComponentFlowConfig | undefined,
+  availableComponentIds: Set<string>
+) {
+  if (!levels.length) {
+    return { nodes: [], regions: [], path: "", width: 640, height: 360 };
+  }
+
+  const nodeWidth = challengeMapNodeWidth;
+  const nodeHeight = challengeMapNodeHeight;
+  const mapColumns = 3;
+  const regionCellWidth = 980;
+  const regionCellHeight = 760;
+  const margin = 64;
+  const regionPadX = 46;
+  const regionPadTop = 84;
+  const regionPadBottom = 44;
+  const localGapX = 116;
+  const localGapY = 90;
+  const regionDriftPattern = [
+    { x: 0, y: 0 },
+    { x: 34, y: 78 },
+    { x: -18, y: 26 },
+    { x: 42, y: -12 },
+    { x: -32, y: 64 },
+    { x: 12, y: 118 }
+  ];
+  const groups = groupChallengeMapLevels(levels);
+  const regions: ChallengeMapRegion[] = [];
+  const nodes: ChallengeMapNode[] = [];
+  let routeIndex = 0;
+
+  groups.forEach((group, groupIndex) => {
+    const count = group.levels.length;
+    const localColumns = count <= 3 ? count : count <= 6 ? 2 : 3;
+    const localRows = Math.ceil(count / localColumns);
+    const regionWidth = regionPadX * 2 + localColumns * nodeWidth + (localColumns - 1) * localGapX;
+    const regionHeight = regionPadTop + localRows * nodeHeight + (localRows - 1) * localGapY + regionPadBottom;
+    const mapRow = Math.floor(groupIndex / mapColumns);
+    const colInRow = groupIndex % mapColumns;
+    const mapCol = mapRow % 2 === 0 ? colInRow : mapColumns - 1 - colInRow;
+    const drift = regionDriftPattern[groupIndex % regionDriftPattern.length];
+    const region: ChallengeMapRegion = {
+      id: group.id,
+      title: group.title,
+      x: margin + mapCol * regionCellWidth + drift.x,
+      y: margin + mapRow * regionCellHeight + drift.y,
+      width: regionWidth,
+      height: regionHeight
+    };
+    regions.push(region);
+
+    group.levels.forEach((level, localIndex) => {
+      const localRow = Math.floor(localIndex / localColumns);
+      const colInLocalRow = localIndex % localColumns;
+      const localCol = localRow % 2 === 0 ? colInLocalRow : localColumns - 1 - colInLocalRow;
+      const jitter = challengeMapJitterPattern[(routeIndex + groupIndex) % challengeMapJitterPattern.length];
+      const x = region.x + regionPadX + localCol * (nodeWidth + localGapX) + jitter.x;
+      const y = region.y + regionPadTop + localRow * (nodeHeight + localGapY) + jitter.y;
+      const component = componentFlow?.specs[level.id];
+      const missingCount = component?.requires.filter((componentId) => !availableComponentIds.has(componentId)).length ?? 0;
+      const available = component ? availableComponentIds.has(component.componentId) : false;
+      const lifecycle = component ? lifecycleLabel({ available, missingCount }) : undefined;
+      const status = level.id === selectedLevelId ? "active" : missingCount > 0 ? "locked" : available ? "available" : "draft";
+      nodes.push({ level, x, y, cx: x + nodeWidth / 2, cy: y + nodeHeight / 2, status, lifecycle });
+      routeIndex += 1;
+    });
+  });
+  const maxRegionX = Math.max(...regions.map((region) => region.x + region.width));
+  const maxRegionY = Math.max(...regions.map((region) => region.y + region.height));
+  const maxNodeX = Math.max(...nodes.map((node) => node.x + nodeWidth));
+  const maxNodeY = Math.max(...nodes.map((node) => node.y + nodeHeight));
+  return {
+    nodes,
+    regions,
+    path: challengeMapRoutePath(nodes),
+    width: Math.ceil(Math.max(maxRegionX, maxNodeX) + margin),
+    height: Math.ceil(Math.max(maxRegionY, maxNodeY) + margin)
+  };
+}
+
+function groupChallengeMapLevels(levels: LevelSpec[]) {
+  const groups: ChallengeMapChapterGroup[] = [];
+  const byTitle = new Map<string, ChallengeMapChapterGroup>();
+  levels.forEach((level) => {
+    const title = level.chapter;
+    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `chapter-${groups.length}`;
+    let group = byTitle.get(title);
+    if (!group) {
+      group = { id, title, levels: [] };
+      byTitle.set(title, group);
+      groups.push(group);
+    }
+    group.levels.push(level);
+  });
+  return groups;
+}
+
+function challengeMapRoutePath(nodes: ChallengeMapNode[]) {
+  if (nodes.length < 2) return "";
+  const parts: string[] = [];
+  for (let index = 1; index < nodes.length; index += 1) {
+    const from = nodes[index - 1];
+    const to = nodes[index];
+    parts.push(challengeMapRouteSegment(from, to, index - 1));
+  }
+  return parts.join(" ");
+}
+
+function challengeMapRouteSegment(from: ChallengeMapNode, to: ChallengeMapNode, index: number) {
+  const dx = to.cx - from.cx;
+  const dy = to.cy - from.cy;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const edgePad = 10;
+  const edgeShift = ((index % 3) - 1) * 5;
+  const start: ChallengeMapPoint = horizontal
+    ? {
+        x: from.cx + Math.sign(dx || 1) * (challengeMapNodeWidth / 2 + edgePad),
+        y: from.cy + edgeShift
+      }
+    : {
+        x: from.cx + edgeShift,
+        y: from.cy + Math.sign(dy || 1) * (challengeMapNodeHeight / 2 + edgePad)
+      };
+  const end: ChallengeMapPoint = horizontal
+    ? {
+        x: to.cx - Math.sign(dx || 1) * (challengeMapNodeWidth / 2 + edgePad),
+        y: to.cy - edgeShift
+      }
+    : {
+        x: to.cx - edgeShift,
+        y: to.cy - Math.sign(dy || 1) * (challengeMapNodeHeight / 2 + edgePad)
+      };
+  return horizontal
+    ? challengeMapHorizontalCurve(start, end, index)
+    : challengeMapVerticalCurve(start, end, index);
+}
+
+function challengeMapHorizontalCurve(start: ChallengeMapPoint, end: ChallengeMapPoint, index: number) {
+  const dx = end.x - start.x;
+  const midX = start.x + dx * 0.5;
+  const waveSize = Math.min(120, 30 + Math.abs(dx) * 0.08 + Math.abs(end.y - start.y) * 0.05);
+  const wave = (index % 2 === 0 ? 1 : -1) * waveSize;
+  return [
+    `M ${start.x} ${start.y}`,
+    `C ${start.x + dx * 0.22} ${start.y + wave}, ${midX - dx * 0.08} ${start.y + wave}, ${midX} ${start.y + wave * 0.35}`,
+    `C ${midX + dx * 0.08} ${end.y - wave * 0.35}, ${end.x - dx * 0.22} ${end.y - wave}, ${end.x} ${end.y}`
+  ].join(" ");
+}
+
+function challengeMapVerticalCurve(start: ChallengeMapPoint, end: ChallengeMapPoint, index: number) {
+  const dy = end.y - start.y;
+  const midY = start.y + dy * 0.5;
+  const waveSize = Math.min(128, 34 + Math.abs(dy) * 0.08 + Math.abs(end.x - start.x) * 0.05);
+  const wave = (index % 2 === 0 ? -1 : 1) * waveSize;
+  return [
+    `M ${start.x} ${start.y}`,
+    `C ${start.x + wave} ${start.y + dy * 0.22}, ${start.x + wave} ${midY - dy * 0.08}, ${start.x + wave * 0.35} ${midY}`,
+    `C ${end.x - wave * 0.35} ${midY + dy * 0.08}, ${end.x - wave} ${end.y - dy * 0.22}, ${end.x} ${end.y}`
+  ].join(" ");
 }
 
 function GraphTaskDataPanels({
@@ -3277,6 +3544,7 @@ function getLevelNodeTemplate(levelId: string, graph: GraphSpec, moduleId: strin
 
   if (levelId.startsWith("mvp01_")) {
     const taken = new Set(graph.nodes.map((node) => node.id));
+    if (levelId.startsWith("mvp01_ch") && moduleId.startsWith("component.") && !taken.has("component")) return { id: "component" };
     if (moduleId === "ReferenceChecker" && !taken.has("reference")) return { id: "reference", params: { referenceKey: "reference" } };
 
     if (levelId === "mvp01_1_scalar_cell") {

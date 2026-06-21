@@ -1,0 +1,3688 @@
+[
+  {
+    "code": "0-0",
+    "id": "mvp01_0_wire_probe",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 0,
+    "slug": "wire_port",
+    "title": "Wire & Port",
+    "titleZh": "0-0 Wire & Port",
+    "component": "Wire / InputPort / OutputPort",
+    "componentZh": "Wire / InputPort / OutputPort",
+    "componentId": "component.wire_port.v1",
+    "moduleId": "component.wire_port.v1",
+    "buildable": false,
+    "implementedManually": true,
+    "from": "空画布、输入、输出",
+    "fromZh": "空画布、输入、输出",
+    "learn": "数据沿边流动，端口有方向",
+    "learnZh": "数据沿边流动，端口有方向",
+    "futureUse": "所有关卡",
+    "futureUseZh": "所有关卡",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        1,
+        2
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build Wire / InputPort / OutputPort and certify its float32[B,T] contract.",
+    "goalZh": "构造 Wire / InputPort / OutputPort，并认证它的 float32[B,T] 合约。",
+    "task": "Route the prepared case through Wire / InputPort / OutputPort into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Wire / InputPort / OutputPort 连接到合约探针。",
+    "concept": "Wire / InputPort / OutputPort turns 空画布、输入、输出 into a reusable graph component.",
+    "conceptZh": "Wire / InputPort / OutputPort 把「空画布、输入、输出」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T]。",
+    "requires": [],
+    "unlocks": []
+  },
+  {
+    "code": "0-1",
+    "id": "mvp01_1_scalar_cell",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 1,
+    "slug": "scalar_cell",
+    "title": "Scalar Cell",
+    "titleZh": "0-1 Scalar Cell",
+    "component": "ScalarCell",
+    "componentZh": "ScalarCell",
+    "componentId": "component.scalar_cell.v1",
+    "moduleId": "component.scalar_cell.v1",
+    "buildable": true,
+    "implementedManually": true,
+    "from": "Number literal + dtype badge",
+    "fromZh": "Number literal + dtype badge",
+    "learn": "一个数字也有类型",
+    "learnZh": "一个数字也有类型",
+    "futureUse": "loss、mask value、scale",
+    "futureUseZh": "loss、mask value、scale",
+    "output": {
+      "dtype": "float32",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build ScalarCell and certify its float32[] contract.",
+    "goalZh": "构造 ScalarCell，并认证它的 float32[] 合约。",
+    "task": "Route the prepared case through ScalarCell into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ScalarCell 连接到合约探针。",
+    "concept": "ScalarCell turns Number literal + dtype badge into a reusable graph component.",
+    "conceptZh": "ScalarCell 把「Number literal + dtype badge」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 []。",
+    "requires": [],
+    "unlocks": [
+      "mvp01_ch0_02_scalar_add"
+    ]
+  },
+  {
+    "code": "0-2",
+    "id": "mvp01_ch0_02_scalar_add",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 2,
+    "slug": "scalar_add",
+    "title": "Scalar Add",
+    "titleZh": "0-2 Scalar Add",
+    "component": "AddScalar",
+    "componentZh": "AddScalar",
+    "componentId": "component.scalar_add.v1",
+    "moduleId": "component.scalar_add.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "两个 ScalarCell",
+    "fromZh": "两个 ScalarCell",
+    "learn": "运算节点、输入检查",
+    "learnZh": "运算节点、输入检查",
+    "futureUse": "residual add 的起点",
+    "futureUseZh": "residual add 的起点",
+    "output": {
+      "dtype": "float32",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build AddScalar and certify its float32[] contract.",
+    "goalZh": "构造 AddScalar，并认证它的 float32[] 合约。",
+    "task": "Route the prepared case through AddScalar into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AddScalar 连接到合约探针。",
+    "concept": "AddScalar turns 两个 ScalarCell into a reusable graph component.",
+    "conceptZh": "AddScalar 把「两个 ScalarCell」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 []。",
+    "requires": [
+      "component.scalar_cell.v1"
+    ],
+    "unlocks": [
+      "mvp01_2_vector_rail"
+    ]
+  },
+  {
+    "code": "0-3",
+    "id": "mvp01_2_vector_rail",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 3,
+    "slug": "vector_rail",
+    "title": "Vector Rail",
+    "titleZh": "0-3 Vector Rail",
+    "component": "Vector",
+    "componentZh": "Vector",
+    "componentId": "component.vector_rail.v1",
+    "moduleId": "component.vector_rail.v1",
+    "buildable": true,
+    "implementedManually": true,
+    "from": "多个 ScalarCell + length",
+    "fromZh": "多个 ScalarCell + length",
+    "learn": "一排数字，长度是第一种 shape",
+    "learnZh": "一排数字，长度是第一种 shape",
+    "futureUse": "token vector",
+    "futureUseZh": "token vector",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        3
+      ],
+      "axes": [
+        "C"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build Vector and certify its float32[C] contract.",
+    "goalZh": "构造 Vector，并认证它的 float32[C] 合约。",
+    "task": "Route the prepared case through Vector into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Vector 连接到合约探针。",
+    "concept": "Vector turns 多个 ScalarCell + length into a reusable graph component.",
+    "conceptZh": "Vector 把「多个 ScalarCell + length」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [C]。",
+    "requires": [
+      "component.scalar_add.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch0_04_dot_product"
+    ]
+  },
+  {
+    "code": "0-4",
+    "id": "mvp01_ch0_04_dot_product",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 4,
+    "slug": "dot_product",
+    "title": "Dot Product",
+    "titleZh": "0-4 Dot Product",
+    "component": "DotProduct",
+    "componentZh": "DotProduct",
+    "componentId": "component.dot_product.v1",
+    "moduleId": "component.dot_product.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Vector + multiply + sum",
+    "fromZh": "Vector + multiply + sum",
+    "learn": "相同长度向量才能点积",
+    "learnZh": "相同长度向量才能点积",
+    "futureUse": "attention score、linear",
+    "futureUseZh": "attention score、linear",
+    "output": {
+      "dtype": "float32",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build DotProduct and certify its float32[] contract.",
+    "goalZh": "构造 DotProduct，并认证它的 float32[] 合约。",
+    "task": "Route the prepared case through DotProduct into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 DotProduct 连接到合约探针。",
+    "concept": "DotProduct turns Vector + multiply + sum into a reusable graph component.",
+    "conceptZh": "DotProduct 把「Vector + multiply + sum」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 []。",
+    "requires": [
+      "component.vector_rail.v1"
+    ],
+    "unlocks": [
+      "mvp01_3_matrix_struct"
+    ]
+  },
+  {
+    "code": "0-5",
+    "id": "mvp01_3_matrix_struct",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 5,
+    "slug": "matrix_board",
+    "title": "Matrix Board",
+    "titleZh": "0-5 Matrix Board",
+    "component": "Matrix",
+    "componentZh": "Matrix",
+    "componentId": "component.matrix_struct.v1",
+    "moduleId": "component.matrix_struct.v1",
+    "buildable": true,
+    "implementedManually": true,
+    "from": "多条 Vector",
+    "fromZh": "多条 Vector",
+    "learn": "二维结构、row/col",
+    "learnZh": "二维结构、row/col",
+    "futureUse": "weight、embedding table",
+    "futureUseZh": "weight、embedding table",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        3,
+        2
+      ],
+      "axes": [
+        "C",
+        "O"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build Matrix and certify its float32[C,O] contract.",
+    "goalZh": "构造 Matrix，并认证它的 float32[C,O] 合约。",
+    "task": "Route the prepared case through Matrix into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Matrix 连接到合约探针。",
+    "concept": "Matrix turns 多条 Vector into a reusable graph component.",
+    "conceptZh": "Matrix 把「多条 Vector」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [C,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [C,O]。",
+    "requires": [
+      "component.dot_product.v1"
+    ],
+    "unlocks": [
+      "mvp01_5_matmul_gate"
+    ]
+  },
+  {
+    "code": "0-6",
+    "id": "mvp01_5_matmul_gate",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 6,
+    "slug": "matrix_multiply",
+    "title": "Matrix Multiply",
+    "titleZh": "0-6 Matrix Multiply",
+    "component": "MatMul2D",
+    "componentZh": "MatMul2D",
+    "componentId": "component.matmul_gate.v1",
+    "moduleId": "component.matmul_gate.v1",
+    "buildable": true,
+    "implementedManually": true,
+    "from": "DotProduct 网格",
+    "fromZh": "DotProduct 网格",
+    "learn": "矩阵乘法是很多 dot cells",
+    "learnZh": "矩阵乘法是很多 dot cells",
+    "futureUse": "Linear / QK",
+    "futureUseZh": "Linear / QK",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        2
+      ],
+      "axes": [
+        "M",
+        "O"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build MatMul2D and certify its float32[M,O] contract.",
+    "goalZh": "构造 MatMul2D，并认证它的 float32[M,O] 合约。",
+    "task": "Route the prepared case through MatMul2D into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 MatMul2D 连接到合约探针。",
+    "concept": "MatMul2D turns DotProduct 网格 into a reusable graph component.",
+    "conceptZh": "MatMul2D 把「DotProduct 网格」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [M,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [M,O]。",
+    "requires": [
+      "component.matrix_struct.v1"
+    ],
+    "unlocks": [
+      "mvp01_4_tensor_box"
+    ]
+  },
+  {
+    "code": "0-7",
+    "id": "mvp01_4_tensor_box",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 7,
+    "slug": "tensor_box",
+    "title": "Tensor Box",
+    "titleZh": "0-7 Tensor Box",
+    "component": "Tensor",
+    "componentZh": "Tensor",
+    "componentId": "component.tensor_box.v1",
+    "moduleId": "component.tensor_box.v1",
+    "buildable": true,
+    "implementedManually": true,
+    "from": "data buffer + shape",
+    "fromZh": "data buffer + shape",
+    "learn": "rank、shape、索引",
+    "learnZh": "rank、shape、索引",
+    "futureUse": "所有模型数据",
+    "futureUseZh": "所有模型数据",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        1,
+        2,
+        3
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build Tensor and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 Tensor，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through Tensor into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Tensor 连接到合约探针。",
+    "concept": "Tensor turns data buffer + shape into a reusable graph component.",
+    "conceptZh": "Tensor 把「data buffer + shape」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.matmul_gate.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch0_08_typed_tensor"
+    ]
+  },
+  {
+    "code": "0-8",
+    "id": "mvp01_ch0_08_typed_tensor",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 8,
+    "slug": "typed_tensor",
+    "title": "Typed Tensor",
+    "titleZh": "0-8 Typed Tensor",
+    "component": "TypedTensor",
+    "componentZh": "TypedTensor",
+    "componentId": "component.typed_tensor.v1",
+    "moduleId": "component.typed_tensor.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Tensor + dtype",
+    "fromZh": "Tensor + dtype",
+    "learn": "float/int/bool/mask 不可乱接",
+    "learnZh": "float/int/bool/mask 不可乱接",
+    "futureUse": "token ids vs hidden",
+    "futureUseZh": "token ids vs hidden",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        1,
+        4
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build TypedTensor and certify its int[B,T] contract.",
+    "goalZh": "构造 TypedTensor，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through TypedTensor into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TypedTensor 连接到合约探针。",
+    "concept": "TypedTensor turns Tensor + dtype into a reusable graph component.",
+    "conceptZh": "TypedTensor 把「Tensor + dtype」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.tensor_box.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch0_09_axis_tensor"
+    ]
+  },
+  {
+    "code": "0-9",
+    "id": "mvp01_ch0_09_axis_tensor",
+    "chapter": 0,
+    "chapterTitle": "Graph OS and Numeric Foundations",
+    "chapterTitleZh": "Graph OS 与数字基础",
+    "chapterGoalZh": "先发明一套能表达计算的最小图系统，再从 Scalar 逐层扩展到带语义轴的 Tensor。",
+    "index": 9,
+    "slug": "axis_tensor",
+    "title": "Axis Tensor",
+    "titleZh": "0-9 Axis Tensor",
+    "component": "AxisTensor",
+    "componentZh": "AxisTensor",
+    "componentId": "component.axis_tensor.v1",
+    "moduleId": "component.axis_tensor.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Tensor + axis names",
+    "fromZh": "Tensor + axis names",
+    "learn": "[2,4,8] 不等于 [B,T,C]",
+    "learnZh": "[2,4,8] 不等于 [B,T,C]",
+    "futureUse": "Broadcast / Attention",
+    "futureUseZh": "Broadcast / Attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        4,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Graph OS and Numeric Foundations",
+    "goal": "Build AxisTensor and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 AxisTensor，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through AxisTensor into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AxisTensor 连接到合约探针。",
+    "concept": "AxisTensor turns Tensor + axis names into a reusable graph component.",
+    "conceptZh": "AxisTensor 把「Tensor + axis names」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.typed_tensor.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_00_text_input"
+    ]
+  },
+  {
+    "code": "1-0",
+    "id": "mvp01_ch1_00_text_input",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 0,
+    "slug": "text_input",
+    "title": "Text Input",
+    "titleZh": "1-0 Text Input",
+    "component": "TextInput",
+    "componentZh": "TextInput",
+    "componentId": "component.text_input.v1",
+    "moduleId": "component.text_input.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "string source + output port",
+    "fromZh": "string source + output port",
+    "learn": "原始文本是 raw_text，不是 tensor",
+    "learnZh": "原始文本是 raw_text，不是 tensor",
+    "futureUse": "tokenizer 输入",
+    "futureUseZh": "tokenizer 输入",
+    "output": {
+      "dtype": "raw_text",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build TextInput and certify its raw_text[] contract.",
+    "goalZh": "构造 TextInput，并认证它的 raw_text[] 合约。",
+    "task": "Route the prepared case through TextInput into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TextInput 连接到合约探针。",
+    "concept": "TextInput turns string source + output port into a reusable graph component.",
+    "conceptZh": "TextInput 把「string source + output port」变成可复用的图组件。",
+    "check": "The output must keep dtype raw_text and axes [].",
+    "checkZh": "输出必须保持 dtype=raw_text，轴为 []。",
+    "requires": [
+      "component.axis_tensor.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_01_splitter"
+    ]
+  },
+  {
+    "code": "1-1",
+    "id": "mvp01_ch1_01_splitter",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 1,
+    "slug": "splitter",
+    "title": "Splitter",
+    "titleZh": "1-1 Splitter",
+    "component": "BoundarySplitter",
+    "componentZh": "BoundarySplitter",
+    "componentId": "component.splitter.v1",
+    "moduleId": "component.splitter.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "text scanner + policy",
+    "fromZh": "text scanner + policy",
+    "learn": "文本要切成 pieces",
+    "learnZh": "文本要切成 pieces",
+    "futureUse": "tokenizer",
+    "futureUseZh": "tokenizer",
+    "output": {
+      "dtype": "string_piece",
+      "dims": [
+        6
+      ],
+      "axes": [
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build BoundarySplitter and certify its string_piece[T] contract.",
+    "goalZh": "构造 BoundarySplitter，并认证它的 string_piece[T] 合约。",
+    "task": "Route the prepared case through BoundarySplitter into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 BoundarySplitter 连接到合约探针。",
+    "concept": "BoundarySplitter turns text scanner + policy into a reusable graph component.",
+    "conceptZh": "BoundarySplitter 把「text scanner + policy」变成可复用的图组件。",
+    "check": "The output must keep dtype string_piece and axes [T].",
+    "checkZh": "输出必须保持 dtype=string_piece，轴为 [T]。",
+    "requires": [
+      "component.text_input.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_02_merge_forge"
+    ]
+  },
+  {
+    "code": "1-2",
+    "id": "mvp01_ch1_02_merge_forge",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 2,
+    "slug": "merge_forge",
+    "title": "Merge Forge",
+    "titleZh": "1-2 Merge Forge",
+    "component": "MergeRules",
+    "componentZh": "MergeRules",
+    "componentId": "component.merge_forge.v1",
+    "moduleId": "component.merge_forge.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "adjacent pair merge",
+    "fromZh": "adjacent pair merge",
+    "learn": "subword 的压缩思想",
+    "learnZh": "subword 的压缩思想",
+    "futureUse": "BPE-like tokenizer",
+    "futureUseZh": "BPE-like tokenizer",
+    "output": {
+      "dtype": "token_piece",
+      "dims": [
+        6
+      ],
+      "axes": [
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build MergeRules and certify its token_piece[T] contract.",
+    "goalZh": "构造 MergeRules，并认证它的 token_piece[T] 合约。",
+    "task": "Route the prepared case through MergeRules into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 MergeRules 连接到合约探针。",
+    "concept": "MergeRules turns adjacent pair merge into a reusable graph component.",
+    "conceptZh": "MergeRules 把「adjacent pair merge」变成可复用的图组件。",
+    "check": "The output must keep dtype token_piece and axes [T].",
+    "checkZh": "输出必须保持 dtype=token_piece，轴为 [T]。",
+    "requires": [
+      "component.splitter.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_03_vocab_table"
+    ]
+  },
+  {
+    "code": "1-3",
+    "id": "mvp01_ch1_03_vocab_table",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 3,
+    "slug": "vocab_table",
+    "title": "Vocab Table",
+    "titleZh": "1-3 Vocab Table",
+    "component": "VocabTable",
+    "componentZh": "VocabTable",
+    "componentId": "component.vocab_table.v1",
+    "moduleId": "component.vocab_table.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "token string → id map",
+    "fromZh": "token string → id map",
+    "learn": "token 是词表地址",
+    "learnZh": "token 是词表地址",
+    "futureUse": "embedding lookup",
+    "futureUseZh": "embedding lookup",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        16
+      ],
+      "axes": [
+        "V"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build VocabTable and certify its int[V] contract.",
+    "goalZh": "构造 VocabTable，并认证它的 int[V] 合约。",
+    "task": "Route the prepared case through VocabTable into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 VocabTable 连接到合约探针。",
+    "concept": "VocabTable turns token string → id map into a reusable graph component.",
+    "conceptZh": "VocabTable 把「token string → id map」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [V].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [V]。",
+    "requires": [
+      "component.merge_forge.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_04_vocab_lookup"
+    ]
+  },
+  {
+    "code": "1-4",
+    "id": "mvp01_ch1_04_vocab_lookup",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 4,
+    "slug": "vocab_lookup",
+    "title": "Vocab Lookup",
+    "titleZh": "1-4 Vocab Lookup",
+    "component": "VocabLookup",
+    "componentZh": "VocabLookup",
+    "componentId": "component.vocab_lookup.v1",
+    "moduleId": "component.vocab_lookup.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "pieces + vocab",
+    "fromZh": "pieces + vocab",
+    "learn": "pieces 变成 integer ids",
+    "learnZh": "pieces 变成 integer ids",
+    "futureUse": "token_ids",
+    "futureUseZh": "token_ids",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        1,
+        6
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build VocabLookup and certify its int[B,T] contract.",
+    "goalZh": "构造 VocabLookup，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through VocabLookup into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 VocabLookup 连接到合约探针。",
+    "concept": "VocabLookup turns pieces + vocab into a reusable graph component.",
+    "conceptZh": "VocabLookup 把「pieces + vocab」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.vocab_table.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_05_token_buffer"
+    ]
+  },
+  {
+    "code": "1-5",
+    "id": "mvp01_ch1_05_token_buffer",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 5,
+    "slug": "token_buffer",
+    "title": "Token Buffer",
+    "titleZh": "1-5 Token Buffer",
+    "component": "TokenBuffer[B,T]",
+    "componentZh": "TokenBuffer[B,T]",
+    "componentId": "component.token_buffer.v1",
+    "moduleId": "component.token_buffer.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "token ids + T slots",
+    "fromZh": "token ids + T slots",
+    "learn": "T 是上下文窗口长度",
+    "learnZh": "T 是上下文窗口长度",
+    "futureUse": "Transformer 输入",
+    "futureUseZh": "Transformer 输入",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        1,
+        8
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build TokenBuffer[B,T] and certify its int[B,T] contract.",
+    "goalZh": "构造 TokenBuffer[B,T]，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through TokenBuffer[B,T] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TokenBuffer[B,T] 连接到合约探针。",
+    "concept": "TokenBuffer[B,T] turns token ids + T slots into a reusable graph component.",
+    "conceptZh": "TokenBuffer[B,T] 把「token ids + T slots」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.vocab_lookup.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_06_padder"
+    ]
+  },
+  {
+    "code": "1-6",
+    "id": "mvp01_ch1_06_padder",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 6,
+    "slug": "padder",
+    "title": "Padder",
+    "titleZh": "1-6 Padder",
+    "component": "Padder",
+    "componentZh": "Padder",
+    "componentId": "component.padder.v1",
+    "moduleId": "component.padder.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "token buffer + pad id",
+    "fromZh": "token buffer + pad id",
+    "learn": "batch 需要矩形",
+    "learnZh": "batch 需要矩形",
+    "futureUse": "attention mask",
+    "futureUseZh": "attention mask",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        2,
+        8
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build Padder and certify its int[B,T] contract.",
+    "goalZh": "构造 Padder，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through Padder into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Padder 连接到合约探针。",
+    "concept": "Padder turns token buffer + pad id into a reusable graph component.",
+    "conceptZh": "Padder 把「token buffer + pad id」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.token_buffer.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_07_attention_mask_builder"
+    ]
+  },
+  {
+    "code": "1-7",
+    "id": "mvp01_ch1_07_attention_mask_builder",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 7,
+    "slug": "attention_mask_builder",
+    "title": "Attention Mask Builder",
+    "titleZh": "1-7 Attention Mask Builder",
+    "component": "AttentionMask[B,T]",
+    "componentZh": "AttentionMask[B,T]",
+    "componentId": "component.attention_mask_builder.v1",
+    "moduleId": "component.attention_mask_builder.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "token_ids + pad id",
+    "fromZh": "token_ids + pad id",
+    "learn": "pad 不该参与 attention",
+    "learnZh": "pad 不该参与 attention",
+    "futureUse": "training/inference",
+    "futureUseZh": "training/inference",
+    "output": {
+      "dtype": "mask",
+      "dims": [
+        2,
+        8
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build AttentionMask[B,T] and certify its mask[B,T] contract.",
+    "goalZh": "构造 AttentionMask[B,T]，并认证它的 mask[B,T] 合约。",
+    "task": "Route the prepared case through AttentionMask[B,T] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AttentionMask[B,T] 连接到合约探针。",
+    "concept": "AttentionMask[B,T] turns token_ids + pad id into a reusable graph component.",
+    "conceptZh": "AttentionMask[B,T] 把「token_ids + pad id」变成可复用的图组件。",
+    "check": "The output must keep dtype mask and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=mask，轴为 [B,T]。",
+    "requires": [
+      "component.padder.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch1_08_tokenizer_component"
+    ]
+  },
+  {
+    "code": "1-8",
+    "id": "mvp01_ch1_08_tokenizer_component",
+    "chapter": 1,
+    "chapterTitle": "Text to Token Pipeline",
+    "chapterTitleZh": "Text → Token Pipeline",
+    "chapterGoalZh": "让玩家亲手造出从 raw_text 到 token_ids[B,T] 和 attention mask 的边界。",
+    "index": 8,
+    "slug": "tokenizer_component",
+    "title": "Tokenizer Component",
+    "titleZh": "1-8 Tokenizer Component",
+    "component": "TokenizerSocket",
+    "componentZh": "TokenizerSocket",
+    "componentId": "component.tokenizer_component.v1",
+    "moduleId": "component.tokenizer_component.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Splitter + Merge + Vocab + Buffer + Mask",
+    "fromZh": "Splitter + Merge + Vocab + Buffer + Mask",
+    "learn": "封装成可复用 tokenizer",
+    "learnZh": "封装成可复用 tokenizer",
+    "futureUse": "所有文本任务",
+    "futureUseZh": "所有文本任务",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        2,
+        8
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Text to Token Pipeline",
+    "goal": "Build TokenizerSocket and certify its int[B,T] contract.",
+    "goalZh": "构造 TokenizerSocket，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through TokenizerSocket into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TokenizerSocket 连接到合约探针。",
+    "concept": "TokenizerSocket turns Splitter + Merge + Vocab + Buffer + Mask into a reusable graph component.",
+    "conceptZh": "TokenizerSocket 把「Splitter + Merge + Vocab + Buffer + Mask」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.attention_mask_builder.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch2_00_parameter_matrix"
+    ]
+  },
+  {
+    "code": "2-0",
+    "id": "mvp01_ch2_00_parameter_matrix",
+    "chapter": 2,
+    "chapterTitle": "Embedding and Hidden Tensor",
+    "chapterTitleZh": "Embedding 与 Hidden Tensor",
+    "chapterGoalZh": "从 token_ids[B,T] 进入模型内部，理解查表、位置、以及 hidden[B,T,C] 的形成。",
+    "index": 0,
+    "slug": "parameter_matrix",
+    "title": "Parameter Matrix",
+    "titleZh": "2-0 Parameter Matrix",
+    "component": "ParameterMatrix",
+    "componentZh": "ParameterMatrix",
+    "componentId": "component.parameter_matrix.v1",
+    "moduleId": "component.parameter_matrix.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Matrix + trainable flag",
+    "fromZh": "Matrix + trainable flag",
+    "learn": "权重是可学习 tensor",
+    "learnZh": "权重是可学习 tensor",
+    "futureUse": "embedding / linear",
+    "futureUseZh": "embedding / linear",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        16,
+        4
+      ],
+      "axes": [
+        "V",
+        "C"
+      ]
+    },
+    "shelf": "Embedding and Hidden Tensor",
+    "goal": "Build ParameterMatrix and certify its float32[V,C] contract.",
+    "goalZh": "构造 ParameterMatrix，并认证它的 float32[V,C] 合约。",
+    "task": "Route the prepared case through ParameterMatrix into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ParameterMatrix 连接到合约探针。",
+    "concept": "ParameterMatrix turns Matrix + trainable flag into a reusable graph component.",
+    "conceptZh": "ParameterMatrix 把「Matrix + trainable flag」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [V,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [V,C]。",
+    "requires": [
+      "component.tokenizer_component.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch2_01_embedding_table"
+    ]
+  },
+  {
+    "code": "2-1",
+    "id": "mvp01_ch2_01_embedding_table",
+    "chapter": 2,
+    "chapterTitle": "Embedding and Hidden Tensor",
+    "chapterTitleZh": "Embedding 与 Hidden Tensor",
+    "chapterGoalZh": "从 token_ids[B,T] 进入模型内部，理解查表、位置、以及 hidden[B,T,C] 的形成。",
+    "index": 1,
+    "slug": "embedding_table",
+    "title": "Embedding Table",
+    "titleZh": "2-1 Embedding Table",
+    "component": "EmbeddingTable[V,C]",
+    "componentZh": "EmbeddingTable[V,C]",
+    "componentId": "component.embedding_table.v1",
+    "moduleId": "component.embedding_table.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "ParameterMatrix",
+    "fromZh": "ParameterMatrix",
+    "learn": "id 查表得到 vector",
+    "learnZh": "id 查表得到 vector",
+    "futureUse": "token embedding",
+    "futureUseZh": "token embedding",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        16,
+        4
+      ],
+      "axes": [
+        "V",
+        "C"
+      ]
+    },
+    "shelf": "Embedding and Hidden Tensor",
+    "goal": "Build EmbeddingTable[V,C] and certify its float32[V,C] contract.",
+    "goalZh": "构造 EmbeddingTable[V,C]，并认证它的 float32[V,C] 合约。",
+    "task": "Route the prepared case through EmbeddingTable[V,C] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 EmbeddingTable[V,C] 连接到合约探针。",
+    "concept": "EmbeddingTable[V,C] turns ParameterMatrix into a reusable graph component.",
+    "conceptZh": "EmbeddingTable[V,C] 把「ParameterMatrix」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [V,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [V,C]。",
+    "requires": [
+      "component.parameter_matrix.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch2_02_embedding_lookup"
+    ]
+  },
+  {
+    "code": "2-2",
+    "id": "mvp01_ch2_02_embedding_lookup",
+    "chapter": 2,
+    "chapterTitle": "Embedding and Hidden Tensor",
+    "chapterTitleZh": "Embedding 与 Hidden Tensor",
+    "chapterGoalZh": "从 token_ids[B,T] 进入模型内部，理解查表、位置、以及 hidden[B,T,C] 的形成。",
+    "index": 2,
+    "slug": "embedding_lookup",
+    "title": "Embedding Lookup",
+    "titleZh": "2-2 Embedding Lookup",
+    "component": "EmbeddingLookup",
+    "componentZh": "EmbeddingLookup",
+    "componentId": "component.embedding_lookup.v1",
+    "moduleId": "component.embedding_lookup.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "token_ids + table",
+    "fromZh": "token_ids + table",
+    "learn": "int ids → float vectors",
+    "learnZh": "int ids → float vectors",
+    "futureUse": "hidden[B,T,C]",
+    "futureUseZh": "hidden[B,T,C]",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        4
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Embedding and Hidden Tensor",
+    "goal": "Build EmbeddingLookup and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 EmbeddingLookup，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through EmbeddingLookup into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 EmbeddingLookup 连接到合约探针。",
+    "concept": "EmbeddingLookup turns token_ids + table into a reusable graph component.",
+    "conceptZh": "EmbeddingLookup 把「token_ids + table」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.embedding_table.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch2_03_position_counter"
+    ]
+  },
+  {
+    "code": "2-3",
+    "id": "mvp01_ch2_03_position_counter",
+    "chapter": 2,
+    "chapterTitle": "Embedding and Hidden Tensor",
+    "chapterTitleZh": "Embedding 与 Hidden Tensor",
+    "chapterGoalZh": "从 token_ids[B,T] 进入模型内部，理解查表、位置、以及 hidden[B,T,C] 的形成。",
+    "index": 3,
+    "slug": "position_counter",
+    "title": "Position Counter",
+    "titleZh": "2-3 Position Counter",
+    "component": "PositionIds[T]",
+    "componentZh": "PositionIds[T]",
+    "componentId": "component.position_counter.v1",
+    "moduleId": "component.position_counter.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "range builder",
+    "fromZh": "range builder",
+    "learn": "模型需要位置",
+    "learnZh": "模型需要位置",
+    "futureUse": "position embedding",
+    "futureUseZh": "position embedding",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        6
+      ],
+      "axes": [
+        "T"
+      ]
+    },
+    "shelf": "Embedding and Hidden Tensor",
+    "goal": "Build PositionIds[T] and certify its int[T] contract.",
+    "goalZh": "构造 PositionIds[T]，并认证它的 int[T] 合约。",
+    "task": "Route the prepared case through PositionIds[T] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 PositionIds[T] 连接到合约探针。",
+    "concept": "PositionIds[T] turns range builder into a reusable graph component.",
+    "conceptZh": "PositionIds[T] 把「range builder」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [T]。",
+    "requires": [
+      "component.embedding_lookup.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch2_04_position_embedding"
+    ]
+  },
+  {
+    "code": "2-4",
+    "id": "mvp01_ch2_04_position_embedding",
+    "chapter": 2,
+    "chapterTitle": "Embedding and Hidden Tensor",
+    "chapterTitleZh": "Embedding 与 Hidden Tensor",
+    "chapterGoalZh": "从 token_ids[B,T] 进入模型内部，理解查表、位置、以及 hidden[B,T,C] 的形成。",
+    "index": 4,
+    "slug": "position_embedding",
+    "title": "Position Embedding",
+    "titleZh": "2-4 Position Embedding",
+    "component": "PositionEmbedding[T,C]",
+    "componentZh": "PositionEmbedding[T,C]",
+    "componentId": "component.position_embedding.v1",
+    "moduleId": "component.position_embedding.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "position ids + table",
+    "fromZh": "position ids + table",
+    "learn": "每个位置也有向量",
+    "learnZh": "每个位置也有向量",
+    "futureUse": "hidden init",
+    "futureUseZh": "hidden init",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        6,
+        4
+      ],
+      "axes": [
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Embedding and Hidden Tensor",
+    "goal": "Build PositionEmbedding[T,C] and certify its float32[T,C] contract.",
+    "goalZh": "构造 PositionEmbedding[T,C]，并认证它的 float32[T,C] 合约。",
+    "task": "Route the prepared case through PositionEmbedding[T,C] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 PositionEmbedding[T,C] 连接到合约探针。",
+    "concept": "PositionEmbedding[T,C] turns position ids + table into a reusable graph component.",
+    "conceptZh": "PositionEmbedding[T,C] 把「position ids + table」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [T,C]。",
+    "requires": [
+      "component.position_counter.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch2_05_hidden_init"
+    ]
+  },
+  {
+    "code": "2-5",
+    "id": "mvp01_ch2_05_hidden_init",
+    "chapter": 2,
+    "chapterTitle": "Embedding and Hidden Tensor",
+    "chapterTitleZh": "Embedding 与 Hidden Tensor",
+    "chapterGoalZh": "从 token_ids[B,T] 进入模型内部，理解查表、位置、以及 hidden[B,T,C] 的形成。",
+    "index": 5,
+    "slug": "hidden_init",
+    "title": "Hidden Init",
+    "titleZh": "2-5 Hidden Init",
+    "component": "Token + Position Add",
+    "componentZh": "Token + Position Add",
+    "componentId": "component.hidden_init.v1",
+    "moduleId": "component.hidden_init.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "broadcast add",
+    "fromZh": "broadcast add",
+    "learn": "token vector + position vector",
+    "learnZh": "token vector + position vector",
+    "futureUse": "block 输入",
+    "futureUseZh": "block 输入",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        4
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Embedding and Hidden Tensor",
+    "goal": "Build Token + Position Add and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 Token + Position Add，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through Token + Position Add into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Token + Position Add 连接到合约探针。",
+    "concept": "Token + Position Add turns broadcast add into a reusable graph component.",
+    "conceptZh": "Token + Position Add 把「broadcast add」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.position_embedding.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch3_00_linear_core"
+    ]
+  },
+  {
+    "code": "3-0",
+    "id": "mvp01_ch3_00_linear_core",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 0,
+    "slug": "linear_core",
+    "title": "Linear Core",
+    "titleZh": "3-0 Linear Core",
+    "component": "LinearCore",
+    "componentZh": "LinearCore",
+    "componentId": "component.linear_core.v1",
+    "moduleId": "component.linear_core.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "MatMul + Weight",
+    "fromZh": "MatMul + Weight",
+    "learn": "C → O 投影",
+    "learnZh": "C → O 投影",
+    "futureUse": "Q/K/V、MLP、LM head",
+    "futureUseZh": "Q/K/V、MLP、LM head",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        5
+      ],
+      "axes": [
+        "B",
+        "T",
+        "O"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build LinearCore and certify its float32[B,T,O] contract.",
+    "goalZh": "构造 LinearCore，并认证它的 float32[B,T,O] 合约。",
+    "task": "Route the prepared case through LinearCore into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 LinearCore 连接到合约探针。",
+    "concept": "LinearCore turns MatMul + Weight into a reusable graph component.",
+    "conceptZh": "LinearCore 把「MatMul + Weight」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,O]。",
+    "requires": [
+      "component.hidden_init.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch3_01_bias_add"
+    ]
+  },
+  {
+    "code": "3-1",
+    "id": "mvp01_ch3_01_bias_add",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 1,
+    "slug": "bias_add",
+    "title": "Bias Add",
+    "titleZh": "3-1 Bias Add",
+    "component": "BiasAdd",
+    "componentZh": "BiasAdd",
+    "componentId": "component.bias_add.v1",
+    "moduleId": "component.bias_add.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Broadcast + Add",
+    "fromZh": "Broadcast + Add",
+    "learn": "bias[O] 广播到 [B,T,O]",
+    "learnZh": "bias[O] 广播到 [B,T,O]",
+    "futureUse": "Linear",
+    "futureUseZh": "Linear",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        5
+      ],
+      "axes": [
+        "B",
+        "T",
+        "O"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build BiasAdd and certify its float32[B,T,O] contract.",
+    "goalZh": "构造 BiasAdd，并认证它的 float32[B,T,O] 合约。",
+    "task": "Route the prepared case through BiasAdd into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 BiasAdd 连接到合约探针。",
+    "concept": "BiasAdd turns Broadcast + Add into a reusable graph component.",
+    "conceptZh": "BiasAdd 把「Broadcast + Add」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,O]。",
+    "requires": [
+      "component.linear_core.v1"
+    ],
+    "unlocks": [
+      "mvp01_6_linear"
+    ]
+  },
+  {
+    "code": "3-2",
+    "id": "mvp01_6_linear",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 2,
+    "slug": "linear_module",
+    "title": "Linear Module",
+    "titleZh": "3-2 Linear Module",
+    "component": "Linear",
+    "componentZh": "Linear",
+    "componentId": "component.linear.v1",
+    "moduleId": "component.linear.v1",
+    "buildable": true,
+    "implementedManually": true,
+    "from": "MatMul + Bias",
+    "fromZh": "MatMul + Bias",
+    "learn": "封装常用投影层",
+    "learnZh": "封装常用投影层",
+    "futureUse": "所有模型层",
+    "futureUseZh": "所有模型层",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        5
+      ],
+      "axes": [
+        "B",
+        "T",
+        "O"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build Linear and certify its float32[B,T,O] contract.",
+    "goalZh": "构造 Linear，并认证它的 float32[B,T,O] 合约。",
+    "task": "Route the prepared case through Linear into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Linear 连接到合约探针。",
+    "concept": "Linear turns MatMul + Bias into a reusable graph component.",
+    "conceptZh": "Linear 把「MatMul + Bias」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,O]。",
+    "requires": [
+      "component.bias_add.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch3_03_activation"
+    ]
+  },
+  {
+    "code": "3-3",
+    "id": "mvp01_ch3_03_activation",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 3,
+    "slug": "activation",
+    "title": "Activation",
+    "titleZh": "3-3 Activation",
+    "component": "ReLU",
+    "componentZh": "ReLU",
+    "componentId": "component.activation.v1",
+    "moduleId": "component.activation.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "scalar max / vector map",
+    "fromZh": "scalar max / vector map",
+    "learn": "非线性变换",
+    "learnZh": "非线性变换",
+    "futureUse": "MLP",
+    "futureUseZh": "MLP",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        5
+      ],
+      "axes": [
+        "B",
+        "T",
+        "O"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build ReLU and certify its float32[B,T,O] contract.",
+    "goalZh": "构造 ReLU，并认证它的 float32[B,T,O] 合约。",
+    "task": "Route the prepared case through ReLU into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ReLU 连接到合约探针。",
+    "concept": "ReLU turns scalar max / vector map into a reusable graph component.",
+    "conceptZh": "ReLU 把「scalar max / vector map」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,O]。",
+    "requires": [
+      "component.linear.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch3_04_mlp_up_projection"
+    ]
+  },
+  {
+    "code": "3-4",
+    "id": "mvp01_ch3_04_mlp_up_projection",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 4,
+    "slug": "mlp_up_projection",
+    "title": "MLP Up Projection",
+    "titleZh": "3-4 MLP Up Projection",
+    "component": "Linear C→4C",
+    "componentZh": "Linear C→4C",
+    "componentId": "component.mlp_up_projection.v1",
+    "moduleId": "component.mlp_up_projection.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear",
+    "fromZh": "Linear",
+    "learn": "扩宽通道",
+    "learnZh": "扩宽通道",
+    "futureUse": "MLP",
+    "futureUseZh": "MLP",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        16
+      ],
+      "axes": [
+        "B",
+        "T",
+        "O"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build Linear C→4C and certify its float32[B,T,O] contract.",
+    "goalZh": "构造 Linear C→4C，并认证它的 float32[B,T,O] 合约。",
+    "task": "Route the prepared case through Linear C→4C into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Linear C→4C 连接到合约探针。",
+    "concept": "Linear C→4C turns Linear into a reusable graph component.",
+    "conceptZh": "Linear C→4C 把「Linear」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,O]。",
+    "requires": [
+      "component.activation.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch3_05_mlp_down_projection"
+    ]
+  },
+  {
+    "code": "3-5",
+    "id": "mvp01_ch3_05_mlp_down_projection",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 5,
+    "slug": "mlp_down_projection",
+    "title": "MLP Down Projection",
+    "titleZh": "3-5 MLP Down Projection",
+    "component": "Linear 4C→C",
+    "componentZh": "Linear 4C→C",
+    "componentId": "component.mlp_down_projection.v1",
+    "moduleId": "component.mlp_down_projection.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear",
+    "fromZh": "Linear",
+    "learn": "回到 hidden width",
+    "learnZh": "回到 hidden width",
+    "futureUse": "MLP",
+    "futureUseZh": "MLP",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        4
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build Linear 4C→C and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 Linear 4C→C，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through Linear 4C→C into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Linear 4C→C 连接到合约探针。",
+    "concept": "Linear 4C→C turns Linear into a reusable graph component.",
+    "conceptZh": "Linear 4C→C 把「Linear」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.mlp_up_projection.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch3_06_mlp_module"
+    ]
+  },
+  {
+    "code": "3-6",
+    "id": "mvp01_ch3_06_mlp_module",
+    "chapter": 3,
+    "chapterTitle": "Linear, Activation, and MLP",
+    "chapterTitleZh": "Linear、Activation、MLP",
+    "chapterGoalZh": "把基础矩阵操作封装成可复用神经网络模块。",
+    "index": 6,
+    "slug": "mlp_module",
+    "title": "MLP Module",
+    "titleZh": "3-6 MLP Module",
+    "component": "MLP",
+    "componentZh": "MLP",
+    "componentId": "component.mlp_module.v1",
+    "moduleId": "component.mlp_module.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear + ReLU + Linear",
+    "fromZh": "Linear + ReLU + Linear",
+    "learn": "每个 token 独立计算",
+    "learnZh": "每个 token 独立计算",
+    "futureUse": "Transformer block",
+    "futureUseZh": "Transformer block",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        4
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Linear, Activation, and MLP",
+    "goal": "Build MLP and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 MLP，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through MLP into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 MLP 连接到合约探针。",
+    "concept": "MLP turns Linear + ReLU + Linear into a reusable graph component.",
+    "conceptZh": "MLP 把「Linear + ReLU + Linear」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.mlp_down_projection.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_00_q_projection"
+    ]
+  },
+  {
+    "code": "4-0",
+    "id": "mvp01_ch4_00_q_projection",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 0,
+    "slug": "q_projection",
+    "title": "Q Projection",
+    "titleZh": "4-0 Q Projection",
+    "component": "QLinear",
+    "componentZh": "QLinear",
+    "componentId": "component.q_projection.v1",
+    "moduleId": "component.q_projection.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear C→D",
+    "fromZh": "Linear C→D",
+    "learn": "query 是“我想找什么”",
+    "learnZh": "query 是“我想找什么”",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        3
+      ],
+      "axes": [
+        "B",
+        "T",
+        "D"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build QLinear and certify its float32[B,T,D] contract.",
+    "goalZh": "构造 QLinear，并认证它的 float32[B,T,D] 合约。",
+    "task": "Route the prepared case through QLinear into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 QLinear 连接到合约探针。",
+    "concept": "QLinear turns Linear C→D into a reusable graph component.",
+    "conceptZh": "QLinear 把「Linear C→D」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,D].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,D]。",
+    "requires": [
+      "component.mlp_module.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_01_k_projection"
+    ]
+  },
+  {
+    "code": "4-1",
+    "id": "mvp01_ch4_01_k_projection",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 1,
+    "slug": "k_projection",
+    "title": "K Projection",
+    "titleZh": "4-1 K Projection",
+    "component": "KLinear",
+    "componentZh": "KLinear",
+    "componentId": "component.k_projection.v1",
+    "moduleId": "component.k_projection.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear C→D",
+    "fromZh": "Linear C→D",
+    "learn": "key 是“我有什么信息”",
+    "learnZh": "key 是“我有什么信息”",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        3
+      ],
+      "axes": [
+        "B",
+        "T",
+        "D"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build KLinear and certify its float32[B,T,D] contract.",
+    "goalZh": "构造 KLinear，并认证它的 float32[B,T,D] 合约。",
+    "task": "Route the prepared case through KLinear into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 KLinear 连接到合约探针。",
+    "concept": "KLinear turns Linear C→D into a reusable graph component.",
+    "conceptZh": "KLinear 把「Linear C→D」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,D].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,D]。",
+    "requires": [
+      "component.q_projection.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_02_v_projection"
+    ]
+  },
+  {
+    "code": "4-2",
+    "id": "mvp01_ch4_02_v_projection",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 2,
+    "slug": "v_projection",
+    "title": "V Projection",
+    "titleZh": "4-2 V Projection",
+    "component": "VLinear",
+    "componentZh": "VLinear",
+    "componentId": "component.v_projection.v1",
+    "moduleId": "component.v_projection.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear C→D",
+    "fromZh": "Linear C→D",
+    "learn": "value 是“我传什么内容”",
+    "learnZh": "value 是“我传什么内容”",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        3
+      ],
+      "axes": [
+        "B",
+        "T",
+        "D"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build VLinear and certify its float32[B,T,D] contract.",
+    "goalZh": "构造 VLinear，并认证它的 float32[B,T,D] 合约。",
+    "task": "Route the prepared case through VLinear into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 VLinear 连接到合约探针。",
+    "concept": "VLinear turns Linear C→D into a reusable graph component.",
+    "conceptZh": "VLinear 把「Linear C→D」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,D].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,D]。",
+    "requires": [
+      "component.k_projection.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_03_qk_score"
+    ]
+  },
+  {
+    "code": "4-3",
+    "id": "mvp01_ch4_03_qk_score",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 3,
+    "slug": "qk_score",
+    "title": "QK Score",
+    "titleZh": "4-3 QK Score",
+    "component": "QKScore",
+    "componentZh": "QKScore",
+    "componentId": "component.qk_score.v1",
+    "moduleId": "component.qk_score.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "MatMul + K transpose",
+    "fromZh": "MatMul + K transpose",
+    "learn": "token-to-token 分数",
+    "learnZh": "token-to-token 分数",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        6
+      ],
+      "axes": [
+        "B",
+        "T",
+        "T"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build QKScore and certify its float32[B,T,T] contract.",
+    "goalZh": "构造 QKScore，并认证它的 float32[B,T,T] 合约。",
+    "task": "Route the prepared case through QKScore into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 QKScore 连接到合约探针。",
+    "concept": "QKScore turns MatMul + K transpose into a reusable graph component.",
+    "conceptZh": "QKScore 把「MatMul + K transpose」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,T].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,T]。",
+    "requires": [
+      "component.v_projection.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_04_scale"
+    ]
+  },
+  {
+    "code": "4-4",
+    "id": "mvp01_ch4_04_scale",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 4,
+    "slug": "scale",
+    "title": "Scale",
+    "titleZh": "4-4 Scale",
+    "component": "ScaleBySqrtD",
+    "componentZh": "ScaleBySqrtD",
+    "componentId": "component.scale.v1",
+    "moduleId": "component.scale.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Scalar + multiply",
+    "fromZh": "Scalar + multiply",
+    "learn": "稳定 softmax",
+    "learnZh": "稳定 softmax",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        6
+      ],
+      "axes": [
+        "B",
+        "T",
+        "T"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build ScaleBySqrtD and certify its float32[B,T,T] contract.",
+    "goalZh": "构造 ScaleBySqrtD，并认证它的 float32[B,T,T] 合约。",
+    "task": "Route the prepared case through ScaleBySqrtD into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ScaleBySqrtD 连接到合约探针。",
+    "concept": "ScaleBySqrtD turns Scalar + multiply into a reusable graph component.",
+    "conceptZh": "ScaleBySqrtD 把「Scalar + multiply」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,T].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,T]。",
+    "requires": [
+      "component.qk_score.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_05_causal_mask"
+    ]
+  },
+  {
+    "code": "4-5",
+    "id": "mvp01_ch4_05_causal_mask",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 5,
+    "slug": "causal_mask",
+    "title": "Causal Mask",
+    "titleZh": "4-5 Causal Mask",
+    "component": "CausalMask[T,T]",
+    "componentZh": "CausalMask[T,T]",
+    "componentId": "component.causal_mask.v1",
+    "moduleId": "component.causal_mask.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "lower triangle",
+    "fromZh": "lower triangle",
+    "learn": "不能看未来",
+    "learnZh": "不能看未来",
+    "futureUse": "decoder-only",
+    "futureUseZh": "decoder-only",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        6,
+        6
+      ],
+      "axes": [
+        "T",
+        "T"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build CausalMask[T,T] and certify its float32[T,T] contract.",
+    "goalZh": "构造 CausalMask[T,T]，并认证它的 float32[T,T] 合约。",
+    "task": "Route the prepared case through CausalMask[T,T] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 CausalMask[T,T] 连接到合约探针。",
+    "concept": "CausalMask[T,T] turns lower triangle into a reusable graph component.",
+    "conceptZh": "CausalMask[T,T] 把「lower triangle」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [T,T].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [T,T]。",
+    "requires": [
+      "component.scale.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_06_mask_apply"
+    ]
+  },
+  {
+    "code": "4-6",
+    "id": "mvp01_ch4_06_mask_apply",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 6,
+    "slug": "mask_apply",
+    "title": "Mask Apply",
+    "titleZh": "4-6 Mask Apply",
+    "component": "MaskAdd",
+    "componentZh": "MaskAdd",
+    "componentId": "component.mask_apply.v1",
+    "moduleId": "component.mask_apply.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Broadcast + Add",
+    "fromZh": "Broadcast + Add",
+    "learn": "future logits → -inf",
+    "learnZh": "future logits → -inf",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        6
+      ],
+      "axes": [
+        "B",
+        "T",
+        "T"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build MaskAdd and certify its float32[B,T,T] contract.",
+    "goalZh": "构造 MaskAdd，并认证它的 float32[B,T,T] 合约。",
+    "task": "Route the prepared case through MaskAdd into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 MaskAdd 连接到合约探针。",
+    "concept": "MaskAdd turns Broadcast + Add into a reusable graph component.",
+    "conceptZh": "MaskAdd 把「Broadcast + Add」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,T].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,T]。",
+    "requires": [
+      "component.causal_mask.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_07_softmax"
+    ]
+  },
+  {
+    "code": "4-7",
+    "id": "mvp01_ch4_07_softmax",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 7,
+    "slug": "softmax",
+    "title": "Softmax",
+    "titleZh": "4-7 Softmax",
+    "component": "SoftmaxLastDim",
+    "componentZh": "SoftmaxLastDim",
+    "componentId": "component.softmax.v1",
+    "moduleId": "component.softmax.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "exp/sum/div",
+    "fromZh": "exp/sum/div",
+    "learn": "分数变权重",
+    "learnZh": "分数变权重",
+    "futureUse": "attention",
+    "futureUseZh": "attention",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        6
+      ],
+      "axes": [
+        "B",
+        "T",
+        "T"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build SoftmaxLastDim and certify its float32[B,T,T] contract.",
+    "goalZh": "构造 SoftmaxLastDim，并认证它的 float32[B,T,T] 合约。",
+    "task": "Route the prepared case through SoftmaxLastDim into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 SoftmaxLastDim 连接到合约探针。",
+    "concept": "SoftmaxLastDim turns exp/sum/div into a reusable graph component.",
+    "conceptZh": "SoftmaxLastDim 把「exp/sum/div」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,T].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,T]。",
+    "requires": [
+      "component.mask_apply.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_08_weighted_sum"
+    ]
+  },
+  {
+    "code": "4-8",
+    "id": "mvp01_ch4_08_weighted_sum",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 8,
+    "slug": "weighted_sum",
+    "title": "Weighted Sum",
+    "titleZh": "4-8 Weighted Sum",
+    "component": "AttnWeights @ V",
+    "componentZh": "AttnWeights @ V",
+    "componentId": "component.weighted_sum.v1",
+    "moduleId": "component.weighted_sum.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "MatMul",
+    "fromZh": "MatMul",
+    "learn": "汇聚 value",
+    "learnZh": "汇聚 value",
+    "futureUse": "attention output",
+    "futureUseZh": "attention output",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        3
+      ],
+      "axes": [
+        "B",
+        "T",
+        "D"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build AttnWeights @ V and certify its float32[B,T,D] contract.",
+    "goalZh": "构造 AttnWeights @ V，并认证它的 float32[B,T,D] 合约。",
+    "task": "Route the prepared case through AttnWeights @ V into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AttnWeights @ V 连接到合约探针。",
+    "concept": "AttnWeights @ V turns MatMul into a reusable graph component.",
+    "conceptZh": "AttnWeights @ V 把「MatMul」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,D].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,D]。",
+    "requires": [
+      "component.softmax.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch4_09_attention_head"
+    ]
+  },
+  {
+    "code": "4-9",
+    "id": "mvp01_ch4_09_attention_head",
+    "chapter": 4,
+    "chapterTitle": "Attention Head",
+    "chapterTitleZh": "Attention Head",
+    "chapterGoalZh": "通过 Q/K/V、QKᵀ、Scale、Mask、Softmax、Weighted Sum 构造单头注意力。",
+    "index": 9,
+    "slug": "attention_head",
+    "title": "Attention Head",
+    "titleZh": "4-9 Attention Head",
+    "component": "AttentionHead",
+    "componentZh": "AttentionHead",
+    "componentId": "component.attention_head.v1",
+    "moduleId": "component.attention_head.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Q/K/V + Score + Mask + Softmax + V",
+    "fromZh": "Q/K/V + Score + Mask + Softmax + V",
+    "learn": "封装单头注意力",
+    "learnZh": "封装单头注意力",
+    "futureUse": "multi-head",
+    "futureUseZh": "multi-head",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        3
+      ],
+      "axes": [
+        "B",
+        "T",
+        "D"
+      ]
+    },
+    "shelf": "Attention Head",
+    "goal": "Build AttentionHead and certify its float32[B,T,D] contract.",
+    "goalZh": "构造 AttentionHead，并认证它的 float32[B,T,D] 合约。",
+    "task": "Route the prepared case through AttentionHead into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AttentionHead 连接到合约探针。",
+    "concept": "AttentionHead turns Q/K/V + Score + Mask + Softmax + V into a reusable graph component.",
+    "conceptZh": "AttentionHead 把「Q/K/V + Score + Mask + Softmax + V」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,D].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,D]。",
+    "requires": [
+      "component.weighted_sum.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch5_00_head_split"
+    ]
+  },
+  {
+    "code": "5-0",
+    "id": "mvp01_ch5_00_head_split",
+    "chapter": 5,
+    "chapterTitle": "Multi-Head Attention",
+    "chapterTitleZh": "Multi-Head Attention",
+    "chapterGoalZh": "把多个 AttentionHead 并行、拼接，再用输出投影混合。",
+    "index": 0,
+    "slug": "head_split",
+    "title": "Head Split",
+    "titleZh": "5-0 Head Split",
+    "component": "HeadWidth D=C/H",
+    "componentZh": "HeadWidth D=C/H",
+    "componentId": "component.head_split.v1",
+    "moduleId": "component.head_split.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "shape arithmetic",
+    "fromZh": "shape arithmetic",
+    "learn": "C 被分成 H 个头",
+    "learnZh": "C 被分成 H 个头",
+    "futureUse": "MHA",
+    "futureUseZh": "MHA",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        4
+      ],
+      "axes": [
+        "H"
+      ]
+    },
+    "shelf": "Multi-Head Attention",
+    "goal": "Build HeadWidth D=C/H and certify its int[H] contract.",
+    "goalZh": "构造 HeadWidth D=C/H，并认证它的 int[H] 合约。",
+    "task": "Route the prepared case through HeadWidth D=C/H into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 HeadWidth D=C/H 连接到合约探针。",
+    "concept": "HeadWidth D=C/H turns shape arithmetic into a reusable graph component.",
+    "conceptZh": "HeadWidth D=C/H 把「shape arithmetic」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [H].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [H]。",
+    "requires": [
+      "component.attention_head.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch5_01_parallel_heads"
+    ]
+  },
+  {
+    "code": "5-1",
+    "id": "mvp01_ch5_01_parallel_heads",
+    "chapter": 5,
+    "chapterTitle": "Multi-Head Attention",
+    "chapterTitleZh": "Multi-Head Attention",
+    "chapterGoalZh": "把多个 AttentionHead 并行、拼接，再用输出投影混合。",
+    "index": 1,
+    "slug": "parallel_heads",
+    "title": "Parallel Heads",
+    "titleZh": "5-1 Parallel Heads",
+    "component": "HeadArray",
+    "componentZh": "HeadArray",
+    "componentId": "component.parallel_heads.v1",
+    "moduleId": "component.parallel_heads.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "多个 AttentionHead",
+    "fromZh": "多个 AttentionHead",
+    "learn": "多种关系并行看",
+    "learnZh": "多种关系并行看",
+    "futureUse": "MHA",
+    "futureUseZh": "MHA",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        4,
+        6,
+        2
+      ],
+      "axes": [
+        "B",
+        "H",
+        "T",
+        "D"
+      ]
+    },
+    "shelf": "Multi-Head Attention",
+    "goal": "Build HeadArray and certify its float32[B,H,T,D] contract.",
+    "goalZh": "构造 HeadArray，并认证它的 float32[B,H,T,D] 合约。",
+    "task": "Route the prepared case through HeadArray into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 HeadArray 连接到合约探针。",
+    "concept": "HeadArray turns 多个 AttentionHead into a reusable graph component.",
+    "conceptZh": "HeadArray 把「多个 AttentionHead」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,H,T,D].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,H,T,D]。",
+    "requires": [
+      "component.head_split.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch5_02_head_concat"
+    ]
+  },
+  {
+    "code": "5-2",
+    "id": "mvp01_ch5_02_head_concat",
+    "chapter": 5,
+    "chapterTitle": "Multi-Head Attention",
+    "chapterTitleZh": "Multi-Head Attention",
+    "chapterGoalZh": "把多个 AttentionHead 并行、拼接，再用输出投影混合。",
+    "index": 2,
+    "slug": "head_concat",
+    "title": "Head Concat",
+    "titleZh": "5-2 Head Concat",
+    "component": "ConcatHeads",
+    "componentZh": "ConcatHeads",
+    "componentId": "component.head_concat.v1",
+    "moduleId": "component.head_concat.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "concatenate",
+    "fromZh": "concatenate",
+    "learn": "H×D 回到 C",
+    "learnZh": "H×D 回到 C",
+    "futureUse": "MHA",
+    "futureUseZh": "MHA",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Multi-Head Attention",
+    "goal": "Build ConcatHeads and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 ConcatHeads，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through ConcatHeads into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ConcatHeads 连接到合约探针。",
+    "concept": "ConcatHeads turns concatenate into a reusable graph component.",
+    "conceptZh": "ConcatHeads 把「concatenate」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.parallel_heads.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch5_03_output_projection"
+    ]
+  },
+  {
+    "code": "5-3",
+    "id": "mvp01_ch5_03_output_projection",
+    "chapter": 5,
+    "chapterTitle": "Multi-Head Attention",
+    "chapterTitleZh": "Multi-Head Attention",
+    "chapterGoalZh": "把多个 AttentionHead 并行、拼接，再用输出投影混合。",
+    "index": 3,
+    "slug": "output_projection",
+    "title": "Output Projection",
+    "titleZh": "5-3 Output Projection",
+    "component": "AttentionOutLinear",
+    "componentZh": "AttentionOutLinear",
+    "componentId": "component.output_projection.v1",
+    "moduleId": "component.output_projection.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear C→C",
+    "fromZh": "Linear C→C",
+    "learn": "混合 heads",
+    "learnZh": "混合 heads",
+    "futureUse": "MHA",
+    "futureUseZh": "MHA",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Multi-Head Attention",
+    "goal": "Build AttentionOutLinear and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 AttentionOutLinear，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through AttentionOutLinear into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AttentionOutLinear 连接到合约探针。",
+    "concept": "AttentionOutLinear turns Linear C→C into a reusable graph component.",
+    "conceptZh": "AttentionOutLinear 把「Linear C→C」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.head_concat.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch5_04_multi_head_attention"
+    ]
+  },
+  {
+    "code": "5-4",
+    "id": "mvp01_ch5_04_multi_head_attention",
+    "chapter": 5,
+    "chapterTitle": "Multi-Head Attention",
+    "chapterTitleZh": "Multi-Head Attention",
+    "chapterGoalZh": "把多个 AttentionHead 并行、拼接，再用输出投影混合。",
+    "index": 4,
+    "slug": "multi_head_attention",
+    "title": "Multi-Head Attention",
+    "titleZh": "5-4 Multi-Head Attention",
+    "component": "MHA",
+    "componentZh": "MHA",
+    "componentId": "component.multi_head_attention.v1",
+    "moduleId": "component.multi_head_attention.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "HeadArray + Concat + Linear",
+    "fromZh": "HeadArray + Concat + Linear",
+    "learn": "完整注意力层",
+    "learnZh": "完整注意力层",
+    "futureUse": "Transformer block",
+    "futureUseZh": "Transformer block",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "Multi-Head Attention",
+    "goal": "Build MHA and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 MHA，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through MHA into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 MHA 连接到合约探针。",
+    "concept": "MHA turns HeadArray + Concat + Linear into a reusable graph component.",
+    "conceptZh": "MHA 把「HeadArray + Concat + Linear」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.output_projection.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_00_mean_variance"
+    ]
+  },
+  {
+    "code": "6-0",
+    "id": "mvp01_ch6_00_mean_variance",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 0,
+    "slug": "mean_variance",
+    "title": "Mean / Variance",
+    "titleZh": "6-0 Mean / Variance",
+    "component": "MeanVar",
+    "componentZh": "MeanVar",
+    "componentId": "component.mean_variance.v1",
+    "moduleId": "component.mean_variance.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "reduce over C",
+    "fromZh": "reduce over C",
+    "learn": "LayerNorm 的基础",
+    "learnZh": "LayerNorm 的基础",
+    "futureUse": "LayerNorm",
+    "futureUseZh": "LayerNorm",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        2
+      ],
+      "axes": [
+        "B",
+        "T",
+        "O"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build MeanVar and certify its float32[B,T,O] contract.",
+    "goalZh": "构造 MeanVar，并认证它的 float32[B,T,O] 合约。",
+    "task": "Route the prepared case through MeanVar into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 MeanVar 连接到合约探针。",
+    "concept": "MeanVar turns reduce over C into a reusable graph component.",
+    "conceptZh": "MeanVar 把「reduce over C」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,O].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,O]。",
+    "requires": [
+      "component.multi_head_attention.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_01_layernorm"
+    ]
+  },
+  {
+    "code": "6-1",
+    "id": "mvp01_ch6_01_layernorm",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 1,
+    "slug": "layernorm",
+    "title": "LayerNorm",
+    "titleZh": "6-1 LayerNorm",
+    "component": "LayerNorm",
+    "componentZh": "LayerNorm",
+    "componentId": "component.layernorm.v1",
+    "moduleId": "component.layernorm.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "normalize + gamma/beta",
+    "fromZh": "normalize + gamma/beta",
+    "learn": "稳定每个 token vector",
+    "learnZh": "稳定每个 token vector",
+    "futureUse": "block",
+    "futureUseZh": "block",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build LayerNorm and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 LayerNorm，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through LayerNorm into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 LayerNorm 连接到合约探针。",
+    "concept": "LayerNorm turns normalize + gamma/beta into a reusable graph component.",
+    "conceptZh": "LayerNorm 把「normalize + gamma/beta」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.mean_variance.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_02_residual_add"
+    ]
+  },
+  {
+    "code": "6-2",
+    "id": "mvp01_ch6_02_residual_add",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 2,
+    "slug": "residual_add",
+    "title": "Residual Add",
+    "titleZh": "6-2 Residual Add",
+    "component": "ResidualAdd",
+    "componentZh": "ResidualAdd",
+    "componentId": "component.residual_add.v1",
+    "moduleId": "component.residual_add.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Add same shape",
+    "fromZh": "Add same shape",
+    "learn": "学习 update，不替换信息",
+    "learnZh": "学习 update，不替换信息",
+    "futureUse": "block",
+    "futureUseZh": "block",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build ResidualAdd and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 ResidualAdd，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through ResidualAdd into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ResidualAdd 连接到合约探针。",
+    "concept": "ResidualAdd turns Add same shape into a reusable graph component.",
+    "conceptZh": "ResidualAdd 把「Add same shape」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.layernorm.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_03_attention_sublayer"
+    ]
+  },
+  {
+    "code": "6-3",
+    "id": "mvp01_ch6_03_attention_sublayer",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 3,
+    "slug": "attention_sublayer",
+    "title": "Attention Sublayer",
+    "titleZh": "6-3 Attention Sublayer",
+    "component": "LN → MHA → Residual",
+    "componentZh": "LN → MHA → Residual",
+    "componentId": "component.attention_sublayer.v1",
+    "moduleId": "component.attention_sublayer.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "LayerNorm + MHA + Add",
+    "fromZh": "LayerNorm + MHA + Add",
+    "learn": "tokens 通信",
+    "learnZh": "tokens 通信",
+    "futureUse": "block",
+    "futureUseZh": "block",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build LN → MHA → Residual and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 LN → MHA → Residual，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through LN → MHA → Residual into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 LN → MHA → Residual 连接到合约探针。",
+    "concept": "LN → MHA → Residual turns LayerNorm + MHA + Add into a reusable graph component.",
+    "conceptZh": "LN → MHA → Residual 把「LayerNorm + MHA + Add」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.residual_add.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_04_mlp_sublayer"
+    ]
+  },
+  {
+    "code": "6-4",
+    "id": "mvp01_ch6_04_mlp_sublayer",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 4,
+    "slug": "mlp_sublayer",
+    "title": "MLP Sublayer",
+    "titleZh": "6-4 MLP Sublayer",
+    "component": "LN → MLP → Residual",
+    "componentZh": "LN → MLP → Residual",
+    "componentId": "component.mlp_sublayer.v1",
+    "moduleId": "component.mlp_sublayer.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "LayerNorm + MLP + Add",
+    "fromZh": "LayerNorm + MLP + Add",
+    "learn": "token 内计算",
+    "learnZh": "token 内计算",
+    "futureUse": "block",
+    "futureUseZh": "block",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build LN → MLP → Residual and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 LN → MLP → Residual，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through LN → MLP → Residual into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 LN → MLP → Residual 连接到合约探针。",
+    "concept": "LN → MLP → Residual turns LayerNorm + MLP + Add into a reusable graph component.",
+    "conceptZh": "LN → MLP → Residual 把「LayerNorm + MLP + Add」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.attention_sublayer.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_05_transformer_block"
+    ]
+  },
+  {
+    "code": "6-5",
+    "id": "mvp01_ch6_05_transformer_block",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 5,
+    "slug": "transformer_block",
+    "title": "Transformer Block",
+    "titleZh": "6-5 Transformer Block",
+    "component": "Block",
+    "componentZh": "Block",
+    "componentId": "component.transformer_block.v1",
+    "moduleId": "component.transformer_block.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Attention Sublayer + MLP Sublayer",
+    "fromZh": "Attention Sublayer + MLP Sublayer",
+    "learn": "最小 Transformer 单元",
+    "learnZh": "最小 Transformer 单元",
+    "futureUse": "block stack",
+    "futureUseZh": "block stack",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build Block and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 Block，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through Block into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Block 连接到合约探针。",
+    "concept": "Block turns Attention Sublayer + MLP Sublayer into a reusable graph component.",
+    "conceptZh": "Block 把「Attention Sublayer + MLP Sublayer」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.mlp_sublayer.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch6_06_block_stack"
+    ]
+  },
+  {
+    "code": "6-6",
+    "id": "mvp01_ch6_06_block_stack",
+    "chapter": 6,
+    "chapterTitle": "LayerNorm, Residual, Transformer Block",
+    "chapterTitleZh": "LayerNorm、Residual、Transformer Block",
+    "chapterGoalZh": "把归一化、残差、注意力子层和 MLP 子层合成最小 Transformer block。",
+    "index": 6,
+    "slug": "block_stack",
+    "title": "Block Stack",
+    "titleZh": "6-6 Block Stack",
+    "component": "TransformerStack",
+    "componentZh": "TransformerStack",
+    "componentId": "component.block_stack.v1",
+    "moduleId": "component.block_stack.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "N 个 Block",
+    "fromZh": "N 个 Block",
+    "learn": "深层模型",
+    "learnZh": "深层模型",
+    "futureUse": "full model",
+    "futureUseZh": "full model",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LayerNorm, Residual, Transformer Block",
+    "goal": "Build TransformerStack and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 TransformerStack，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through TransformerStack into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TransformerStack 连接到合约探针。",
+    "concept": "TransformerStack turns N 个 Block into a reusable graph component.",
+    "conceptZh": "TransformerStack 把「N 个 Block」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.transformer_block.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch7_00_final_layernorm"
+    ]
+  },
+  {
+    "code": "7-0",
+    "id": "mvp01_ch7_00_final_layernorm",
+    "chapter": 7,
+    "chapterTitle": "LM Head and Loss",
+    "chapterTitleZh": "LM Head 与 Loss",
+    "chapterGoalZh": "把 hidden 变成 next-token logits，并构造 shift target 与 cross entropy loss。",
+    "index": 0,
+    "slug": "final_layernorm",
+    "title": "Final LayerNorm",
+    "titleZh": "7-0 Final LayerNorm",
+    "component": "FinalNorm",
+    "componentZh": "FinalNorm",
+    "componentId": "component.final_layernorm.v1",
+    "moduleId": "component.final_layernorm.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "LayerNorm",
+    "fromZh": "LayerNorm",
+    "learn": "输出前归一化",
+    "learnZh": "输出前归一化",
+    "futureUse": "logits",
+    "futureUseZh": "logits",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        8
+      ],
+      "axes": [
+        "B",
+        "T",
+        "C"
+      ]
+    },
+    "shelf": "LM Head and Loss",
+    "goal": "Build FinalNorm and certify its float32[B,T,C] contract.",
+    "goalZh": "构造 FinalNorm，并认证它的 float32[B,T,C] 合约。",
+    "task": "Route the prepared case through FinalNorm into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 FinalNorm 连接到合约探针。",
+    "concept": "FinalNorm turns LayerNorm into a reusable graph component.",
+    "conceptZh": "FinalNorm 把「LayerNorm」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,C].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,C]。",
+    "requires": [
+      "component.block_stack.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch7_01_lm_head"
+    ]
+  },
+  {
+    "code": "7-1",
+    "id": "mvp01_ch7_01_lm_head",
+    "chapter": 7,
+    "chapterTitle": "LM Head and Loss",
+    "chapterTitleZh": "LM Head 与 Loss",
+    "chapterGoalZh": "把 hidden 变成 next-token logits，并构造 shift target 与 cross entropy loss。",
+    "index": 1,
+    "slug": "lm_head",
+    "title": "LM Head",
+    "titleZh": "7-1 LM Head",
+    "component": "LMHead",
+    "componentZh": "LMHead",
+    "componentId": "component.lm_head.v1",
+    "moduleId": "component.lm_head.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Linear C→V",
+    "fromZh": "Linear C→V",
+    "learn": "每个 token 输出 vocab 分数",
+    "learnZh": "每个 token 输出 vocab 分数",
+    "futureUse": "next token",
+    "futureUseZh": "next token",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        20
+      ],
+      "axes": [
+        "B",
+        "T",
+        "V"
+      ]
+    },
+    "shelf": "LM Head and Loss",
+    "goal": "Build LMHead and certify its float32[B,T,V] contract.",
+    "goalZh": "构造 LMHead，并认证它的 float32[B,T,V] 合约。",
+    "task": "Route the prepared case through LMHead into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 LMHead 连接到合约探针。",
+    "concept": "LMHead turns Linear C→V into a reusable graph component.",
+    "conceptZh": "LMHead 把「Linear C→V」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,V].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,V]。",
+    "requires": [
+      "component.final_layernorm.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch7_02_logits_board"
+    ]
+  },
+  {
+    "code": "7-2",
+    "id": "mvp01_ch7_02_logits_board",
+    "chapter": 7,
+    "chapterTitle": "LM Head and Loss",
+    "chapterTitleZh": "LM Head 与 Loss",
+    "chapterGoalZh": "把 hidden 变成 next-token logits，并构造 shift target 与 cross entropy loss。",
+    "index": 2,
+    "slug": "logits_board",
+    "title": "Logits Board",
+    "titleZh": "7-2 Logits Board",
+    "component": "Logits[B,T,V]",
+    "componentZh": "Logits[B,T,V]",
+    "componentId": "component.logits_board.v1",
+    "moduleId": "component.logits_board.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "hidden + LMHead",
+    "fromZh": "hidden + LMHead",
+    "learn": "每个位置有 V 个候选",
+    "learnZh": "每个位置有 V 个候选",
+    "futureUse": "loss/generation",
+    "futureUseZh": "loss/generation",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        20
+      ],
+      "axes": [
+        "B",
+        "T",
+        "V"
+      ]
+    },
+    "shelf": "LM Head and Loss",
+    "goal": "Build Logits[B,T,V] and certify its float32[B,T,V] contract.",
+    "goalZh": "构造 Logits[B,T,V]，并认证它的 float32[B,T,V] 合约。",
+    "task": "Route the prepared case through Logits[B,T,V] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 Logits[B,T,V] 连接到合约探针。",
+    "concept": "Logits[B,T,V] turns hidden + LMHead into a reusable graph component.",
+    "conceptZh": "Logits[B,T,V] 把「hidden + LMHead」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,V].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,V]。",
+    "requires": [
+      "component.lm_head.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch7_03_shift_targets"
+    ]
+  },
+  {
+    "code": "7-3",
+    "id": "mvp01_ch7_03_shift_targets",
+    "chapter": 7,
+    "chapterTitle": "LM Head and Loss",
+    "chapterTitleZh": "LM Head 与 Loss",
+    "chapterGoalZh": "把 hidden 变成 next-token logits，并构造 shift target 与 cross entropy loss。",
+    "index": 3,
+    "slug": "shift_targets",
+    "title": "Shift Targets",
+    "titleZh": "7-3 Shift Targets",
+    "component": "TargetShift",
+    "componentZh": "TargetShift",
+    "componentId": "component.shift_targets.v1",
+    "moduleId": "component.shift_targets.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "token_ids[:,1:]",
+    "fromZh": "token_ids[:,1:]",
+    "learn": "预测下一个 token",
+    "learnZh": "预测下一个 token",
+    "futureUse": "CE",
+    "futureUseZh": "CE",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        2,
+        6
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "LM Head and Loss",
+    "goal": "Build TargetShift and certify its int[B,T] contract.",
+    "goalZh": "构造 TargetShift，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through TargetShift into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TargetShift 连接到合约探针。",
+    "concept": "TargetShift turns token_ids[:,1:] into a reusable graph component.",
+    "conceptZh": "TargetShift 把「token_ids[:,1:]」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.logits_board.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch7_04_cross_entropy_cell"
+    ]
+  },
+  {
+    "code": "7-4",
+    "id": "mvp01_ch7_04_cross_entropy_cell",
+    "chapter": 7,
+    "chapterTitle": "LM Head and Loss",
+    "chapterTitleZh": "LM Head 与 Loss",
+    "chapterGoalZh": "把 hidden 变成 next-token logits，并构造 shift target 与 cross entropy loss。",
+    "index": 4,
+    "slug": "cross_entropy_cell",
+    "title": "Cross Entropy Cell",
+    "titleZh": "7-4 Cross Entropy Cell",
+    "component": "CrossEntropy",
+    "componentZh": "CrossEntropy",
+    "componentId": "component.cross_entropy_cell.v1",
+    "moduleId": "component.cross_entropy_cell.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "logits + target id",
+    "fromZh": "logits + target id",
+    "learn": "正确 token 概率越高越好",
+    "learnZh": "正确 token 概率越高越好",
+    "futureUse": "training",
+    "futureUseZh": "training",
+    "output": {
+      "dtype": "float32",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "LM Head and Loss",
+    "goal": "Build CrossEntropy and certify its float32[] contract.",
+    "goalZh": "构造 CrossEntropy，并认证它的 float32[] 合约。",
+    "task": "Route the prepared case through CrossEntropy into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 CrossEntropy 连接到合约探针。",
+    "concept": "CrossEntropy turns logits + target id into a reusable graph component.",
+    "conceptZh": "CrossEntropy 把「logits + target id」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 []。",
+    "requires": [
+      "component.shift_targets.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch7_05_loss_reducer"
+    ]
+  },
+  {
+    "code": "7-5",
+    "id": "mvp01_ch7_05_loss_reducer",
+    "chapter": 7,
+    "chapterTitle": "LM Head and Loss",
+    "chapterTitleZh": "LM Head 与 Loss",
+    "chapterGoalZh": "把 hidden 变成 next-token logits，并构造 shift target 与 cross entropy loss。",
+    "index": 5,
+    "slug": "loss_reducer",
+    "title": "Loss Reducer",
+    "titleZh": "7-5 Loss Reducer",
+    "component": "LossMean",
+    "componentZh": "LossMean",
+    "componentId": "component.loss_reducer.v1",
+    "moduleId": "component.loss_reducer.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "reduce over B/T",
+    "fromZh": "reduce over B/T",
+    "learn": "batch loss",
+    "learnZh": "batch loss",
+    "futureUse": "optimizer",
+    "futureUseZh": "optimizer",
+    "output": {
+      "dtype": "float32",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "LM Head and Loss",
+    "goal": "Build LossMean and certify its float32[] contract.",
+    "goalZh": "构造 LossMean，并认证它的 float32[] 合约。",
+    "task": "Route the prepared case through LossMean into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 LossMean 连接到合约探针。",
+    "concept": "LossMean turns reduce over B/T into a reusable graph component.",
+    "conceptZh": "LossMean 把「reduce over B/T」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 []。",
+    "requires": [
+      "component.cross_entropy_cell.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_00_dataset_stream"
+    ]
+  },
+  {
+    "code": "8-0",
+    "id": "mvp01_ch8_00_dataset_stream",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 0,
+    "slug": "dataset_stream",
+    "title": "Dataset Stream",
+    "titleZh": "8-0 Dataset Stream",
+    "component": "TokenStream",
+    "componentZh": "TokenStream",
+    "componentId": "component.dataset_stream.v1",
+    "moduleId": "component.dataset_stream.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "flat ids",
+    "fromZh": "flat ids",
+    "learn": "数据是一长串 token",
+    "learnZh": "数据是一长串 token",
+    "futureUse": "batch",
+    "futureUseZh": "batch",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        32
+      ],
+      "axes": [
+        "T"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build TokenStream and certify its int[T] contract.",
+    "goalZh": "构造 TokenStream，并认证它的 int[T] 合约。",
+    "task": "Route the prepared case through TokenStream into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TokenStream 连接到合约探针。",
+    "concept": "TokenStream turns flat ids into a reusable graph component.",
+    "conceptZh": "TokenStream 把「flat ids」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [T]。",
+    "requires": [
+      "component.loss_reducer.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_01_window_sampler"
+    ]
+  },
+  {
+    "code": "8-1",
+    "id": "mvp01_ch8_01_window_sampler",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 1,
+    "slug": "window_sampler",
+    "title": "Window Sampler",
+    "titleZh": "8-1 Window Sampler",
+    "component": "ContextWindow",
+    "componentZh": "ContextWindow",
+    "componentId": "component.window_sampler.v1",
+    "moduleId": "component.window_sampler.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "T+1 slice",
+    "fromZh": "T+1 slice",
+    "learn": "输入和目标错一位",
+    "learnZh": "输入和目标错一位",
+    "futureUse": "pretraining",
+    "futureUseZh": "pretraining",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        7
+      ],
+      "axes": [
+        "T"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build ContextWindow and certify its int[T] contract.",
+    "goalZh": "构造 ContextWindow，并认证它的 int[T] 合约。",
+    "task": "Route the prepared case through ContextWindow into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ContextWindow 连接到合约探针。",
+    "concept": "ContextWindow turns T+1 slice into a reusable graph component.",
+    "conceptZh": "ContextWindow 把「T+1 slice」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [T]。",
+    "requires": [
+      "component.dataset_stream.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_02_batch_builder"
+    ]
+  },
+  {
+    "code": "8-2",
+    "id": "mvp01_ch8_02_batch_builder",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 2,
+    "slug": "batch_builder",
+    "title": "Batch Builder",
+    "titleZh": "8-2 Batch Builder",
+    "component": "BatchBuilder[B,T]",
+    "componentZh": "BatchBuilder[B,T]",
+    "componentId": "component.batch_builder.v1",
+    "moduleId": "component.batch_builder.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "多个窗口",
+    "fromZh": "多个窗口",
+    "learn": "batch 并行",
+    "learnZh": "batch 并行",
+    "futureUse": "training",
+    "futureUseZh": "training",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        2,
+        6
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build BatchBuilder[B,T] and certify its int[B,T] contract.",
+    "goalZh": "构造 BatchBuilder[B,T]，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through BatchBuilder[B,T] into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 BatchBuilder[B,T] 连接到合约探针。",
+    "concept": "BatchBuilder[B,T] turns 多个窗口 into a reusable graph component.",
+    "conceptZh": "BatchBuilder[B,T] 把「多个窗口」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.window_sampler.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_03_forward_runner"
+    ]
+  },
+  {
+    "code": "8-3",
+    "id": "mvp01_ch8_03_forward_runner",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 3,
+    "slug": "forward_runner",
+    "title": "Forward Runner",
+    "titleZh": "8-3 Forward Runner",
+    "component": "ForwardPass",
+    "componentZh": "ForwardPass",
+    "componentId": "component.forward_runner.v1",
+    "moduleId": "component.forward_runner.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "model + batch",
+    "fromZh": "model + batch",
+    "learn": "logits",
+    "learnZh": "logits",
+    "futureUse": "loss",
+    "futureUseZh": "loss",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        2,
+        6,
+        20
+      ],
+      "axes": [
+        "B",
+        "T",
+        "V"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build ForwardPass and certify its float32[B,T,V] contract.",
+    "goalZh": "构造 ForwardPass，并认证它的 float32[B,T,V] 合约。",
+    "task": "Route the prepared case through ForwardPass into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ForwardPass 连接到合约探针。",
+    "concept": "ForwardPass turns model + batch into a reusable graph component.",
+    "conceptZh": "ForwardPass 把「model + batch」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [B,T,V].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [B,T,V]。",
+    "requires": [
+      "component.batch_builder.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_04_backward_trace"
+    ]
+  },
+  {
+    "code": "8-4",
+    "id": "mvp01_ch8_04_backward_trace",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 4,
+    "slug": "backward_trace",
+    "title": "Backward Trace",
+    "titleZh": "8-4 Backward Trace",
+    "component": "BackwardPass",
+    "componentZh": "BackwardPass",
+    "componentId": "component.backward_trace.v1",
+    "moduleId": "component.backward_trace.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "loss → gradients",
+    "fromZh": "loss → gradients",
+    "learn": "参数如何收到更新信号",
+    "learnZh": "参数如何收到更新信号",
+    "futureUse": "optimizer",
+    "futureUseZh": "optimizer",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        128
+      ],
+      "axes": [
+        "P"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build BackwardPass and certify its float32[P] contract.",
+    "goalZh": "构造 BackwardPass，并认证它的 float32[P] 合约。",
+    "task": "Route the prepared case through BackwardPass into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 BackwardPass 连接到合约探针。",
+    "concept": "BackwardPass turns loss → gradients into a reusable graph component.",
+    "conceptZh": "BackwardPass 把「loss → gradients」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [P].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [P]。",
+    "requires": [
+      "component.forward_runner.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_05_optimizer"
+    ]
+  },
+  {
+    "code": "8-5",
+    "id": "mvp01_ch8_05_optimizer",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 5,
+    "slug": "optimizer",
+    "title": "Optimizer",
+    "titleZh": "8-5 Optimizer",
+    "component": "AdamW",
+    "componentZh": "AdamW",
+    "componentId": "component.optimizer.v1",
+    "moduleId": "component.optimizer.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "params + grads",
+    "fromZh": "params + grads",
+    "learn": "更新权重",
+    "learnZh": "更新权重",
+    "futureUse": "training loop",
+    "futureUseZh": "training loop",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        128
+      ],
+      "axes": [
+        "P"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build AdamW and certify its float32[P] contract.",
+    "goalZh": "构造 AdamW，并认证它的 float32[P] 合约。",
+    "task": "Route the prepared case through AdamW into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AdamW 连接到合约探针。",
+    "concept": "AdamW turns params + grads into a reusable graph component.",
+    "conceptZh": "AdamW 把「params + grads」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [P].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [P]。",
+    "requires": [
+      "component.backward_trace.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch8_06_checkpoint"
+    ]
+  },
+  {
+    "code": "8-6",
+    "id": "mvp01_ch8_06_checkpoint",
+    "chapter": 8,
+    "chapterTitle": "Training Loop",
+    "chapterTitleZh": "Training Loop",
+    "chapterGoalZh": "把数据流、窗口采样、forward、backward、optimizer 和 checkpoint 串成训练循环。",
+    "index": 6,
+    "slug": "checkpoint",
+    "title": "Checkpoint",
+    "titleZh": "8-6 Checkpoint",
+    "component": "CheckpointSaver",
+    "componentZh": "CheckpointSaver",
+    "componentId": "component.checkpoint.v1",
+    "moduleId": "component.checkpoint.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "params snapshot",
+    "fromZh": "params snapshot",
+    "learn": "保存模型",
+    "learnZh": "保存模型",
+    "futureUse": "generation",
+    "futureUseZh": "generation",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        128
+      ],
+      "axes": [
+        "P"
+      ]
+    },
+    "shelf": "Training Loop",
+    "goal": "Build CheckpointSaver and certify its float32[P] contract.",
+    "goalZh": "构造 CheckpointSaver，并认证它的 float32[P] 合约。",
+    "task": "Route the prepared case through CheckpointSaver into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 CheckpointSaver 连接到合约探针。",
+    "concept": "CheckpointSaver turns params snapshot into a reusable graph component.",
+    "conceptZh": "CheckpointSaver 把「params snapshot」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [P].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [P]。",
+    "requires": [
+      "component.optimizer.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_00_prompt_encoder"
+    ]
+  },
+  {
+    "code": "9-0",
+    "id": "mvp01_ch9_00_prompt_encoder",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 0,
+    "slug": "prompt_encoder",
+    "title": "Prompt Encoder",
+    "titleZh": "9-0 Prompt Encoder",
+    "component": "PromptEncode",
+    "componentZh": "PromptEncode",
+    "componentId": "component.prompt_encoder.v1",
+    "moduleId": "component.prompt_encoder.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "Tokenizer",
+    "fromZh": "Tokenizer",
+    "learn": "prompt 变 ids",
+    "learnZh": "prompt 变 ids",
+    "futureUse": "inference",
+    "futureUseZh": "inference",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        1,
+        6
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Generation",
+    "goal": "Build PromptEncode and certify its int[B,T] contract.",
+    "goalZh": "构造 PromptEncode，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through PromptEncode into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 PromptEncode 连接到合约探针。",
+    "concept": "PromptEncode turns Tokenizer into a reusable graph component.",
+    "conceptZh": "PromptEncode 把「Tokenizer」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.checkpoint.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_01_context_crop"
+    ]
+  },
+  {
+    "code": "9-1",
+    "id": "mvp01_ch9_01_context_crop",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 1,
+    "slug": "context_crop",
+    "title": "Context Crop",
+    "titleZh": "9-1 Context Crop",
+    "component": "ContextWindow",
+    "componentZh": "ContextWindow",
+    "componentId": "component.context_crop.v1",
+    "moduleId": "component.context_crop.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "last T tokens",
+    "fromZh": "last T tokens",
+    "learn": "不能超过 context",
+    "learnZh": "不能超过 context",
+    "futureUse": "generation",
+    "futureUseZh": "generation",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        1,
+        6
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Generation",
+    "goal": "Build ContextWindow and certify its int[B,T] contract.",
+    "goalZh": "构造 ContextWindow，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through ContextWindow into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ContextWindow 连接到合约探针。",
+    "concept": "ContextWindow turns last T tokens into a reusable graph component.",
+    "conceptZh": "ContextWindow 把「last T tokens」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.prompt_encoder.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_02_next_logits"
+    ]
+  },
+  {
+    "code": "9-2",
+    "id": "mvp01_ch9_02_next_logits",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 2,
+    "slug": "next_logits",
+    "title": "Next Logits",
+    "titleZh": "9-2 Next Logits",
+    "component": "ForwardLastToken",
+    "componentZh": "ForwardLastToken",
+    "componentId": "component.next_logits.v1",
+    "moduleId": "component.next_logits.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "model forward",
+    "fromZh": "model forward",
+    "learn": "取最后位置 logits",
+    "learnZh": "取最后位置 logits",
+    "futureUse": "sampler",
+    "futureUseZh": "sampler",
+    "output": {
+      "dtype": "float32",
+      "dims": [
+        20
+      ],
+      "axes": [
+        "V"
+      ]
+    },
+    "shelf": "Generation",
+    "goal": "Build ForwardLastToken and certify its float32[V] contract.",
+    "goalZh": "构造 ForwardLastToken，并认证它的 float32[V] 合约。",
+    "task": "Route the prepared case through ForwardLastToken into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 ForwardLastToken 连接到合约探针。",
+    "concept": "ForwardLastToken turns model forward into a reusable graph component.",
+    "conceptZh": "ForwardLastToken 把「model forward」变成可复用的图组件。",
+    "check": "The output must keep dtype float32 and axes [V].",
+    "checkZh": "输出必须保持 dtype=float32，轴为 [V]。",
+    "requires": [
+      "component.context_crop.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_03_sampler"
+    ]
+  },
+  {
+    "code": "9-3",
+    "id": "mvp01_ch9_03_sampler",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 3,
+    "slug": "sampler",
+    "title": "Sampler",
+    "titleZh": "9-3 Sampler",
+    "component": "SampleNextToken",
+    "componentZh": "SampleNextToken",
+    "componentId": "component.sampler.v1",
+    "moduleId": "component.sampler.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "softmax + temperature/top-k",
+    "fromZh": "softmax + temperature/top-k",
+    "learn": "从概率选 token",
+    "learnZh": "从概率选 token",
+    "futureUse": "generation",
+    "futureUseZh": "generation",
+    "output": {
+      "dtype": "int",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Generation",
+    "goal": "Build SampleNextToken and certify its int[] contract.",
+    "goalZh": "构造 SampleNextToken，并认证它的 int[] 合约。",
+    "task": "Route the prepared case through SampleNextToken into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 SampleNextToken 连接到合约探针。",
+    "concept": "SampleNextToken turns softmax + temperature/top-k into a reusable graph component.",
+    "conceptZh": "SampleNextToken 把「softmax + temperature/top-k」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [].",
+    "checkZh": "输出必须保持 dtype=int，轴为 []。",
+    "requires": [
+      "component.next_logits.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_04_append_token"
+    ]
+  },
+  {
+    "code": "9-4",
+    "id": "mvp01_ch9_04_append_token",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 4,
+    "slug": "append_token",
+    "title": "Append Token",
+    "titleZh": "9-4 Append Token",
+    "component": "AppendToken",
+    "componentZh": "AppendToken",
+    "componentId": "component.append_token.v1",
+    "moduleId": "component.append_token.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "buffer update",
+    "fromZh": "buffer update",
+    "learn": "自回归循环",
+    "learnZh": "自回归循环",
+    "futureUse": "generation",
+    "futureUseZh": "generation",
+    "output": {
+      "dtype": "int",
+      "dims": [
+        1,
+        7
+      ],
+      "axes": [
+        "B",
+        "T"
+      ]
+    },
+    "shelf": "Generation",
+    "goal": "Build AppendToken and certify its int[B,T] contract.",
+    "goalZh": "构造 AppendToken，并认证它的 int[B,T] 合约。",
+    "task": "Route the prepared case through AppendToken into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 AppendToken 连接到合约探针。",
+    "concept": "AppendToken turns buffer update into a reusable graph component.",
+    "conceptZh": "AppendToken 把「buffer update」变成可复用的图组件。",
+    "check": "The output must keep dtype int and axes [B,T].",
+    "checkZh": "输出必须保持 dtype=int，轴为 [B,T]。",
+    "requires": [
+      "component.sampler.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_05_decode"
+    ]
+  },
+  {
+    "code": "9-5",
+    "id": "mvp01_ch9_05_decode",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 5,
+    "slug": "decode",
+    "title": "Decode",
+    "titleZh": "9-5 Decode",
+    "component": "TokenDecode",
+    "componentZh": "TokenDecode",
+    "componentId": "component.decode.v1",
+    "moduleId": "component.decode.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "ids → text",
+    "fromZh": "ids → text",
+    "learn": "还原文字",
+    "learnZh": "还原文字",
+    "futureUse": "chat",
+    "futureUseZh": "chat",
+    "output": {
+      "dtype": "raw_text",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Generation",
+    "goal": "Build TokenDecode and certify its raw_text[] contract.",
+    "goalZh": "构造 TokenDecode，并认证它的 raw_text[] 合约。",
+    "task": "Route the prepared case through TokenDecode into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 TokenDecode 连接到合约探针。",
+    "concept": "TokenDecode turns ids → text into a reusable graph component.",
+    "conceptZh": "TokenDecode 把「ids → text」变成可复用的图组件。",
+    "check": "The output must keep dtype raw_text and axes [].",
+    "checkZh": "输出必须保持 dtype=raw_text，轴为 []。",
+    "requires": [
+      "component.append_token.v1"
+    ],
+    "unlocks": [
+      "mvp01_ch9_06_tiny_chat_loop"
+    ]
+  },
+  {
+    "code": "9-6",
+    "id": "mvp01_ch9_06_tiny_chat_loop",
+    "chapter": 9,
+    "chapterTitle": "Generation",
+    "chapterTitleZh": "Generation",
+    "chapterGoalZh": "把 prompt 编码、context 裁剪、下一 token 采样、append 和 decode 组成自回归生成循环。",
+    "index": 6,
+    "slug": "tiny_chat_loop",
+    "title": "Tiny Chat Loop",
+    "titleZh": "9-6 Tiny Chat Loop",
+    "component": "GenerateLoop",
+    "componentZh": "GenerateLoop",
+    "componentId": "component.tiny_chat_loop.v1",
+    "moduleId": "component.tiny_chat_loop.v1",
+    "buildable": true,
+    "implementedManually": false,
+    "from": "encoder + model + sampler + decoder",
+    "fromZh": "encoder + model + sampler + decoder",
+    "learn": "可运行 tiny LLM",
+    "learnZh": "可运行 tiny LLM",
+    "futureUse": "最终演示",
+    "futureUseZh": "最终演示",
+    "output": {
+      "dtype": "raw_text",
+      "dims": [],
+      "axes": []
+    },
+    "shelf": "Generation",
+    "goal": "Build GenerateLoop and certify its raw_text[] contract.",
+    "goalZh": "构造 GenerateLoop，并认证它的 raw_text[] 合约。",
+    "task": "Route the prepared case through GenerateLoop into the contract probe.",
+    "taskZh": "把准备好的案例数据通过 GenerateLoop 连接到合约探针。",
+    "concept": "GenerateLoop turns encoder + model + sampler + decoder into a reusable graph component.",
+    "conceptZh": "GenerateLoop 把「encoder + model + sampler + decoder」变成可复用的图组件。",
+    "check": "The output must keep dtype raw_text and axes [].",
+    "checkZh": "输出必须保持 dtype=raw_text，轴为 []。",
+    "requires": [
+      "component.decode.v1"
+    ],
+    "unlocks": []
+  }
+]

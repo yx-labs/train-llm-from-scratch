@@ -1,5 +1,6 @@
 import type { AxisName, CertificationControlValue, CertificationTestSpec, GraphSpec, LevelCertificationSpec, LevelSpec, RuntimeValue, TestCase } from "../gameplayGraph/types";
 import { addTensors, broadcastTo, makeTensor, matmul, seededTensor, type TinyTensor } from "../gameplayGraph/runtime/tinyTensor";
+import { mvp01CourseInputCount, mvp01CourseLevels, type Mvp01CourseLevelDef } from "./mvp01CourseCatalog";
 
 export type Mvp01ComponentFlowSpec = {
   levelId: string;
@@ -12,68 +13,18 @@ export type Mvp01ComponentFlowSpec = {
   shelf: string;
 };
 
-export const mvp01ComponentFlowSpecs: Mvp01ComponentFlowSpec[] = [
-  {
-    levelId: "mvp01_1_scalar_cell",
-    componentId: "component.scalar_cell.v1",
-    title: "ScalarCell v1",
+export const mvp01ComponentFlowSpecs: Mvp01ComponentFlowSpec[] = mvp01CourseLevels
+  .filter((level) => level.buildable)
+  .map((level) => ({
+    levelId: level.id,
+    componentId: level.componentId,
+    title: `${level.component} v1`,
     version: 1,
-    exportModuleId: "component.scalar_cell.v1",
-    requires: [],
-    unlocks: ["mvp01_2_vector_rail"],
-    shelf: "Core Values"
-  },
-  {
-    levelId: "mvp01_2_vector_rail",
-    componentId: "component.vector_rail.v1",
-    title: "VectorRail v1",
-    version: 1,
-    exportModuleId: "component.vector_rail.v1",
-    requires: ["component.scalar_cell.v1"],
-    unlocks: ["mvp01_3_matrix_struct", "mvp01_4_tensor_box"],
-    shelf: "Core Values"
-  },
-  {
-    levelId: "mvp01_3_matrix_struct",
-    componentId: "component.matrix_struct.v1",
-    title: "MatrixStruct v1",
-    version: 1,
-    exportModuleId: "component.matrix_struct.v1",
-    requires: ["component.vector_rail.v1"],
-    unlocks: ["mvp01_5_matmul_gate"],
-    shelf: "Tensor Structures"
-  },
-  {
-    levelId: "mvp01_4_tensor_box",
-    componentId: "component.tensor_box.v1",
-    title: "TensorBox v1",
-    version: 1,
-    exportModuleId: "component.tensor_box.v1",
-    requires: ["component.vector_rail.v1"],
-    unlocks: ["mvp01_5_matmul_gate"],
-    shelf: "Tensor Structures"
-  },
-  {
-    levelId: "mvp01_5_matmul_gate",
-    componentId: "component.matmul_gate.v1",
-    title: "MatMulGate v1",
-    version: 1,
-    exportModuleId: "component.matmul_gate.v1",
-    requires: ["component.matrix_struct.v1", "component.tensor_box.v1"],
-    unlocks: ["mvp01_6_linear"],
-    shelf: "Compute Gates"
-  },
-  {
-    levelId: "mvp01_6_linear",
-    componentId: "component.linear.v1",
-    title: "Linear v1",
-    version: 1,
-    exportModuleId: "component.linear.v1",
-    requires: ["component.matmul_gate.v1"],
-    unlocks: ["q_projection", "k_projection", "v_projection"],
-    shelf: "Layers"
-  }
-];
+    exportModuleId: level.componentId,
+    requires: level.requires,
+    unlocks: level.unlocks,
+    shelf: level.shelf
+  }));
 
 const scalarVisible = scalar(0.5);
 const scalarHidden = scalar(0.5);
@@ -110,15 +61,17 @@ const linearHiddenWeight = seededTensor([4, 3], ["C", "O"], "mvp01-linear-hidden
 const linearHiddenBias = seededTensor([3], ["O"], "mvp01-linear-hidden-bias");
 const linearHidden = linear(linearHiddenInput, linearHiddenWeight, linearHiddenBias);
 
-export const mvp01GraphLevels: LevelSpec[] = [
-  wireAndProbeTutorialLevel(),
-  scalarCellLevel(),
-  vectorRailLevel(),
-  matrixStructLevel(),
-  tensorBoxLevel(),
-  matMulGateLevel(),
-  linearBuildLevel()
-];
+const manualCourseLevelFactories: Record<string, () => LevelSpec> = {
+  "0-0": wireAndProbeTutorialLevel,
+  "0-1": scalarCellLevel,
+  "0-3": vectorRailLevel,
+  "0-5": matrixStructLevel,
+  "0-6": matMulGateLevel,
+  "0-7": tensorBoxLevel,
+  "3-2": linearBuildLevel
+};
+
+export const mvp01GraphLevels: LevelSpec[] = mvp01CourseLevels.map((courseLevel) => manualCourseLevelFactories[courseLevel.code]?.() ?? courseCatalogLevel(courseLevel));
 
 function wireAndProbeTutorialLevel(): LevelSpec {
   return {
@@ -603,6 +556,232 @@ function linearBuildLevel(): LevelSpec {
       nextUse: "The same component system can support upgrades, certification variants, and Expand Inside."
     }
   };
+}
+
+function courseCatalogLevel(courseLevel: Mvp01CourseLevelDef): LevelSpec {
+  const inputCount = mvp01CourseInputCount(courseLevel);
+  const targetGraph = createCourseTargetGraph(courseLevel);
+  const startsWithComponent = courseLevel.index % 2 === 1;
+  const targetRecipe = [
+    ...Array.from({ length: inputCount }, (_, index) => `input_${index}.out -> component.${courseInputPortId(index)}`),
+    "component.out -> contract.x"
+  ];
+
+  return {
+    id: courseLevel.id,
+    title: `Chapter ${courseLevel.code} ${courseLevel.title}`,
+    mode: "graph_challenge",
+    chapter: `Chapter ${courseLevel.chapter}: ${courseLevel.chapterTitle}`,
+    goal: courseLevel.goal,
+    modulePalette: [courseLevel.moduleId],
+    initialGraph: startsWithComponent ? createCourseWireRepairGraph(courseLevel) : createCourseInitialGraph(courseLevel),
+    targetGraph,
+    constraints: { maxNodes: inputCount + 2, maxEdges: inputCount + 1 },
+    visibleTests: [courseContractCase(courseLevel, "visible", courseLevel.output.dims, "visible")],
+    hiddenTests: [courseContractCase(courseLevel, "hidden", courseLevel.output.dims, "hidden")],
+    certification: courseCertification(courseLevel),
+    onboarding: {
+      story: courseLevel.concept,
+      startingProblem: startsWithComponent
+        ? `${courseLevel.component} is on the canvas, but the contract does not receive its output yet.`
+        : `${courseLevel.component} is missing from the graph. The source and contract are waiting for a valid component path.`,
+      firstAction: startsWithComponent ? "Connect component.out to contract.x." : `Add ${courseLevel.component}, then wire the source ports into it and connect its output to contract.x.`,
+      targetRecipe,
+      winCondition: courseLevel.check,
+      allowedMistakes: ["Forgetting one input edge", "Wiring a source directly into the contract", "Ignoring the expected dtype or axis names"]
+    },
+    caseStudy: {
+      title: `Build ${courseLevel.component}`,
+      narrative: courseLevel.concept,
+      visibleInputFocus: courseLevel.task,
+      dataPanels: [
+        { type: "text_batch", title: "Task Brief", inputKey: "case", focusText: courseLevel.task },
+        ...Array.from({ length: inputCount }, (_, index) => ({ type: "tensor_preview" as const, title: `Input ${courseInputPortId(index)}`, inputKey: `input_${index}` }))
+      ],
+      playerQuestion: `Can this graph turn the prepared case into a certified ${courseLevel.component} output?`,
+      successObservation: courseLevel.check
+    },
+    debrief: {
+      completeTitle: `${courseLevel.component} certified`,
+      fixedProblem: `${courseLevel.component} now has a graph path from source inputs to a checked output contract.`,
+      learned: courseLevel.learn,
+      nextUse: courseLevel.futureUse
+    }
+  };
+}
+
+function courseCertification(courseLevel: Mvp01CourseLevelDef): LevelCertificationSpec {
+  return {
+    title: "Certification variant",
+    narrative: `The current task checks one ${courseLevel.component} case. Certification mutates the generated case while preserving the component contract.`,
+    publicVariantLabel: "Public variant",
+    publicVariantDescription: "Adjust a compact generated variant. The system changes shape data without asking you to handwrite the full tensor.",
+    systemVariantDescription: "System variants keep the same dtype and axis contract while changing the generated case seed.",
+    controls: [
+      ...(courseLevel.output.dims.length
+        ? [{ id: "width", label: "variant width", kind: "integer" as const, defaultValue: Math.max(1, courseLevel.output.dims[courseLevel.output.dims.length - 1] + 1), min: 1, max: 12, help: "Mutates the last output dimension while preserving axis semantics." }]
+        : []),
+      { id: "seed", label: "variant seed", kind: "integer", defaultValue: courseLevel.chapter * 100 + courseLevel.index + 1, min: 1, max: 999, help: "Changes generated values without changing the component contract." }
+    ],
+    makePublicTests: (graph, values) => {
+      const variantDims = courseVariantDims(courseLevel, values);
+      const seed = String(controlInteger(values, "seed", courseLevel.chapter * 100 + courseLevel.index + 1));
+      return [
+        {
+          graph: withNodeParams(graph, {
+            component: { outputDims: variantDims, seed: `${courseLevel.slug}-${seed}` },
+            contract: { expectedDims: variantDims }
+          }),
+          testCase: courseContractCase(courseLevel, "public_variant", variantDims, seed)
+        }
+      ];
+    }
+  };
+}
+
+function courseVariantDims(courseLevel: Mvp01CourseLevelDef, values: Record<string, CertificationControlValue>) {
+  if (!courseLevel.output.dims.length) return [];
+  const dims = [...courseLevel.output.dims];
+  dims[dims.length - 1] = controlInteger(values, "width", dims[dims.length - 1]);
+  return dims;
+}
+
+function courseContractCase(courseLevel: Mvp01CourseLevelDef, visibility: "visible" | "hidden" | "public_variant", dims: number[], seed: string): TestCase {
+  const inputCount = mvp01CourseInputCount(courseLevel);
+  const testVisibility = visibility === "visible" ? "visible" : "hidden";
+  return {
+    id: `${courseLevel.id}_${visibility}`,
+    title: `${courseLevel.component} ${visibility.replace("_", " ")}`,
+    visibility: testVisibility,
+    inputSeed: `${courseLevel.slug}-${seed}`,
+    inputs: {
+      case: textBatch([`Concept: ${courseLevel.concept}`, `Task: ${courseLevel.task}`, `Check: ${courseLevel.check}`]),
+      ...Object.fromEntries(
+        Array.from({ length: inputCount }, (_, index) => [
+          `input_${index}`,
+          courseRuntimeValue(courseLevel, `input-${index}-${seed}`, index === 0 ? courseLevel.output.dims : courseInputDims(courseLevel.output.dims, index))
+        ])
+      )
+    },
+    assertions: [
+      { type: "dtype", nodeId: "contract", expected: courseLevel.output.dtype },
+      ...(courseLevel.output.dtype === "raw_text" ? [] : [{ type: "shape" as const, nodeId: "contract", expectedAxes: courseLevel.output.axes, expectedDims: dims }])
+    ]
+  };
+}
+
+function createCourseInitialGraph(courseLevel: Mvp01CourseLevelDef): GraphSpec {
+  return {
+    levelId: courseLevel.id,
+    version: 1,
+    nodes: [...courseInputNodes(courseLevel), courseContractNode(courseLevel)],
+    edges: [],
+    outputNodes: ["contract"]
+  };
+}
+
+function createCourseWireRepairGraph(courseLevel: Mvp01CourseLevelDef): GraphSpec {
+  const inputCount = mvp01CourseInputCount(courseLevel);
+  return {
+    levelId: courseLevel.id,
+    version: 1,
+    nodes: [...courseInputNodes(courseLevel), courseComponentNode(courseLevel), courseContractNode(courseLevel)],
+    edges: Array.from({ length: inputCount }, (_, index) => ({
+      id: `e_input_${index}_component`,
+      from: { nodeId: `input_${index}`, portId: "out" },
+      to: { nodeId: "component", portId: courseInputPortId(index) }
+    })),
+    outputNodes: ["contract"]
+  };
+}
+
+function createCourseTargetGraph(courseLevel: Mvp01CourseLevelDef): GraphSpec {
+  const inputCount = mvp01CourseInputCount(courseLevel);
+  return {
+    levelId: courseLevel.id,
+    version: 1,
+    nodes: [...courseInputNodes(courseLevel), courseComponentNode(courseLevel), courseContractNode(courseLevel)],
+    edges: [
+      ...Array.from({ length: inputCount }, (_, index) => ({
+        id: `e_input_${index}_component`,
+        from: { nodeId: `input_${index}`, portId: "out" },
+        to: { nodeId: "component", portId: courseInputPortId(index) }
+      })),
+      { id: "e_component_contract", from: { nodeId: "component", portId: "out" }, to: { nodeId: "contract", portId: "x" } }
+    ],
+    outputNodes: ["contract"]
+  };
+}
+
+function courseInputNodes(courseLevel: Mvp01CourseLevelDef) {
+  return Array.from({ length: mvp01CourseInputCount(courseLevel) }, (_, index) => ({
+    id: `input_${index}`,
+    moduleId: "CourseCaseSource",
+    params: {
+      inputKey: `input_${index}`,
+      dtype: courseLevel.output.dtype,
+      dims: index === 0 ? courseLevel.output.dims : courseInputDims(courseLevel.output.dims, index),
+      axes: courseLevel.output.axes,
+      seed: `${courseLevel.slug}-input-${index}`
+    },
+    position: { x: 80, y: 90 + index * 155 },
+    locked: true
+  }));
+}
+
+function courseComponentNode(courseLevel: Mvp01CourseLevelDef) {
+  return {
+    id: "component",
+    moduleId: courseLevel.moduleId,
+    params: {
+      outputDType: courseLevel.output.dtype,
+      outputDims: courseLevel.output.dims,
+      outputAxes: courseLevel.output.axes,
+      seed: courseLevel.slug
+    },
+    position: { x: 410, y: 160 }
+  };
+}
+
+function courseContractNode(courseLevel: Mvp01CourseLevelDef) {
+  return {
+    id: "contract",
+    moduleId: "TypeContractGate",
+    params: {
+      expectedDType: courseLevel.output.dtype,
+      expectedDims: courseLevel.output.dims,
+      expectedAxes: courseLevel.output.axes
+    },
+    position: { x: 760, y: 170 },
+    locked: true
+  };
+}
+
+function courseInputPortId(index: number) {
+  return index === 0 ? "x" : index === 1 ? "y" : "z";
+}
+
+function courseInputDims(dims: number[], index: number) {
+  if (!dims.length) return [];
+  return dims.map((dim, dimIndex) => Math.max(1, dim - (index === dimIndex % 2 ? 0 : 1)));
+}
+
+function courseRuntimeValue(courseLevel: Mvp01CourseLevelDef, seed: string, dims: number[]): RuntimeValue {
+  if (courseLevel.output.dtype === "raw_text") {
+    const text = `case ${seed}: ${courseLevel.component} data`;
+    return { dtype: "raw_text", data: text, meta: { batch: [text] } };
+  }
+  if (courseLevel.output.dtype === "string_piece" || courseLevel.output.dtype === "token_piece") {
+    const count = Math.max(1, dims.reduce((total, dim) => total * dim, 1));
+    return {
+      dtype: courseLevel.output.dtype,
+      shape: { dtype: courseLevel.output.dtype, dims, axes: courseLevel.output.axes },
+      data: Array.from({ length: count }, (_, index) => `${courseLevel.slug}_${index}`)
+    };
+  }
+  const tensorDType = courseLevel.output.dtype === "bool" || courseLevel.output.dtype === "mask" || courseLevel.output.dtype === "int" ? courseLevel.output.dtype : "float32";
+  const tensor = seededTensor(dims, courseLevel.output.axes, seed, tensorDType);
+  return runtimeValue(tensor);
 }
 
 function scalarCertification(): LevelCertificationSpec {

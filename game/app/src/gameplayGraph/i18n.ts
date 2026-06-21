@@ -1,6 +1,9 @@
+import { mvp01CourseZhText } from "../mvp01/mvp01CourseCatalog";
+
 export type GraphLanguage = "en" | "zh";
 
 const zhText: Record<string, string> = {
+  ...mvp01CourseZhText,
   "Graph Challenge Workbench": "图挑战工作台",
   "Guided Repair": "引导维修",
   "Graph Challenge": "图挑战",
@@ -14,6 +17,12 @@ const zhText: Record<string, string> = {
   "Draft": "草稿",
   "Locked": "锁定",
   "Available": "可用",
+  "Challenge Map": "挑战地图",
+  "Chapter route": "章节路线",
+  "Collapse map": "收起地图",
+  "Open level route": "打开关卡路线",
+  "Hide level route": "隐藏关卡路线",
+  "Drag a module onto the canvas to add it.": "把模块拖到画布上添加。",
   "is now available": "已经可用",
   "Entering next challenge": "进入下一关",
   "Route complete": "路线完成",
@@ -155,8 +164,10 @@ const zhText: Record<string, string> = {
 
   "Language": "语言",
   "MVP0.1 Component Builder": "MVP0.1 组件构造器",
+  "Chapter 0-9 Component Course": "Chapter 0-9 组件课程",
   "Build each component through graph operations, visible tests, hidden tests, and target-graph repair.": "通过图操作、任务检查、认证变体和目标图修复来构造每个组件。",
   "Build each component through graph operations, current-task checks, certification variants, and target-graph repair.": "通过图操作、当前任务检查、认证变体和目标图修复来构造每个组件。",
+  "Build every core LLM component through graph operations, task checks, and certification variants.": "通过图操作、任务检查和认证变体构造每个核心 LLM 组件。",
   "Legacy": "Legacy",
   "Open legacy prototype": "打开 legacy 原型",
   "Reset MVP0.1 component builder": "重置 MVP0.1 组件构造器",
