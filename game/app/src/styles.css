@@ -1658,6 +1658,7 @@ h3 {
   top: 0;
   transform-origin: 0 0;
   will-change: transform;
+  pointer-events: none;
 }
 
 .targetGhostLayer {
@@ -1763,6 +1764,7 @@ h3 {
     0 10px 24px rgba(0, 0, 0, 0.28),
     inset 0 0 0 1px rgba(96, 165, 250, 0.1);
   transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  pointer-events: auto;
 }
 
 .graphNode:active {

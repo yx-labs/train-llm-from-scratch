@@ -1751,10 +1751,9 @@ function dotProductStructureAssertions(): TestAssertion[] {
 
 function splitterStructureAssertions(): TestAssertion[] {
   return [
-    { type: "requires_node", nodeId: "splitter", moduleId: "BoundarySplitter" },
-    { type: "requires_node", nodeId: "piece_buffer", moduleId: "PieceBuffer" },
-    { type: "requires_edge_path", from: "text", through: "splitter", to: "piece_buffer" },
-    { type: "requires_edge_path", from: "splitter", through: "piece_buffer", to: "pieces_out" }
+    { type: "requires_module", moduleId: "BoundarySplitter" },
+    { type: "requires_module", moduleId: "PieceBuffer" },
+    { type: "requires_edge_path_by_module", from: "text", throughModules: ["BoundarySplitter", "PieceBuffer"], to: "pieces_out" }
   ];
 }
 

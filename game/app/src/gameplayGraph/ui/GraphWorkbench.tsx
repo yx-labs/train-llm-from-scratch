@@ -179,6 +179,37 @@ const defaultWorkbenchLayout: WorkbenchLayout = {
   inspectorWidth: 365,
   traceHeight: 178
 };
+
+function getDragTypes(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.types ?? []);
+}
+
+function hasModuleDragData(dataTransfer: DataTransfer) {
+  const types = getDragTypes(dataTransfer).map((type) => type.toLowerCase());
+  return types.includes(moduleDragMime) || types.includes("text/plain");
+}
+
+function getDraggedModuleId(dataTransfer: DataTransfer) {
+  return (dataTransfer.getData(moduleDragMime) || dataTransfer.getData("text/plain")).trim();
+}
+
+function centeredViewportForGraph(graph: GraphSpec, rect: DOMRect, preferredScale = 1): CanvasViewport {
+  if (!graph.nodes.length) return { x: 0, y: 0, scale: preferredScale };
+  const minX = Math.min(...graph.nodes.map((node) => node.position.x));
+  const minY = Math.min(...graph.nodes.map((node) => node.position.y));
+  const maxX = Math.max(...graph.nodes.map((node) => node.position.x + graphNodeWidth));
+  const maxY = Math.max(...graph.nodes.map((node) => node.position.y + graphNodeMinHeight));
+  const width = Math.max(graphNodeWidth, maxX - minX);
+  const height = Math.max(graphNodeMinHeight, maxY - minY);
+  const fitScale = clamp(Math.min(preferredScale, (rect.width - 120) / width, (rect.height - 120) / height), minCanvasScale, maxCanvasScale);
+  const centerX = minX + width / 2;
+  const centerY = minY + height / 2;
+  return {
+    scale: fitScale,
+    x: rect.width / 2 - centerX * fitScale,
+    y: rect.height / 2 - centerY * fitScale
+  };
+}
 const resizeHandleSize = 8;
 const minSidebarWidth = 210;
 const minInspectorWidth = 280;
@@ -338,8 +369,10 @@ export function GraphWorkbench({
       autoAdvanceTimerRef.current = undefined;
     }
     const levelGraph = graphs[level.id] ?? level.initialGraph;
+    const rect = canvasRef.current?.getBoundingClientRect();
     setSelectedLevelId(level.id);
     setSelection(levelGraph.nodes[0] ? { type: "node", id: levelGraph.nodes[0].id } : undefined);
+    setViewport(rect ? centeredViewportForGraph(levelGraph, rect, 1) : { x: 0, y: 0, scale: 1 });
     clearWireSource();
     setWirePointer(undefined);
     setTraceSelection(undefined);
@@ -360,7 +393,8 @@ export function GraphWorkbench({
     setInspectorTab("summary");
     setCompletionNotice(undefined);
     setCertificationRun(undefined);
-    setViewport({ x: 0, y: 0, scale: 1 });
+    const rect = canvasRef.current?.getBoundingClientRect();
+    setViewport(rect ? centeredViewportForGraph(selectedLevel.initialGraph, rect, 1) : { x: 0, y: 0, scale: 1 });
     setCanvasNotice("reset");
   }
 
@@ -652,15 +686,15 @@ export function GraphWorkbench({
   }
 
   function handleCanvasDragOver(event: ReactDragEvent<HTMLDivElement>) {
-    if (!event.dataTransfer.types.includes(moduleDragMime)) return;
+    if (!hasModuleDragData(event.dataTransfer)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     setDragOverCanvas(true);
   }
 
   function handleCanvasDrop(event: ReactDragEvent<HTMLDivElement>) {
-    const moduleId = event.dataTransfer.getData(moduleDragMime);
-    if (!moduleId) return;
+    const moduleId = getDraggedModuleId(event.dataTransfer);
+    if (!moduleId || !registry.maybeGet(moduleId)) return;
     event.preventDefault();
     setDragOverCanvas(false);
     const point = clientToWorld(event.clientX, event.clientY);
@@ -680,7 +714,8 @@ export function GraphWorkbench({
       return;
     }
     if (selectedLevel.constraints?.maxNodes && graph.nodes.length >= selectedLevel.constraints.maxNodes) {
-      setCanvasNotice(`node budget ${selectedLevel.constraints.maxNodes}/${selectedLevel.constraints.maxNodes}`);
+      centerGraphInView(graph, 1);
+      setCanvasNotice(`node budget ${selectedLevel.constraints.maxNodes}/${selectedLevel.constraints.maxNodes}: delete a node or reset`);
       return;
     }
 
@@ -916,8 +951,13 @@ export function GraphWorkbench({
   }
 
   function resetView() {
-    setViewport({ x: 0, y: 0, scale: 1 });
+    centerGraphInView(graph, 1);
     setCanvasNotice("view reset");
+  }
+
+  function centerGraphInView(targetGraph: GraphSpec, preferredScale = viewport.scale) {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    setViewport(rect ? centeredViewportForGraph(targetGraph, rect, preferredScale) : { x: 0, y: 0, scale: preferredScale });
   }
 
   function focusNode(nodeId: string, tab: InspectorTab = "shape") {
@@ -1027,7 +1067,7 @@ export function GraphWorkbench({
           <Wrench size={18} />
           <h2>{t("Component Library")}</h2>
         </div>
-        <GraphComponentLibrary level={selectedLevel} registry={registry} />
+        <GraphComponentLibrary level={selectedLevel} registry={registry} onDragEnd={() => setDragOverCanvas(false)} />
         <section className="graphChallengeMapLauncher">
           <button className="graphChallengeMapToggle" type="button" onClick={() => setChallengeMapOpen((current) => !current)}>
             <BookOpenText size={16} />
@@ -1530,7 +1570,6 @@ function GraphNodeCaseChips({
           <div
             key={`${chip.label}:${editable?.paramKey ?? chip.value}`}
             className="graphNodeCaseSlot"
-            title={tooltip}
             aria-label={tooltip}
             data-tooltip={tooltip}
           >
@@ -1540,7 +1579,6 @@ function GraphNodeCaseChips({
                 <input
                   value={chip.value}
                   aria-invalid={Boolean(chip.error)}
-                  title={tooltip}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => event.stopPropagation()}
@@ -1617,10 +1655,12 @@ function GraphPortColumn({
 
 function GraphComponentLibrary({
   level,
-  registry
+  registry,
+  onDragEnd
 }: {
   level: LevelSpec;
   registry: ReturnType<typeof createGameplayRegistry>;
+  onDragEnd: () => void;
 }) {
   const { t } = useGraphT();
   return (
@@ -1642,8 +1682,10 @@ function GraphComponentLibrary({
               title={t(module.summary)}
               onDragStart={(event) => {
                 event.dataTransfer.setData(moduleDragMime, module.id);
+                event.dataTransfer.setData("text/plain", module.id);
                 event.dataTransfer.effectAllowed = "copy";
               }}
+              onDragEnd={onDragEnd}
             >
               <b>{t(module.label)}</b>
               <small>{t(module.category)}</small>

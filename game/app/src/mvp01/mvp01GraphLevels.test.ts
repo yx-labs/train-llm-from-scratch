@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { graphText } from "../gameplayGraph/i18n";
 import { createGameplayRegistry } from "../gameplayGraph/modules";
 import { runTests } from "../gameplayGraph/runtime/testRunner";
-import type { RuntimeValue, TestCase } from "../gameplayGraph/types";
+import type { GraphSpec, RuntimeValue, TestCase } from "../gameplayGraph/types";
 import { mvp01ComponentFlowSpecs, mvp01GraphLevels } from "./mvp01GraphLevels";
 
 const registry = createGameplayRegistry();
@@ -14,6 +14,19 @@ function vectorValue(values: number[]): RuntimeValue {
 
 function scalarValue(value: number): RuntimeValue {
   return { dtype: "float32", shape: { dtype: "float32", axes: [], dims: [] }, data: [value] };
+}
+
+function renameGraphNodeIds(graph: GraphSpec, rename: Record<string, string>): GraphSpec {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => ({ ...node, id: rename[node.id] ?? node.id })),
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      from: { ...edge.from, nodeId: rename[edge.from.nodeId] ?? edge.from.nodeId },
+      to: { ...edge.to, nodeId: rename[edge.to.nodeId] ?? edge.to.nodeId }
+    })),
+    outputNodes: graph.outputNodes.map((nodeId) => rename[nodeId] ?? nodeId)
+  };
 }
 
 describe("MVP0.1 graph component arc", () => {
@@ -135,19 +148,10 @@ describe("MVP0.1 graph component arc", () => {
   it("accepts DotProduct graphs built with drag-generated implementation node ids", () => {
     const dotProduct = mvp01GraphLevels.find((level) => level.id === "mvp01_ch0_04_dot_product");
     expect(dotProduct?.targetGraph).toBeDefined();
-    const rename: Record<string, string> = {
+    const graph = renameGraphNodeIds(dotProduct!.targetGraph!, {
       multiply: "elementwise_multiply_1",
       sum: "sum_reduce_1"
-    };
-    const graph = {
-      ...dotProduct!.targetGraph!,
-      nodes: dotProduct!.targetGraph!.nodes.map((node) => ({ ...node, id: rename[node.id] ?? node.id })),
-      edges: dotProduct!.targetGraph!.edges.map((edge) => ({
-        ...edge,
-        from: { ...edge.from, nodeId: rename[edge.from.nodeId] ?? edge.from.nodeId },
-        to: { ...edge.to, nodeId: rename[edge.to.nodeId] ?? edge.to.nodeId }
-      }))
-    };
+    });
 
     const visible = runTests(graph, registry, dotProduct!.visibleTests);
 
@@ -233,7 +237,101 @@ describe("MVP0.1 graph component arc", () => {
     const visible = runTests(graph, registry, splitter!.visibleTests);
 
     expect(visible.status).toBe("fail");
-    expect(visible.results.some((result) => result.assertion?.type === "requires_node" && result.firstBadNodeId === "splitter")).toBe(true);
+    expect(visible.results.some((result) => result.assertion?.type === "requires_module" && result.firstBadNodeId === "BoundarySplitter")).toBe(true);
+  });
+
+  it("accepts Splitter graphs built with drag-generated implementation node ids", () => {
+    const splitter = mvp01GraphLevels.find((level) => level.id === "mvp01_ch1_01_splitter");
+    expect(splitter?.targetGraph).toBeDefined();
+    const graph = renameGraphNodeIds(splitter!.targetGraph!, {
+      splitter: "boundary_splitter_1",
+      piece_buffer: "piece_buffer_1"
+    });
+
+    const visible = runTests(graph, registry, splitter!.visibleTests);
+    const hidden = runTests(graph, registry, splitter!.hiddenTests);
+
+    expect(visible.status).toBe("pass");
+    expect(hidden.status).toBe("pass");
+  });
+
+  it("implements CH1-01 Splitter as the second new sample build level", () => {
+    const splitter = mvp01GraphLevels.find((level) => level.id === "mvp01_ch1_01_splitter");
+    expect(splitter).toBeDefined();
+    expect(splitter?.routeStatus).toBe("playable");
+    expect(splitter?.constraints?.forbiddenModules).toContain("component.splitter.v1");
+    expect(splitter?.modulePalette).toEqual(["TextInput", "BoundarySplitter", "PieceBuffer", "TypeContractGate"]);
+
+    expect(splitter?.initialGraph.nodes.map((node) => node.id)).toEqual(["text", "pieces_out"]);
+    expect(splitter?.initialGraph.edges).toEqual([]);
+
+    const target = splitter!.targetGraph!;
+    expect(target.nodes.find((node) => node.id === "splitter")?.moduleId).toBe("BoundarySplitter");
+    expect(target.nodes.find((node) => node.id === "piece_buffer")?.moduleId).toBe("PieceBuffer");
+    expect(target.edges.map((edge) => `${edge.from.nodeId}.${edge.from.portId}->${edge.to.nodeId}.${edge.to.portId}`)).toEqual([
+      "text.out->splitter.text",
+      "splitter.pieces->piece_buffer.pieces",
+      "piece_buffer.out->pieces_out.x"
+    ]);
+
+    const visible = splitter!.visibleTests[0];
+    expect(visible.inputs.texts.data).toBe("tokenizers are useful!");
+    expect(visible.inputs.expected.data).toEqual(["tokenizers", "are", "useful", "!"]);
+    expect(visible.assertions.some((assertion) => assertion.type === "pieces_equal")).toBe(true);
+    expect(splitter?.caseStudy?.dataPanels.some((panel) => panel.type === "text_batch" && panel.inputKey === "texts")).toBe(true);
+
+    const [publicVariant] = splitter!.certification!.makePublicTests(target, { text_case: "we-train" });
+    expect(runTests(publicVariant.graph ?? target, registry, [publicVariant.testCase]).status).toBe("pass");
+    expect(publicVariant.testCase.inputs.expected.data).toEqual(["we", "train", "llm", "."]);
+  });
+
+  it("rejects Splitter graphs that skip PieceBuffer even if BoundarySplitter emits pieces", () => {
+    const splitter = mvp01GraphLevels.find((level) => level.id === "mvp01_ch1_01_splitter");
+    expect(splitter?.targetGraph).toBeDefined();
+    const graph: GraphSpec = {
+      ...splitter!.targetGraph!,
+      nodes: splitter!.targetGraph!.nodes.filter((node) => node.id !== "piece_buffer"),
+      edges: [
+        { id: "e_text_splitter", from: { nodeId: "text", portId: "out" }, to: { nodeId: "splitter", portId: "text" } },
+        { id: "e_splitter_out", from: { nodeId: "splitter", portId: "pieces" }, to: { nodeId: "pieces_out", portId: "x" } }
+      ]
+    };
+
+    const visible = runTests(graph, registry, splitter!.visibleTests);
+
+    expect(visible.status).toBe("fail");
+    expect(visible.results.some((result) => result.assertion?.type === "requires_module" && result.firstBadNodeId === "PieceBuffer")).toBe(true);
+  });
+
+  it("rejects Splitter policies that drop punctuation or split into characters", () => {
+    const splitter = mvp01GraphLevels.find((level) => level.id === "mvp01_ch1_01_splitter");
+    expect(splitter?.targetGraph).toBeDefined();
+    const withoutPunctuation = {
+      ...splitter!.targetGraph!,
+      nodes: splitter!.targetGraph!.nodes.map((node) =>
+        node.id === "splitter" ? { ...node, params: { ...node.params, preservePunctuation: false } } : node
+      )
+    };
+    const charSplit = {
+      ...splitter!.targetGraph!,
+      nodes: splitter!.targetGraph!.nodes.map((node) =>
+        node.id === "splitter" ? { ...node, params: { ...node.params, policy: "char" } } : node
+      )
+    };
+
+    const noPunctuationResult = runTests(withoutPunctuation, registry, splitter!.visibleTests);
+    const charSplitResult = runTests(charSplit, registry, splitter!.visibleTests);
+
+    expect(noPunctuationResult.status).not.toBe("pass");
+    expect(
+      noPunctuationResult.results.some((result) => result.assertion?.type === "pieces_equal" || result.diagnostic?.errorType === "shape_mismatch")
+    ).toBe(true);
+    expect(charSplitResult.status).not.toBe("pass");
+    expect(
+      charSplitResult.results.some(
+        (result) => result.assertion?.type === "pieces_equal" || result.diagnostic?.errorType === "shape_mismatch" || result.diagnostic?.errorType === "budget_exceeded"
+      )
+    ).toBe(true);
   });
 
   it("rejects QKScore graphs that connect K directly into MatMul", () => {

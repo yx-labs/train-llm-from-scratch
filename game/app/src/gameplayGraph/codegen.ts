@@ -126,6 +126,15 @@ function buildMvp01CaseCode(level: LevelSpec, testCase: TestCase, graph: GraphSp
     });
   }
 
+  if (level.id === "mvp01_ch1_01_splitter") {
+    const text = extractTexts(testCase.inputs.texts)[0] ?? "";
+    const expectedPieces = Array.isArray(testCase.inputs.expected?.data) ? testCase.inputs.expected.data : [];
+    return [
+      { id: "case-splitter-text", text: `text = ${toPythonLiteral(text)}` },
+      { id: "case-splitter-expected", text: `expected_pieces = ${toPythonLiteral(expectedPieces)}` }
+    ];
+  }
+
   const inputLines = Object.entries(testCase.inputs)
     .filter(([key, value]) => key !== "case" && key !== "reference" && Boolean(value.shape))
     .map(([key, value]) => tensorCaseLine(`case-${key}`, key, value.shape?.dims ?? [], value.shape?.axes ?? [], previewTensorValues(value)));
@@ -461,6 +470,10 @@ function assertionToCode(assertion: TestAssertion) {
       return `assert graph_has_node(${toPythonLiteral(assertion.nodeId)}${assertion.moduleId ? `, module=${toPythonLiteral(assertion.moduleId)}` : ""})`;
     case "requires_edge_path":
       return `assert path_exists(graph, ${toPythonLiteral(assertion.from)}, through=${toPythonLiteral(assertion.through)}, to=${toPythonLiteral(assertion.to)})`;
+    case "requires_module":
+      return `assert graph_has_module(${toPythonLiteral(assertion.moduleId)})`;
+    case "requires_edge_path_by_module":
+      return `assert path_exists_by_module(graph, ${toPythonLiteral(assertion.from)}, through_modules=${toPythonLiteral(assertion.throughModules)}, to=${toPythonLiteral(assertion.to)})`;
     case "pieces_non_empty":
       return `assert len(${nodeRefToVar(assertion.nodeId)}) > 0`;
     case "pieces_equal":
