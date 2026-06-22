@@ -1,45 +1,79 @@
-# Chapter 7-4 Cross Entropy Cell：CrossEntropy
+# Chapter 7-4 Cross Entropy Cell: CrossEntropy
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 7 LM Head 与 Loss
-- 构建组件：`CrossEntropy`
-- 输入来源：logits + target id
-- 学习目标：正确 token 概率越高越好
-- 后续用途：training
+CrossEntropy 计算一个位置的 next-token loss：
 
-## 2. 当前案例
+```text
+loss = -log_softmax(logits)[target_id]
+```
 
-CrossEntropy 把「logits + target id」变成可复用的图组件。
+它把 logits 和正确 target id 变成非负标量。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 CrossEntropy 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[]`，示例 shape 为 `[]`。
+- `component.logits_board.v1`
+- `component.target_shift.v1`
+- `component.softmax_last_dim.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `CrossEntropy` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `LogSoftmaxGate`：沿 V 轴计算 log probability。
+- `TargetGatherGate`：按 target id 取正确列。
+- `NegateGate`：转成 loss。
+- `LossCellProbe`：展示目标 id、logit、loss。
+- `ReferenceChecker`：数值参考。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+logits for one position = [2.0, 1.0, 0.0]
+target_id = 0
+loss = -log(exp(2)/(exp(2)+exp(1)+exp(0)))
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 logits_row、target_id、loss_out、cell_probe、reference。缺少 logsoftmax/gather/negate。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=float32，轴为 []。
+```text
+logits_row -> log_softmax
+log_softmax + target_id -> target_gather
+target_gather -> negate
+negate -> loss_out
+negate -> cell_probe
+loss_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 对 logits 直接取负：没有 softmax 归一化。
+- 取最大 logit 而不是 target id：预测对错被忽略。
+- softmax 后再 log 不稳定：大数 hidden 可能溢出。
+- target 越界没有报错。
+
+## 8. 测试设计
+
+- Visible：三类 logits。
+- Hidden A：target 不是 argmax，loss 应较大。
+- Hidden B：logits 加常数，loss 不变。
+- Hidden C：target id 超过 V 必须失败。
+
+## 9. 认证后接口
+
+```text
+component.cross_entropy.v1
+inputs:
+  logits: float32[V]
+  target_id: int[]
+output:
+  loss: float32[]
+```
+
+## 10. 后续调用
+
+LossReducer 会把每个位置的 loss 结合 mask 做平均。

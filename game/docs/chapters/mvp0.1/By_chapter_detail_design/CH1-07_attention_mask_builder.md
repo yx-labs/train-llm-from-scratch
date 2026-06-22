@@ -1,45 +1,129 @@
-# Chapter 1-7 Attention Mask Builder：AttentionMask[B,T]
+# Chapter 1-7 Attention Mask Builder: AttentionMask[B,T]
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 1 Text → Token Pipeline
-- 构建组件：`AttentionMask[B,T]`
-- 输入来源：token_ids + pad id
-- 学习目标：pad 不该参与 attention
-- 后续用途：training/inference
+AttentionMaskBuilder 根据 TokenBuffer 的 valid mask 生成 padding attention mask：
 
-## 2. 当前案例
+```text
+valid = [1,1,1,0,0]
+attention_mask = [[1,1,1,0,0]]
+```
 
-AttentionMask[B,T] 把「token_ids + pad id」变成可复用的图组件。
+这张 mask 告诉模型哪些 token 是真实输入，哪些只是 padding。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 AttentionMask[B,T] 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`mask[B,T]`，示例 shape 为 `[2,8]`。
+- `component.token_buffer.v1`
+- `component.padder.v1`
 
-## 3. 玩家操作
+本关不通过 token id 判断 mask，而是使用 TokenBuffer 的 valid 信息。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `AttentionMask[B,T]` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `ValidToMaskGate`：把 valid slots 转成 bool/int mask。
+- `BatchLift`：添加 B 轴。
+- `MaskContract`：检查 dtype 为 bool 或 mask，axes 为 `[B,T]`。
+- `MaskProbe`：展示 token 与 mask 的对应关系。
+- `ReferenceChecker`：检查 mask 数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+padded_ids = [[12,4,7,0,0]]
+valid = [true,true,true,false,false]
+```
 
-- dtype 必须保持：`mask`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+期望：
 
-## 6. 通过标准
+```text
+attention_mask = [[true,true,true,false,false]]
+```
 
-当前任务通过：输出必须保持 dtype=mask，轴为 [B,T]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `padded_ids: PadderOutput`
+- `valid: ValidMask`
+- `mask_out: MaskContract`
+- `mask_probe: MaskProbe`
+- `reference: ReferenceChecker`
+
+缺少 ValidToMaskGate 和 BatchLift。
+
+## 6. 目标内部实现
+
+```text
+valid.out -> valid_to_mask.x
+valid_to_mask.out -> batch_lift.x
+batch_lift.out -> mask_out.x
+batch_lift.out -> mask_probe.mask
+padded_ids.out -> mask_probe.ids
+mask_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `ValidToMaskGate`。
+2. 将 valid mask 转成 attention mask。
+3. 拖入 `BatchLift`，输出 `[B,T]`。
+4. 连接 MaskProbe 和 reference。
+5. 用含 token id 0 的输入检查 mask 是否仍正确。
+6. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- 根据 `token_id != pad_id` 生成 mask：真实 id 0 会被误判。
+- 输出 `[T]`：缺少 batch 轴。
+- 反转 mask：padding 被当成真实 token。
+- 使用 causal mask：本关是 padding mask，不是未来遮挡。
+- 不接 MaskProbe：玩家看不到 token/mask 对齐。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须使用 valid mask。
+- 输出 axes 为 `[B,T]`。
+- 前三个位置为 true，后两个为 false。
+- MaskProbe 显示 padded id 与 mask 的对应。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：真实 token id 0。
+
+```text
+padded_ids = [[12,0,7,0]]
+valid = [1,1,1,0]
+mask = [1,1,1,0]
+```
+
+Hidden case B：全部有效。
+
+```text
+valid = [1,1,1]
+```
+
+Hidden case C：空输入保护。
+
+```text
+valid = [0,0,0]
+```
+
+认证通过但标记为 warning，后续训练样本应过滤。
+
+## 11. 认证后接口
+
+```text
+component.attention_mask.v1
+inputs:
+  valid: bool[T]
+output:
+  mask: bool[B,T]
+```
+
+## 12. 后续调用
+
+Tokenizer 组件会同时输出 token ids 和 attention mask。Chapter 4 的 causal mask 是另一种 mask，不能和本关的 padding mask 混为一谈。

@@ -1,45 +1,94 @@
-# Chapter 5-1 Parallel Heads：HeadArray
+# Chapter 5-1 Parallel Heads: ParallelHeads
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 5 Multi-Head Attention
-- 构建组件：`HeadArray`
-- 输入来源：多个 AttentionHead
-- 学习目标：多种关系并行看
-- 后续用途：MHA
+ParallelHeads 对每个 head 独立运行 attention：
 
-## 2. 当前案例
+```text
+context[:,h,:,:] = SingleHeadAttention(q[:,h,:,:], k[:,h,:,:], v[:,h,:,:])
+```
 
-HeadArray 把「多个 AttentionHead」变成可复用的图组件。
+每个 head 共享流程，但不共享 Q/K/V 数据。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 HeadArray 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,H,T,D]`，示例 shape 为 `[2,4,6,2]`。
+- `component.head_split.v1`
+- `component.single_head_attention.v1`
 
-## 3. 玩家操作
+本关复用单头组件，但必须把 H 轴保留下来。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `HeadArray` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `HeadMapGate`：沿 H 轴应用单头 attention。
+- `PerHeadMaskBroadcast`：把 causal mask 广播到每个 head。
+- `HeadIsolationProbe`：显示 head 0/1 的不同输出。
+- `ReferenceChecker`：检查每个 head 的独立 reference。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+q/k/v: float32[B=1,H=2,T=3,D=2]
+mask: bool[T,T]
+out: float32[B=1,H=2,T=3,D=2]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,H,T,D]`
-- shape 可以随认证宽度变化，但语义不变。
+HeadIsolationProbe 展示：head 0 的 value 被改变时，head 1 输出不应变化。
 
-## 6. 通过标准
+## 5. 初始错误图
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,H,T,D]。
+画布给出 q/k/v heads、causal mask、`heads_out`、isolation probe、reference。缺少 HeadMap 和 mask broadcast。
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 6. 目标内部实现
+
+```text
+mask.out -> mask_broadcast.mask
+q.out -> head_map.q
+k.out -> head_map.k
+v.out -> head_map.v
+mask_broadcast.out -> head_map.mask
+head_map.out -> heads_out.x
+head_map.out -> isolation_probe.x
+heads_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `PerHeadMaskBroadcast`。
+2. 拖入 `HeadMapGate`，选择内部组件 `SingleHeadAttention v1`。
+3. 接入 q/k/v 与 mask。
+4. 连接 isolation probe 和 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 把 H 合并到 B：shape 可能可执行，但 head 身份丢失。
+- 所有 head 共用 head 0 的数据：hidden isolation 失败。
+- mask 未广播到每个 head：H>1 失败。
+- reduce 掉 H 轴：输出不能 concat。
+- 使用预制 MultiHeadAttention：shortcut。
+
+## 9. 测试设计
+
+- Visible：H=2，两个 head 的 reference 分别检查。
+- Hidden A：H=3。
+- Hidden B：只修改 head 1 value，head 0 输出必须不变。
+- Hidden C：T=1，mask broadcast 不应引入错误。
+
+## 10. 认证后接口
+
+```text
+component.parallel_heads.v1
+inputs:
+  q: float32[B,H,T,D]
+  k: float32[B,H,T,D]
+  v: float32[B,H,T,D]
+  mask: bool[T,T]
+output:
+  context_heads: float32[B,H,T,D]
+```
+
+## 11. 后续调用
+
+HeadConcat 会把各 head 的 D 重新拼成 C。ParallelHeads 必须保持 H 轴，不能提前合并。

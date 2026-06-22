@@ -1,45 +1,75 @@
-# Chapter 8-0 Dataset Stream：TokenStream
+# Chapter 8-0 Dataset Stream: TokenStream
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 8 Training Loop
-- 构建组件：`TokenStream`
-- 输入来源：flat ids
-- 学习目标：数据是一长串 token
-- 后续用途：batch
+DatasetStream 把训练语料编码后的 token ids 组织成一条长流：
 
-## 2. 当前案例
+```text
+stream[S] = [12,4,7,12,4,0,...]
+```
 
-TokenStream 把「flat ids」变成可复用的图组件。
+它不是 batch，也不是单个 prompt，而是可采样的训练数据源。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 TokenStream 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[T]`，示例 shape 为 `[32]`。
+- `component.tokenizer.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `TokenStream` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `CorpusShardSource`：提供一段文本或 token id shard。
+- `TokenizerReuseGate`：用已认证 tokenizer 编码文本。
+- `StreamConcatGate`：拼接多个 shard。
+- `StreamContract`：检查 dtype int、axis `[S]`。
+- `StreamProbe`：显示长度、前几个 ids 和 EOS 分隔。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+texts = ["we train llm", "we test"]
+stream = tokenizer(text0) + [eos] + tokenizer(text1) + [eos]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[T]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 corpus shards、tokenizer、stream_out、probe、reference。缺少 reuse 和 concat。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=int，轴为 [T]。
+```text
+shards -> tokenizer_reuse
+tokenizer_reuse.ids -> stream_concat
+stream_concat.out -> stream_out
+stream_concat.out -> stream_probe
+stream_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 每个样本单独输出 `[B,T]`：这不是 stream。
+- 忘记 EOS：window sampler 会跨样本错位。
+- 手写 ids 绕过 tokenizer：结构失败。
+- dtype float：contract 失败。
+
+## 8. 测试设计
+
+- Visible：两个 shard 拼接。
+- Hidden A：空 shard 被跳过但不报错。
+- Hidden B：不同文本顺序 checksum 改变。
+- Hidden C：没有 EOS 必须失败。
+
+## 9. 认证后接口
+
+```text
+component.dataset_stream.v1
+inputs:
+  shards: raw_text[]
+  tokenizer: component.tokenizer.v1
+output:
+  stream: int[S]
+```
+
+## 10. 后续调用
+
+WindowSampler 从 stream 中切出训练窗口。

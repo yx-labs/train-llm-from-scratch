@@ -1,45 +1,105 @@
-# Chapter 5-4 Multi-Head Attention：MHA
+# Chapter 5-4 Multi-Head Attention: MHA
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 5 Multi-Head Attention
-- 构建组件：`MHA`
-- 输入来源：HeadArray + Concat + Linear
-- 学习目标：完整注意力层
-- 后续用途：Transformer block
+MultiHeadAttention 把 hidden 投影成 Q/K/V，多头并行 attention，再合并并输出投影：
 
-## 2. 当前案例
+```text
+q/k/v = Linear(hidden)
+heads = ParallelHeads(split(q), split(k), split(v))
+context = HeadConcat(heads)
+out = OutputProjection(context)
+```
 
-MHA 把「HeadArray + Concat + Linear」变成可复用的图组件。
+本关是 Chapter 5 的组件编排关。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 MHA 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.q_linear.v1`
+- `component.k_linear.v1`
+- `component.v_linear.v1`
+- `component.head_split.v1`
+- `component.parallel_heads.v1`
+- `component.head_concat.v1`
+- `component.attention_output_projection.v1`
 
-## 3. 玩家操作
+禁止使用预制 MHA。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `MHA` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `MHAStageContract`：检查 q/k/v、split、parallel、concat、output 的顺序。
+- `HeadCountProbe`：显示 H、D、C 的关系。
+- `NoLeakProbe`：检查 causal mask 仍然生效。
+- `ReferenceChecker`：端到端多头 reference。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=3,C=6]
+H=3
+D=2
+out[B=1,T=3,C=6]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+HeadCountProbe 展示：`6 channels = 3 heads * 2 dims`。
 
-## 6. 通过标准
+## 5. 初始错误图
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+画布给出 hidden、qkv weights、head count、causal mask、mha_out、stage probe、reference。缺少所有内部组件。
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 6. 目标内部实现
+
+```text
+hidden -> q_linear/k_linear/v_linear
+q_linear/k_linear/v_linear -> head_split(q/k/v)
+split q/k/v + mask -> parallel_heads
+parallel_heads -> head_concat
+head_concat + W_o/b_o -> output_projection
+output_projection -> mha_out -> reference
+```
+
+StageContract 必须能追踪整条路径。
+
+## 7. 玩家操作
+
+1. 拖入 Q/K/V projection。
+2. 对 Q/K/V 分别接 HeadSplit。
+3. 接 ParallelHeads。
+4. 接 HeadConcat。
+5. 接 OutputProjection。
+6. 连接 HeadCountProbe、NoLeakProbe、reference。
+7. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 只跑单头 attention：H 轴没有真实参与。
+- Q/K/V split 只接其中一个：结构失败。
+- concat 前漏掉某个 head：reference 失败。
+- output projection 被省略：shape 对但数值错。
+- mask 未传入 ParallelHeads：NoLeakProbe 失败。
+
+## 9. 测试设计
+
+- Visible：H=3,D=2。
+- Hidden A：H=2,D=4,C=8。
+- Hidden B：future value 设置极大，检查 NoLeak。
+- Hidden C：某个 head sentinel 改变，只影响对应 concat 段。
+
+## 10. 认证后接口
+
+```text
+component.multi_head_attention.v1
+inputs:
+  hidden: float32[B,T,C]
+  weights: MHAWeightPack
+  causal_mask: bool[T,T]
+  head_count: int[]
+output:
+  out: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+Transformer block 会把 MHA 放在 LayerNorm 和 residual 之间。MHA 必须保留内部可展开结构，方便玩家定位 attention 错误。

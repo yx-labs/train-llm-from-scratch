@@ -1,45 +1,92 @@
-# Chapter 5-3 Output Projection：AttentionOutLinear
+# Chapter 5-3 Output Projection: Attention Output Linear
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 5 Multi-Head Attention
-- 构建组件：`AttentionOutLinear`
-- 输入来源：Linear C→C
-- 学习目标：混合 heads
-- 后续用途：MHA
+OutputProjection 把多头 concat 的 context 再投影一次：
 
-## 2. 当前案例
+```text
+out = Linear(context[B,T,C], W_o[C,C], b_o[C])
+```
 
-AttentionOutLinear 把「Linear C→C」变成可复用的图组件。
+它让各 head 的信息在通道维重新混合，并回到 residual stream 的 C 维。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 AttentionOutLinear 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.head_concat.v1`
+- `component.linear.v1`
 
-## 3. 玩家操作
+本关复用 Linear，但要求输入和输出都是 C。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `AttentionOutLinear` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `SquareWeightContract`：检查 W_o 是 `[C,C]`。
+- `component.linear.v1`：执行输出投影。
+- `ResidualWidthProbe`：确认输出可与 residual 相加。
+- `ReferenceChecker`：检查数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+context[B=1,T=2,C=6]
+W_o[C=6,C=6]
+b_o[C=6]
+out[B=1,T=2,C=6]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+## 5. 初始错误图
 
-## 6. 通过标准
+画布给出 context、W_o、b_o、output_out、residual_width_probe、reference。缺少 SquareWeightContract 和 Linear。
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 6. 目标内部实现
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+w_o.out -> square_weight.weight
+context.out -> square_weight.context
+context.out -> linear.hidden
+square_weight.out -> linear.weight
+b_o.out -> linear.bias
+linear.out -> output_out.x
+linear.out -> residual_width_probe.x
+output_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `SquareWeightContract`。
+2. 拖入 `Linear v1`。
+3. 接入 context、W_o、b_o。
+4. 连接 residual width probe 和 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 跳过 output projection：shape 对但数值错。
+- W_o 不是 `[C,C]`：不能回到 residual width。
+- 使用 MLP down projection：语义错，参数角色不对。
+- 漏接 bias：reference 失败。
+- 使用预制 OutputProjection：shortcut。
+
+## 9. 测试设计
+
+- Visible：C=6，输出 allclose 到 Linear reference。
+- Hidden A：C=8。
+- Hidden B：W_o 设成 identity，输出应等于 context+bias。
+- Hidden C：非方阵 W_o 必须失败。
+
+## 10. 认证后接口
+
+```text
+component.attention_output_projection.v1
+inputs:
+  context: float32[B,T,C]
+  weight: float32[C,C]
+  bias: float32[C]
+output:
+  out: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+MultiHeadAttention 会把 split、parallel heads、concat 和 output projection 串成完整子层核心。

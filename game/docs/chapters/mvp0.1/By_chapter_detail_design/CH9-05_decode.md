@@ -1,45 +1,80 @@
-# Chapter 9-5 Decode：TokenDecode
+# Chapter 9-5 Decode: TokenDecode
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`TokenDecode`
-- 输入来源：ids → text
-- 学习目标：还原文字
-- 后续用途：chat
+TokenDecode 使用 vocab 的反向映射把 token ids 拼回文本：
 
-## 2. 当前案例
+```text
+ids -> pieces -> text
+```
 
-TokenDecode 把「ids → text」变成可复用的图组件。
+它必须保留 piece 中的空格和标点。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 TokenDecode 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`raw_text[]`，示例 shape 为 `[]`。
+- `component.vocab_table.v1`
+- `component.append_token.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `TokenDecode` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `InverseVocabGate`：构造 id -> piece 映射。
+- `IdToPieceMapGate`：逐 id 查 piece。
+- `PieceJoinGate`：拼接 pieces。
+- `DecodeProbe`：显示每个 id 的 piece。
+- `ReferenceChecker`：检查文本。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+ids = [12,4,7]
+12 -> "we"
+4 -> " train"
+7 -> " llm"
+text = "we train llm"
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`raw_text`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 ids、vocab、decode_out、probe、reference。缺少 inverse/map/join。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=raw_text，轴为 []。
+```text
+vocab -> inverse_vocab
+ids + inverse_vocab -> id_to_piece
+id_to_piece -> piece_join
+piece_join -> decode_out
+id_to_piece -> decode_probe
+decode_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 按 id 数字直接转字符串：输出 `"12 4 7"`。
+- trim piece：前导空格丢失。
+- unknown id 不处理：必须输出 `<unk>` 或失败策略。
+- 跳过 inverse vocab：无法证明 id 语义。
+
+## 8. 测试设计
+
+- Visible：`we train llm`。
+- Hidden A：包含 `<unk>`。
+- Hidden B：piece 有标点。
+- Hidden C：未知 id 按策略处理。
+
+## 9. 认证后接口
+
+```text
+component.token_decode.v1
+inputs:
+  ids: int[N]
+  vocab: vocab_table
+output:
+  text: raw_text[]
+```
+
+## 10. 后续调用
+
+TinyChatLoop 使用 Decode 展示生成结果。

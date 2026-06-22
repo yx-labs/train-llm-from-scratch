@@ -1,45 +1,126 @@
-# Chapter 1-0 Text Input：TextInput
+# Chapter 1-0 Text Input: TextInput
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 1 Text → Token Pipeline
-- 构建组件：`TextInput`
-- 输入来源：string source + output port
-- 学习目标：原始文本是 raw_text，不是 tensor
-- 后续用途：tokenizer 输入
+TextInput 是文本管线的入口。它把玩家可编辑的 prompt 明确封装成 `raw_text[]`，并保留原始字符内容，供 Splitter 后续处理。
 
-## 2. 当前案例
+本关不拆词、不查词表，只解决一个问题：图里的文本输入必须是 string scalar，而不是随便接入的数组、数字或已经切好的 token。
 
-TextInput 把「string source + output port」变成可复用的图组件。
+## 2. 前置组件
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 TextInput 连接到合约探针。
+- `component.scalar_cell.v1`
 
-案例数据输出合约：`raw_text[]`，示例 shape 为 `[]`。
+ScalarCell 让玩家理解 rank-0 输出。本关把同样的“单个值”概念迁移到文本 dtype。
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `TextInput` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `PromptLiteral`：可编辑字符串。
+- `Utf8TextGate`：验证输入是合法文本。
+- `RawTextContract`：要求 dtype 为 `raw_text`、shape 为 `[]`。
+- `TextPreviewProbe`：显示字符长度、空格和换行，不参与组件输出。
+- `ReferenceChecker`：检查文本内容被原样保留。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+prompt = "we train llm"
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+期望输出：
 
-- dtype 必须保持：`raw_text`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+```text
+raw_text[] = "we train llm"
+```
 
-## 6. 通过标准
+空格是有效内容，不能被 trim 掉；大小写也不能被自动改写。
 
-当前任务通过：输出必须保持 dtype=raw_text，轴为 []。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `prompt_source: PromptLiteral`
+- `text_out: RawTextContract`
+- `preview: TextPreviewProbe`
+- `reference: ReferenceChecker`
+
+缺少 `Utf8TextGate`。source 直接接合约会被视为未验证文本。
+
+## 6. 目标内部实现
+
+```text
+prompt_source.out -> text_gate.x
+text_gate.out -> text_out.x
+text_gate.out -> preview.x
+text_out.out -> reference.x
+```
+
+其中：
+
+- `text_gate.moduleId = Utf8TextGate`
+- `text_out.expectedDType = raw_text`
+
+## 7. 玩家操作
+
+1. 修改 prompt，确认文本框支持连续输入和 backspace。
+2. 拖入 `Utf8TextGate`。
+3. 将 PromptLiteral 连接到 text gate。
+4. 将 text gate 输出连接到合约、preview 和 reference。
+5. 用数字或数组试错，观察 dtype 报错。
+6. 恢复合法文本后检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- 输入 `123`：不是 raw text，必须报 dtype 错误。
+- 自动 trim：reference 失败，因为空格被删除。
+- 自动 lowercase：reference 失败，因为 TextInput 不负责规范化。
+- 预先 split 成数组：本关输出必须是 rank-0 raw_text。
+- 跳过 TextPreviewProbe：结构断言失败，玩家无法看到空格保留情况。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 `Utf8TextGate`。
+- 输出 dtype 为 `raw_text`，shape 为 `[]`。
+- 输出内容等于 `"we train llm"`。
+- TextPreviewProbe 显示 length 和空格位置。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：带标点。
+
+```text
+prompt = "hi, llm!"
+```
+
+Hidden case B：前后空格。
+
+```text
+prompt = " train "
+```
+
+认证必须保留空格。
+
+Hidden case C：非法类型。
+
+```text
+prompt = [119,101]
+```
+
+认证必须失败，而不是把数组解码成文本。
+
+## 11. 认证后接口
+
+```text
+component.text_input.v1
+inputs:
+  prompt: string
+output:
+  text: raw_text[]
+```
+
+## 12. 后续调用
+
+Splitter 会消费 raw_text。TextInput 的价值在于把“用户输入框”变成图上可认证的数据节点，而不是提前把 tokenizer 的责任混进来。

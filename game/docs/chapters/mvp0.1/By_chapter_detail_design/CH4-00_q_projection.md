@@ -1,45 +1,139 @@
-# Chapter 4-0 Q Projection：QLinear
+# Chapter 4-0 Q Projection: QLinear
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 4 Attention Head
-- 构建组件：`QLinear`
-- 输入来源：Linear C→D
-- 学习目标：query 是“我想找什么”
-- 后续用途：attention
+QLinear 把 hidden state 投影成 query。Query 表示“当前位置要去问什么问题”：
 
-## 2. 当前案例
+```text
+q = Linear(hidden, Wq, bq)
+q: float32[B,H=1,T,D]
+```
 
-QLinear 把「Linear C→D」变成可复用的图组件。
+本关不是再造 Linear，而是复用 `component.linear.v1`，再加上 query role 和 head axis。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 QLinear 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,D]`，示例 shape 为 `[2,6,3]`。
+- `component.linear.v1`
+- `component.axis_tensor.v1`
 
-## 3. 玩家操作
+本关禁止使用预制 `QLinear`。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `QLinear` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `component.linear.v1`：执行 hidden `[B,T,C]` 到 `[B,T,D]` 的投影。
+- `HeadAxisLift`：插入单头轴 `H=1`，得到 `[B,H,T,D]`。
+- `ProjectionRoleTag`：标记输出 role 为 `query`。
+- `RoleProbe`：说明 query 将作为 QKScore 的 left 输入。
+- `ReferenceChecker`：检查数值等于 Linear(hidden,Wq,bq)。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=2,C=3]
+Wq[C=3,D=2]
+bq[D=2]
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,D]`
-- shape 可以随认证宽度变化，但语义不变。
+linear_out: [B=1,T=2,D=2]
+q: [B=1,H=1,T=2,D=2]
+```
 
-## 6. 通过标准
+RoleProbe 展示：
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,D]。
+```text
+q[0,0,token_i,:] 会和所有 key token 做 dot。
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 5. 初始错误图
+
+画布给出：
+
+- `hidden: HiddenSource[B,T,C]`
+- `wq: WeightPlate[C,D]`
+- `bq: BiasVector[D]`
+- `q_out: ProjectionContract`
+- `role_probe: RoleProbe`
+- `reference: ReferenceChecker`
+
+缺少 Linear、HeadAxisLift 和 role 标注。
+
+## 6. 目标内部实现
+
+```text
+hidden.out -> linear.hidden
+wq.out -> linear.weight
+bq.out -> linear.bias
+linear.out -> head_lift.x
+head_lift.out -> role_tag.x
+role_tag.out -> q_out.x
+role_tag.out -> role_probe.x
+q_out.out -> reference.x
+```
+
+其中：
+
+- `linear.moduleId = component.linear.v1`
+- `head_lift.axis = H`
+- `role_tag.role = query`
+- `q_out.expectedAxes = [B,H,T,D]`
+
+## 7. 玩家操作
+
+1. 拖入 `Linear v1`。
+2. 接入 hidden、Wq、bq。
+3. 拖入 `HeadAxisLift`，添加 `H=1`。
+4. 拖入 `ProjectionRoleTag`，选择 `query`。
+5. 接入合约、RoleProbe 和 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 使用 K 或 V 权重：shape 一样，但 reference 数值失败。
+- 不加 H 轴：后续 QKScore 接口不匹配。
+- role 标成 key：shape 对，语义错，RoleProbe/hidden role 测试失败。
+- 直接复制 hidden：D 轴不是 C 轴，数值和 shape 都不对。
+- 使用预制 QLinear：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须使用 `component.linear.v1`。
+- 必须存在 `HeadAxisLift`。
+- role 必须是 `query`。
+- 输出 axes 为 `[B,H,T,D]`。
+- 输出 allclose 到 `Linear(hidden,Wq,bq)` 后插入 H 轴。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`C != D`。
+
+```text
+hidden: [B=2,T=3,C=4]
+Wq: [C=4,D=3]
+```
+
+Hidden case B：Q/K 权重刻意不同。
+
+```text
+Wq != Wk
+```
+
+这会抓出把 KLinear 当 QLinear 复用的错误。
+
+## 11. 认证后接口
+
+```text
+component.q_linear.v1
+inputs:
+  hidden: float32[B,T,C]
+  weight: float32[C,D]
+  bias: float32[D]
+output:
+  q: float32[B,H,T,D]
+```
+
+## 12. 后续调用
+
+QKScore 的 left 输入必须是 query。QLinear 的重点是“同一个 Linear 计算结果，带上了不同语义角色”，这为 K/V projection 做铺垫。

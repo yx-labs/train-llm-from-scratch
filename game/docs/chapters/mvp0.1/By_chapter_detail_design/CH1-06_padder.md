@@ -1,45 +1,136 @@
-# Chapter 1-6 Padder：Padder
+# Chapter 1-6 Padder: Padder
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 1 Text → Token Pipeline
-- 构建组件：`Padder`
-- 输入来源：token buffer + pad id
-- 学习目标：batch 需要矩形
-- 后续用途：attention mask
+Padder 把 TokenBuffer 的 EMPTY 槽位填成 pad id，生成模型能接收的固定长度 token ids。
 
-## 2. 当前案例
+```text
+buffer = [12,4,7,EMPTY,EMPTY]
+valid  = [1,1,1,0,0]
+pad_id = 0
+out    = [12,4,7,0,0]
+```
 
-Padder 把「token buffer + pad id」变成可复用的图组件。
+本关必须使用 valid mask，不能简单把所有 0 当成 pad。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Padder 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[2,8]`。
+- `component.token_buffer.v1`
+- `component.vocab_table.v1`
 
-## 3. 玩家操作
+VocabTable 提供 `<pad>` 的 id，TokenBuffer 提供有效槽位。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Padder` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `PadIdLookup`：从 vocab 中读取 `<pad>` id。
+- `FillEmptyGate`：按 valid mask 填充 EMPTY。
+- `PadContract`：检查输出 `int[B,T]`。
+- `PadProbe`：显示哪些位置来自原 token，哪些位置来自 pad。
+- `ReferenceChecker`：检查结果。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+buffer = [12,4,7,EMPTY,EMPTY]
+valid = [true,true,true,false,false]
+pad_id = 0
+```
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+期望：
 
-## 6. 通过标准
+```text
+padded = [[12,4,7,0,0]]
+axes = [B,T]
+```
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `buffer: TokenBufferOutput`
+- `vocab: VocabTable`
+- `pad_out: PadContract`
+- `pad_probe: PadProbe`
+- `reference: ReferenceChecker`
+
+缺少 pad id lookup 和 fill gate。
+
+## 6. 目标内部实现
+
+```text
+vocab.out -> pad_lookup.vocab
+buffer.buffer -> fill.buffer
+buffer.valid -> fill.valid
+pad_lookup.pad_id -> fill.pad_id
+fill.out -> pad_out.x
+fill.out -> pad_probe.x
+pad_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `PadIdLookup`。
+2. 从 vocab 中读取 `<pad>` id。
+3. 拖入 `FillEmptyGate`。
+4. 接入 buffer、valid mask 和 pad id。
+5. 连接 PadProbe 与 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 硬编码 pad id 0：visible 过，变体 vocab 失败。
+- 用 `id == 0` 判断 pad：真实 token id 0 hidden case 失败。
+- 丢掉 batch 轴：输出 `[T]` 而不是 `[B,T]`。
+- 把所有空槽填 `<unk>`：reference 失败。
+- 使用预制 Padder：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 `PadIdLookup` 和 `FillEmptyGate`。
+- 输出 dtype 为 int。
+- 输出 axes 为 `[B,T]`。
+- pad 只出现在 valid=false 的槽位。
+- PadProbe 能说明每个 pad 的来源。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：pad id 不是 0。
+
+```text
+<pad> -> 99
+```
+
+Hidden case B：真实 token id 0。
+
+```text
+buffer = [12,0,7,EMPTY]
+valid = [1,1,1,0]
+```
+
+Hidden case C：无 padding。
+
+```text
+valid = [1,1,1]
+```
+
+输出不得新增 pad。
+
+## 11. 认证后接口
+
+```text
+component.padder.v1
+inputs:
+  buffer: int_or_empty[T]
+  valid: bool[T]
+  vocab: vocab_table
+output:
+  token_ids: int[B,T]
+```
+
+## 12. 后续调用
+
+AttentionMaskBuilder 会根据 valid mask 生成 padding mask。Padder 负责“填值”，不负责“告诉模型哪些 token 可见”。

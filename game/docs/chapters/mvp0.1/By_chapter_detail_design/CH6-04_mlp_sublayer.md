@@ -1,45 +1,92 @@
-# Chapter 6-4 MLP Sublayer：LN → MLP → Residual
+# Chapter 6-4 MLP Sublayer: LN -> MLP -> Residual
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 6 LayerNorm、Residual、Transformer Block
-- 构建组件：`LN → MLP → Residual`
-- 输入来源：LayerNorm + MLP + Add
-- 学习目标：token 内计算
-- 后续用途：block
+MLPSublayer 是 transformer block 的第二半：
 
-## 2. 当前案例
+```text
+normed = LayerNorm(hidden)
+branch = MLP(normed)
+out = ResidualAdd(hidden, branch)
+```
 
-LN → MLP → Residual 把「LayerNorm + MLP + Add」变成可复用的图组件。
+它与 AttentionSublayer 结构相同，但 branch 组件换成 MLP。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 LN → MLP → Residual 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.layernorm.v1`
+- `component.mlp.v1`
+- `component.residual_add.v1`
 
-## 3. 玩家操作
+禁止使用预制 MLPSublayer。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `LN → MLP → Residual` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `PreNormPathProbe`：确认 residual 是原 hidden。
+- `MLPStageProbe`：展示 MLP 内部宽度 4C。
+- `SublayerStageContract`：检查 LN -> MLP -> Residual。
+- `ReferenceChecker`：端到端 reference。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=2,C=3]
+MLP internal width = 12
+out[B=1,T=2,C=3]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+## 5. 初始错误图
 
-## 6. 通过标准
+画布给出 hidden、LN 参数、MLP weights、mlp_sublayer_out、path_probe、reference。缺少 LN/MLP/Residual。
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 6. 目标内部实现
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+hidden -> layernorm.x
+layernorm.y -> mlp.hidden
+mlp.out -> residual_add.branch
+hidden -> residual_add.residual
+residual_add.out -> mlp_sublayer_out
+mlp + residual_add -> stage_probe
+mlp_sublayer_out -> reference
+```
+
+## 7. 玩家操作
+
+1. 拖入 LayerNorm、MLP、ResidualAdd。
+2. 按 pre-norm 顺序连接。
+3. 将原 hidden 接 residual。
+4. 接 MLPStageProbe 和 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- MLP 吃原 hidden 而非 normed：reference 失败。
+- residual 接 normed：结构错。
+- 漏掉 MLP activation：MLP reference 失败。
+- 输出 4C：ResidualAdd shape 失败。
+- 用 AttentionSublayer 代替：branch 语义错。
+
+## 9. 测试设计
+
+- Visible：端到端 allclose。
+- Hidden A：MLP branch 全零，输出等于 hidden。
+- Hidden B：gamma/beta 非默认。
+- Hidden C：C=4，内部宽度 16。
+
+## 10. 认证后接口
+
+```text
+component.mlp_sublayer.v1
+inputs:
+  hidden: float32[B,T,C]
+  weights: MLPSublayerWeights
+output:
+  out: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+TransformerBlock 把 AttentionSublayer 和 MLPSublayer 串联起来。

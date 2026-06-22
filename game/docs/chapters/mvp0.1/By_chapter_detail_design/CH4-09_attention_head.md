@@ -1,45 +1,164 @@
-# Chapter 4-9 Attention Head：AttentionHead
+# Chapter 4-9 Attention Head: SingleHeadAttention
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 4 Attention Head
-- 构建组件：`AttentionHead`
-- 输入来源：Q/K/V + Score + Mask + Softmax + V
-- 学习目标：封装单头注意力
-- 后续用途：multi-head
+SingleHeadAttention 把前面 Chapter 4 的组件组装成一个完整 attention head：
 
-## 2. 当前案例
+```text
+q = QLinear(hidden)
+k = KLinear(hidden)
+v = VLinear(hidden)
+scores = QKScore(q,k)
+scaled = ScaleBySqrtD(scores,D)
+masked = MaskAdd(scaled, causal_mask)
+prob = SoftmaxLastDim(masked)
+context = AttentionApply(prob,v)
+```
 
-AttentionHead 把「Q/K/V + Score + Mask + Softmax + V」变成可复用的图组件。
+本关是一次组件编排关。玩家不再造内部数学细节，而是证明这些已认证组件可以按正确顺序组合。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 AttentionHead 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,D]`，示例 shape 为 `[2,6,3]`。
+- `component.q_linear.v1`
+- `component.k_linear.v1`
+- `component.v_linear.v1`
+- `component.qk_score.v1`
+- `component.scale_by_sqrt_d.v1`
+- `component.causal_mask.v1`
+- `component.mask_add.v1`
+- `component.softmax_last_dim.v1`
+- `component.attention_apply.v1`
 
-## 3. 玩家操作
+本关禁止使用预制 `SingleHeadAttention`。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `AttentionHead` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `AttentionPipelineContract`：检查 Q/K/V/score/prob/context 的完整链路。
+- `StageProbe`：允许玩家在每个阶段查看 shape、axes 和小样本。
+- `LeakProbe`：检查 future token 是否被 causal mask 阻断。
+- `ReferenceChecker`：端到端数值参考。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+`StageProbe` 是教学探针。它不是目标组件的一部分，但能减少“这么多节点不知道错在哪”的困惑。
 
-## 5. 认证变体
+## 4. 具体案例
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+Visible case:
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,D]`
-- shape 可以随认证宽度变化，但语义不变。
+```text
+hidden[B=1,T=3,C=4]
+D=2
+causal mask: token i 只能看 j <= i
+```
 
-## 6. 通过标准
+期望输出：
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,D]。
+```text
+context[B=1,H=1,T=3,D=2]
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+LeakProbe 展示：
+
+```text
+token 0 的 prob 只能落在 key 0
+token 1 的 prob 只能落在 key 0,1
+token 2 可以看 0,1,2
+```
+
+## 5. 初始错误图
+
+画布给出：
+
+- `hidden: HiddenSource[B,T,C]`
+- `weights: QKVWeightPack`
+- `causal_mask: CausalMask[T,T]`
+- `head_out: ContextContract`
+- `stage_probe: StageProbe`
+- `leak_probe: LeakProbe`
+- `reference: ReferenceChecker`
+
+没有任何 Q/K/V projection 或 attention pipeline。玩家必须从组件库拖入已认证组件。
+
+## 6. 目标内部实现
+
+```text
+hidden.out -> q_linear.hidden
+hidden.out -> k_linear.hidden
+hidden.out -> v_linear.hidden
+weights.wq -> q_linear.weight
+weights.bq -> q_linear.bias
+weights.wk -> k_linear.weight
+weights.bk -> k_linear.bias
+weights.wv -> v_linear.weight
+weights.bv -> v_linear.bias
+q_linear.q -> qk_score.q
+k_linear.k -> qk_score.k
+qk_score.scores -> scale.scores
+weights.d -> scale.d
+scale.scaled -> mask_add.scores
+causal_mask.out -> mask_add.causal_mask
+mask_add.masked_scores -> softmax.masked_scores
+softmax.prob -> attention_apply.prob
+v_linear.v -> attention_apply.value
+attention_apply.context -> head_out.x
+attention_apply.context -> stage_probe.context
+softmax.prob -> leak_probe.prob
+head_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 QLinear、KLinear、VLinear。
+2. 接入 hidden 和各自权重。
+3. 拖入 QKScore、Scale、MaskAdd、Softmax、AttentionApply。
+4. 按 pipeline 顺序连接每一段。
+5. 接 StageProbe 和 LeakProbe，确认每个阶段的 shape。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- Q/K 接反：shape 可能过，score 数值错。
+- 漏掉 scale：context 数值偏差，reference 失败。
+- softmax 在 mask 前执行：future leak，LeakProbe 失败。
+- 用 V 参与 QKScore：role contract 失败。
+- 跳过 StageProbe：结构断言失败，避免玩家黑盒连线。
+- 使用预制 AttentionHead：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须按 Q/K/V -> QKScore -> Scale -> MaskAdd -> Softmax -> AttentionApply 顺序连通。
+- Q/K/V role contract 必须正确。
+- LeakProbe 检查 future probability 小于 `1e-4`。
+- 输出 axes 为 `[B,H,T,D]`。
+- 输出 allclose 到 end-to-end attention reference。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`T=1`。
+
+只有一个 token，mask 不应破坏输出。
+
+Hidden case B：`T=4,D=3`。
+
+检查 scale 随 D 变化，mask 随 T 变化。
+
+Hidden case C：future leak trap。
+
+系统把 future value 设置成极大值。如果 mask 或 softmax 顺序错，context 会明显偏移。
+
+## 11. 认证后接口
+
+```text
+component.single_head_attention.v1
+inputs:
+  hidden: float32[B,T,C]
+  qkv_weights: QKVWeightPack
+  causal_mask: bool[T,T]
+output:
+  context: float32[B,H,T,D]
+```
+
+## 12. 后续调用
+
+Chapter 5 会把单头扩展成多头。SingleHeadAttention 是后续 Multi-Head Attention 的最小可解释版本，必须保留内部 stage 可展开能力，不能变成黑盒答案节点。

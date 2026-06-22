@@ -1,45 +1,76 @@
-# Chapter 9-4 Append Token：AppendToken
+# Chapter 9-4 Append Token: AppendToken
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`AppendToken`
-- 输入来源：buffer update
-- 学习目标：自回归循环
-- 后续用途：generation
+AppendToken 把新采样的 token id 加到生成序列末尾：
 
-## 2. 当前案例
+```text
+tokens_next = tokens + [next_id]
+```
 
-AppendToken 把「buffer update」变成可复用的图组件。
+如果超过上下文容量，后续 ContextCrop 会处理裁剪。本关只负责追加。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 AppendToken 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[1,7]`。
+- `component.sample_next_token.v1`
+- `component.context_crop.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `AppendToken` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `AppendGate`：把 scalar id 追加到序列尾。
+- `LengthUpdateGate`：更新长度。
+- `AppendProbe`：显示追加前后尾部 token。
+- `ReferenceChecker`：检查序列。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+tokens = [12,4,7]
+next_id = 0
+tokens_next = [12,4,7,0]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 tokens、next_id、append_out、probe、reference。缺少 append 和 length update。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+```text
+tokens + next_id -> append_gate
+tokens.length + 1 -> length_update
+append_gate + length_update -> append_out
+append_gate -> append_probe
+append_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- prepend 到开头：生成顺序错。
+- 替换最后一个 token：history 丢失。
+- next_id dtype 不是 int scalar：contract 失败。
+- 追加后 mask/length 不更新：后续 crop 错。
+
+## 8. 测试设计
+
+- Visible：追加 0。
+- Hidden A：追加非 pad id。
+- Hidden B：空序列追加。
+- Hidden C：next_id 向量必须失败。
+
+## 9. 认证后接口
+
+```text
+component.append_token.v1
+inputs:
+  tokens: int[N]
+  next_id: int[]
+output:
+  tokens_next: int[N+1]
+```
+
+## 10. 后续调用
+
+Decode 会把累积 tokens 转回文本；TinyChatLoop 会重复执行 append。

@@ -1,45 +1,130 @@
-# Chapter 2-0 Parameter Matrix：ParameterMatrix
+# Chapter 2-0 Parameter Matrix: ParameterMatrix
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 2 Embedding 与 Hidden Tensor
-- 构建组件：`ParameterMatrix`
-- 输入来源：Matrix + trainable flag
-- 学习目标：权重是可学习 tensor
-- 后续用途：embedding / linear
+ParameterMatrix 把普通矩阵标记成可训练参数。它仍然是数值 tensor，但多了参数身份、初始化 seed 和 trainable flag。
 
-## 2. 当前案例
+```text
+param.name = "tok_embed.weight"
+param.value: float32[V,C]
+param.trainable = true
+```
 
-ParameterMatrix 把「Matrix + trainable flag」变成可复用的图组件。
+本关让玩家区分“输入数据”和“模型参数”。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 ParameterMatrix 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[V,C]`，示例 shape 为 `[16,4]`。
+- `component.matrix_board.v1`
+- `component.typed_tensor.v1`
+- `component.axis_tensor.v1`
 
-## 3. 玩家操作
+玩家已经能描述矩阵 shape 和 axes。本关增加参数元数据。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `ParameterMatrix` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `InitMatrixSource`：按 seed 生成 float32 矩阵。
+- `TrainableTag`：标记参数是否参与优化。
+- `ParameterNameGate`：绑定稳定名称。
+- `ParameterContract`：检查 axes、dtype、trainable。
+- `ParamPreviewProbe`：显示 shape、name、checksum。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+name = "tok_embed.weight"
+shape = [V=5,C=3]
+axes = [V,C]
+trainable = true
+seed = 17
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[V,C]`
-- shape 可以随认证宽度变化，但语义不变。
+输出是一张参数矩阵，不是输入 batch。
 
-## 6. 通过标准
+## 5. 初始错误图
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [V,C]。
+画布给出：
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+- `init_matrix: InitMatrixSource`
+- `param_out: ParameterContract`
+- `preview: ParamPreviewProbe`
+- `reference: ReferenceChecker`
+
+缺少 TrainableTag 和 ParameterNameGate。
+
+## 6. 目标内部实现
+
+```text
+init_matrix.out -> trainable_tag.x
+trainable_tag.out -> name_gate.x
+name_gate.out -> param_out.x
+name_gate.out -> preview.x
+param_out.out -> reference.x
+```
+
+其中：
+
+- `trainable_tag.trainable = true`
+- `name_gate.name = "tok_embed.weight"`
+- `param_out.expectedAxes = [V,C]`
+
+## 7. 玩家操作
+
+1. 查看初始化矩阵 shape。
+2. 拖入 `TrainableTag`，设置 true。
+3. 拖入 `ParameterNameGate`，填写参数名。
+4. 接入 ParameterContract、preview 和 reference。
+5. 修改 seed，确认 checksum 改变但 contract 不变。
+6. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- 把参数当输入 batch：axes 错。
+- trainable=false：优化器不会更新，contract 失败。
+- 参数名为空：checkpoint 无法保存。
+- 用 int 矩阵：dtype 错。
+- 硬编码 visible seed 的 reference：seed 变体失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 TrainableTag 和 ParameterNameGate。
+- 输出 dtype 为 float32。
+- axes 为 `[V,C]`。
+- trainable 为 true。
+- preview 显示 name 和 checksum。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：不同 seed。
+
+矩阵值变化，但 shape/axes/trainable 不变。
+
+Hidden case B：不同 V/C。
+
+```text
+shape = [V=7,C=4]
+```
+
+Hidden case C：非 trainable。
+
+必须失败，除非关卡明确是 frozen 参数。
+
+## 11. 认证后接口
+
+```text
+component.parameter_matrix.v1
+inputs:
+  init: float32[R,C]
+params:
+  name: string
+  trainable: bool
+output:
+  param: parameter_matrix[R,C]
+```
+
+## 12. 后续调用
+
+EmbeddingTable、Linear weight、LM head 都是 ParameterMatrix 的具体用途。这个组件负责参数身份，不负责查表或矩阵乘法。

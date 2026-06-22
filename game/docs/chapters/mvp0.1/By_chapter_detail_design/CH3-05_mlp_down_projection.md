@@ -1,45 +1,131 @@
-# Chapter 3-5 MLP Down Projection：Linear 4C→C
+# Chapter 3-5 MLP Down Projection: Linear 4C to C
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 3 Linear、Activation、MLP
-- 构建组件：`Linear 4C→C`
-- 输入来源：Linear
-- 学习目标：回到 hidden width
-- 后续用途：MLP
+MLP Down Projection 把激活后的 4C 中间表示压回 C：
 
-## 2. 当前案例
+```text
+down = Linear(activated, W_down, b_down)
+down: float32[B,T,C]
+```
 
-Linear 4C→C 把「Linear」变成可复用的图组件。
+它让 MLP 输出可以和原 hidden 做 residual add。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Linear 4C→C 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,4]`。
+- `component.mlp_up.v1`
+- `component.relu.v1`
+- `component.linear.v1`
 
-## 3. 玩家操作
+本关复用 Linear，但输入宽度是 4C，输出宽度是 C。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Linear 4C→C` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `DownWeightContract`：检查 weight axes `[4C,C]`。
+- `ChannelReturnProbe`：检查输出 channel 回到原 C。
+- `component.linear.v1`：执行投影。
+- `DownProjectionContract`：检查 `[B,T,C]`。
+- `ReferenceChecker`：检查数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+activated[B=1,T=2,4C=8]
+W_down[4C=8,C=2]
+b_down[C=2]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+期望输出：
 
-## 6. 通过标准
+```text
+down[B=1,T=2,C=2]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `activated: ActivationOutput[B,T,4C]`
+- `w_down: WeightPlate[4C,C]`
+- `b_down: BiasVector[C]`
+- `down_out: DownProjectionContract`
+- `return_probe: ChannelReturnProbe`
+- `reference: ReferenceChecker`
+
+缺少 DownWeightContract 和 Linear。
+
+## 6. 目标内部实现
+
+```text
+activated.out -> return_probe.input
+activated.out -> weight_contract.activation
+w_down.out -> weight_contract.weight
+weight_contract.out -> linear.weight
+activated.out -> linear.hidden
+b_down.out -> linear.bias
+linear.out -> down_out.x
+linear.out -> return_probe.output
+down_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `DownWeightContract`。
+2. 验证 weight 是 `[4C,C]`。
+3. 拖入 `Linear v1`。
+4. 接入 activated、W_down、b_down。
+5. 接入 ChannelReturnProbe、合约和 reference。
+6. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- weight 用 `[C,4C]`：内维错。
+- 输出仍是 4C：不能 residual add。
+- 省略 bias：shape 对但数值错。
+- 使用 up projection 权重：数值错。
+- 使用预制 MLPDown：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须使用 `component.linear.v1`。
+- 必须存在 DownWeightContract。
+- 输出 axes 为 `[B,T,C]`。
+- 输出 allclose 到 Linear reference。
+- ChannelReturnProbe 显示 4C -> C。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`C=3`。
+
+```text
+activated width = 12
+output width = 3
+```
+
+Hidden case B：`T=4`。
+
+B/T carrier axes 必须保留。
+
+Hidden case C：`4C == T`。
+
+防止把 time axis 当 channel axis。
+
+## 11. 认证后接口
+
+```text
+component.mlp_down.v1
+inputs:
+  activated: float32[B,T,4C]
+  weight: float32[4C,C]
+  bias: float32[C]
+output:
+  down: float32[B,T,C]
+```
+
+## 12. 后续调用
+
+MLP Module 会把 up、activation、down 串起来。DownProjection 是 MLP 回到 residual stream 的出口。

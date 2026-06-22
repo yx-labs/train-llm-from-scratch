@@ -1,45 +1,100 @@
-# Chapter 5-2 Head Concat：ConcatHeads
+# Chapter 5-2 Head Concat: HeadConcat
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 5 Multi-Head Attention
-- 构建组件：`ConcatHeads`
-- 输入来源：concatenate
-- 学习目标：H×D 回到 C
-- 后续用途：MHA
+HeadConcat 把每个 head 的 context 拼回 residual stream 宽度：
 
-## 2. 当前案例
+```text
+context_heads[B,H,T,D] -> context[B,T,C]
+C = H * D
+```
 
-ConcatHeads 把「concatenate」变成可复用的图组件。
+它是 HeadSplit 的逆操作，但必须保持元素顺序。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 ConcatHeads 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.parallel_heads.v1`
+- `component.head_split.v1`
 
-## 3. 玩家操作
+玩家已经知道 C 如何拆成 H 和 D。本关学习如何合回 C。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `ConcatHeads` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `TransposeHeadsToTokenMajor`：把 `[B,H,T,D]` 调整为 `[B,T,H,D]`。
+- `FlattenHeadChannel`：把 `[H,D]` 合成 C。
+- `ConcatOrderProbe`：展示 head/channel 的拼接顺序。
+- `ReferenceChecker`：检查元素映射。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+heads[B=1,H=3,T=2,D=2]
+out[B=1,T=2,C=6]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+映射：
 
-## 6. 通过标准
+```text
+out[0,t,0:2] = head 0
+out[0,t,2:4] = head 1
+out[0,t,4:6] = head 2
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出 context_heads、concat_out、order_probe、reference。缺少 transpose 和 flatten。
+
+## 6. 目标内部实现
+
+```text
+context_heads.out -> transpose.x
+transpose.out -> flatten.x
+flatten.out -> concat_out.x
+flatten.out -> order_probe.x
+concat_out.out -> reference.x
+```
+
+其中：
+
+- `transpose.from = [B,H,T,D]`
+- `transpose.to = [B,T,H,D]`
+- `flatten.axes = [H,D] -> C`
+
+## 7. 玩家操作
+
+1. 拖入 `TransposeHeadsToTokenMajor`。
+2. 拖入 `FlattenHeadChannel`。
+3. 设置 flatten 顺序 H-major then D。
+4. 接入 order probe 和 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 直接 flatten `[B,H,T,D]`：T 和 H 顺序错。
+- 按 D-major 拼接：reference 失败。
+- sum heads 而不是 concat：shape `[B,T,D]` 错。
+- 丢失 H 轴信息：无法恢复 C。
+- 硬编码 C=6：H/D 变体失败。
+
+## 9. 测试设计
+
+- Visible：H=3,D=2，检查每个通道来源。
+- Hidden A：H=2,D=4。
+- Hidden B：T==H，防止轴混淆。
+- Hidden C：每个 head 使用不同 sentinel，检测拼接顺序。
+
+## 10. 认证后接口
+
+```text
+component.head_concat.v1
+inputs:
+  context_heads: float32[B,H,T,D]
+output:
+  context: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+OutputProjection 会把 concat 后的 C 维再投影回 residual stream。HeadConcat 负责结构合并，不负责混合通道。

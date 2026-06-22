@@ -1,45 +1,99 @@
-# Chapter 6-3 Attention Sublayer：LN → MHA → Residual
+# Chapter 6-3 Attention Sublayer: LN -> MHA -> Residual
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 6 LayerNorm、Residual、Transformer Block
-- 构建组件：`LN → MHA → Residual`
-- 输入来源：LayerNorm + MHA + Add
-- 学习目标：tokens 通信
-- 后续用途：block
+AttentionSublayer 是 transformer block 的第一半：
 
-## 2. 当前案例
+```text
+normed = LayerNorm(hidden)
+attn = MultiHeadAttention(normed)
+out = ResidualAdd(hidden, attn)
+```
 
-LN → MHA → Residual 把「LayerNorm + MHA + Add」变成可复用的图组件。
+这是 pre-norm 结构，LayerNorm 作用在 branch 输入上，residual 使用原 hidden。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 LN → MHA → Residual 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.layernorm.v1`
+- `component.multi_head_attention.v1`
+- `component.residual_add.v1`
 
-## 3. 玩家操作
+禁止拖预制 AttentionSublayer。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `LN → MHA → Residual` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `PreNormPathProbe`：显示 residual 路径没有经过 LayerNorm。
+- `SublayerStageContract`：检查 LN -> MHA -> Residual 顺序。
+- `ReferenceChecker`：端到端 reference。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=3,C=6]
+H=3
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+期望输出仍为：
 
-## 6. 通过标准
+```text
+float32[B,T,C]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出 hidden、LN 参数、MHA weights、mask、sublayer_out、path_probe、reference。缺少 LN/MHA/Residual。
+
+## 6. 目标内部实现
+
+```text
+hidden -> layernorm.x
+layernorm.y -> mha.hidden
+mask -> mha.causal_mask
+mha.out -> residual_add.branch
+hidden -> residual_add.residual
+residual_add.out -> sublayer_out
+hidden + layernorm + residual_add -> path_probe
+sublayer_out -> reference
+```
+
+## 7. 玩家操作
+
+1. 拖入 LayerNorm、MHA、ResidualAdd。
+2. 将 LayerNorm 输出接入 MHA。
+3. 将 MHA 输出作为 branch。
+4. 将原 hidden 作为 residual。
+5. 接 PathProbe 和 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- residual 也接 normed：pre-norm 结构错。
+- MHA 直接吃原 hidden：reference 失败。
+- 漏掉 residual：shape 对但数值错。
+- mask 不接 MHA：future leak。
+- 顺序变成 MHA -> LN -> residual：StageContract 失败。
+
+## 9. 测试设计
+
+- Visible：端到端 allclose。
+- Hidden A：LayerNorm gamma/beta 非默认。
+- Hidden B：future leak trap。
+- Hidden C：branch 全零时输出应等于 hidden。
+
+## 10. 认证后接口
+
+```text
+component.attention_sublayer.v1
+inputs:
+  hidden: float32[B,T,C]
+  weights: AttentionSublayerWeights
+  mask: bool[T,T]
+output:
+  out: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+TransformerBlock 会把 AttentionSublayer 接到 MLPSublayer 前面。

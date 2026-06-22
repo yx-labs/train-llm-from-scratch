@@ -1,45 +1,138 @@
-# Chapter 4-2 V Projection：VLinear
+# Chapter 4-2 V Projection: VLinear
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 4 Attention Head
-- 构建组件：`VLinear`
-- 输入来源：Linear C→D
-- 学习目标：value 是“我传什么内容”
-- 后续用途：attention
+VLinear 把 hidden state 投影成 value。Value 是 attention 最后要混合的内容：
 
-## 2. 当前案例
+```text
+v = Linear(hidden, Wv, bv)
+v: float32[B,H=1,T,D]
+```
 
-VLinear 把「Linear C→D」变成可复用的图组件。
+Q 和 K 参与打分，V 不参与 QKScore。它会在 WeightedSum 里被 attention probabilities 加权求和。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 VLinear 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,D]`，示例 shape 为 `[2,6,3]`。
+- `component.linear.v1`
+- `component.q_linear.v1`
+- `component.k_linear.v1`
 
-## 3. 玩家操作
+本关复用 Linear，但强调 value role 与 Q/K role 的区别。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `VLinear` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `component.linear.v1`：投影 hidden。
+- `HeadAxisLift`：补出单头轴。
+- `ProjectionRoleTag`：标记 role 为 `value`。
+- `ValueProbe`：展示 value 是被加权汇聚的内容向量。
+- `ReferenceChecker`：检查使用 Wv/bv。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=3,C=3]
+Wv[C=3,D=2]
+bv[D=2]
+v: [B=1,H=1,T=3,D=2]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,D]`
-- shape 可以随认证宽度变化，但语义不变。
+ValueProbe 展示：
 
-## 6. 通过标准
+```text
+context[token_i,:] = sum_j attention[i,j] * v[token_j,:]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,D]。
+这里只解释 V 的去向，不要求玩家已经会 WeightedSum。
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 5. 初始错误图
+
+画布给出：
+
+- `hidden: HiddenSource[B,T,C]`
+- `wv: WeightPlate[C,D]`
+- `bv: BiasVector[D]`
+- `v_out: ProjectionContract`
+- `value_probe: ValueProbe`
+- `reference: ReferenceChecker`
+
+缺少 Linear、HeadAxisLift 和 value role。
+
+## 6. 目标内部实现
+
+```text
+hidden.out -> linear.hidden
+wv.out -> linear.weight
+bv.out -> linear.bias
+linear.out -> head_lift.x
+head_lift.out -> role_tag.x
+role_tag.out -> v_out.x
+role_tag.out -> value_probe.x
+v_out.out -> reference.x
+```
+
+其中：
+
+- `role_tag.role = value`
+- `v_out.expectedAxes = [B,H,T,D]`
+
+## 7. 玩家操作
+
+1. 拖入 `Linear v1`。
+2. 接入 hidden、Wv、bv。
+3. 插入 `HeadAxisLift`。
+4. 用 `ProjectionRoleTag` 标记 value。
+5. 接入 ValueProbe、合约和 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 复用 Wk 或 Wq：shape 对，数值错。
+- role 标成 key：WeightedSum 不接受 key role。
+- 提前做 QKScore 或 softmax：VLinear 只负责生成 V。
+- 不加 H 轴：后续 WeightedSum 接口不匹配。
+- 使用预制 VLinear：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须使用 `component.linear.v1`。
+- role 必须是 `value`。
+- 输出 axes 必须是 `[B,H,T,D]`。
+- 输出 allclose 到 `Linear(hidden,Wv,bv)` 后插入 H 轴。
+- ValueProbe 必须能显示每个 token 的 value 向量。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：V 参数与 Q/K 全部不同。
+
+```text
+Wv != Wq
+Wv != Wk
+```
+
+Hidden case B：value 内容符号变化。
+
+```text
+hidden seed changes sign pattern
+```
+
+这个 case 防止玩家只复制 key 或 query。
+
+## 11. 认证后接口
+
+```text
+component.v_linear.v1
+inputs:
+  hidden: float32[B,T,C]
+  weight: float32[C,D]
+  bias: float32[D]
+output:
+  v: float32[B,H,T,D]
+```
+
+## 12. 后续调用
+
+WeightedSum 会消费 attention probabilities 和 V。VLinear 文档必须让玩家知道：V 是“被读出的内容”，不是“参与打分的地址”。

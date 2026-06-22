@@ -1,45 +1,118 @@
-# Chapter 2-3 Position Counter：PositionIds[T]
+# Chapter 2-3 Position Counter: PositionIds[T]
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 2 Embedding 与 Hidden Tensor
-- 构建组件：`PositionIds[T]`
-- 输入来源：range builder
-- 学习目标：模型需要位置
-- 后续用途：position embedding
+PositionCounter 根据序列长度 T 生成位置 id：
 
-## 2. 当前案例
+```text
+T = 5
+position_ids = [0,1,2,3,4]
+```
 
-PositionIds[T] 把「range builder」变成可复用的图组件。
+它让模型知道 token 在上下文窗口里的位置。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 PositionIds[T] 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[T]`，示例 shape 为 `[6]`。
+- `component.token_buffer.v1`
 
-## 3. 玩家操作
+TokenBuffer 提供 capacity T 和 valid length。本关只构造固定窗口的位置序列。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `PositionIds[T]` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `LengthScalar`：输入 T。
+- `RangeGate`：生成 `0..T-1`。
+- `IntDTypeGate`：确保输出是 int。
+- `PositionAxisContract`：绑定 axis `[T]`。
+- `PositionPreviewProbe`：显示首尾位置。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+T = 5
+expected = [0,1,2,3,4]
+```
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[T]`
-- shape 可以随认证宽度变化，但语义不变。
+输出 shape 为 `[T]`，不是 `[B,T]`。
 
-## 6. 通过标准
+## 5. 初始错误图
 
-当前任务通过：输出必须保持 dtype=int，轴为 [T]。
+画布给出：
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+- `length: LengthScalar`
+- `pos_out: PositionAxisContract`
+- `preview: PositionPreviewProbe`
+- `reference: ReferenceChecker`
+
+缺少 RangeGate 和 dtype gate。
+
+## 6. 目标内部实现
+
+```text
+length.out -> range.t
+range.out -> dtype_gate.x
+dtype_gate.out -> pos_out.x
+dtype_gate.out -> preview.x
+pos_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 查看 T 的当前值。
+2. 拖入 `RangeGate`。
+3. 拖入 `IntDTypeGate`。
+4. 连接 PositionAxisContract、preview 和 reference。
+5. 修改 T，确认 range 自动变化。
+6. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- 从 1 开始计数：reference 失败。
+- 硬编码 `[0,1,2,3,4]`：T 变体失败。
+- 输出 float：dtype 错。
+- 加 batch 轴：PositionEmbedding lookup 期望 `[T]`。
+- 输出倒序：reference 失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 RangeGate。
+- 输出 dtype 为 int。
+- axes 为 `[T]`。
+- 数值为 `0..T-1`。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`T=1`。
+
+```text
+position_ids = [0]
+```
+
+Hidden case B：`T=8`。
+
+必须自动生成 8 个位置。
+
+Hidden case C：非法 T。
+
+```text
+T = 0 或 T < 0
+```
+
+必须失败并提示上下文长度非法。
+
+## 11. 认证后接口
+
+```text
+component.position_ids.v1
+inputs:
+  length: int[]
+output:
+  position_ids: int[T]
+```
+
+## 12. 后续调用
+
+PositionEmbedding 会用 position_ids 查表。PositionCounter 不关心 token 内容，只关心槽位索引。

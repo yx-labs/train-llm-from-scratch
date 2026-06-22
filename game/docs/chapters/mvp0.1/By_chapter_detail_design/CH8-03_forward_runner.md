@@ -1,45 +1,79 @@
-# Chapter 8-3 Forward Runner：ForwardPass
+# Chapter 8-3 Forward Runner: ForwardPass
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 8 Training Loop
-- 构建组件：`ForwardPass`
-- 输入来源：model + batch
-- 学习目标：logits
-- 后续用途：loss
+ForwardRunner 把 batch 输入送进 tiny model，得到 logits：
 
-## 2. 当前案例
+```text
+input_ids[B,T] -> model -> logits[B,T,V]
+```
 
-ForwardPass 把「model + batch」变成可复用的图组件。
+它复用 tokenizer 后的模型组件，不重新实现内部层。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 ForwardPass 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,V]`，示例 shape 为 `[2,6,20]`。
+- `component.batch_builder.v1`
+- `component.hidden_init.v1`
+- `component.transformer_stack.v1`
+- `component.final_layernorm.v1`
+- `component.lm_head.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `ForwardPass` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `ModelGraphCall`：调用已组装模型子图。
+- `InputMaskRouter`：把 attention mask 与 ids 一起传入。
+- `ForwardTraceProbe`：显示 embedding、stack、logits 三段。
+- `ReferenceChecker`：端到端 logits reference。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+input_ids[B=1,T=3]
+logits[B=1,T=3,V=13]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,V]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 input_ids、model weights、mask、logits_out、trace、reference。缺少模型调用和 mask router。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,V]。
+```text
+input_ids + mask -> input_mask_router
+input_mask_router + weights -> model_graph_call
+model_graph_call.logits -> logits_out
+model_graph_call.trace -> forward_trace
+logits_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 只运行 embedding，不经过 stack/lm head。
+- 丢掉 attention mask：padding/future 行为错。
+- 输出 last-token logits `[V]`：本关需要 `[B,T,V]`。
+- 使用固定 reference logits：seed/weights 变体失败。
+
+## 8. 测试设计
+
+- Visible：B=1,T=3。
+- Hidden A：B=2。
+- Hidden B：padding mask 包含 false。
+- Hidden C：不同 weights seed，logits 必须变化。
+
+## 9. 认证后接口
+
+```text
+component.forward_pass.v1
+inputs:
+  input_ids: int[B,T]
+  mask: bool[B,T]
+  weights: TinyModelWeights
+output:
+  logits: float32[B,T,V]
+```
+
+## 10. 后续调用
+
+BackwardTrace 从 forward logits 和 loss 开始建立梯度路径。

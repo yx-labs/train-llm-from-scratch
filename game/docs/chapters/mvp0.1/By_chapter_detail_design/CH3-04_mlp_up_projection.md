@@ -1,45 +1,131 @@
-# Chapter 3-4 MLP Up Projection：Linear C→4C
+# Chapter 3-4 MLP Up Projection: Linear C to 4C
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 3 Linear、Activation、MLP
-- 构建组件：`Linear C→4C`
-- 输入来源：Linear
-- 学习目标：扩宽通道
-- 后续用途：MLP
+MLP Up Projection 把 hidden channel 从 C 扩展到 4C：
 
-## 2. 当前案例
+```text
+up = Linear(hidden, W_up, b_up)
+up: float32[B,T,4C]
+```
 
-Linear C→4C 把「Linear」变成可复用的图组件。
+这个扩展给激活函数提供更宽的中间空间。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Linear C→4C 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,O]`，示例 shape 为 `[2,6,16]`。
+- `component.linear.v1`
+- `component.parameter_matrix.v1`
 
-## 3. 玩家操作
+本关复用 Linear，但必须证明输出宽度来自 `4 * C`，不能硬编码 visible case 的 O。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Linear C→4C` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `WidthMultiplierProbe`：根据输入 C 计算目标 O=4C。
+- `UpWeightContract`：检查 weight axes `[C,4C]`。
+- `component.linear.v1`：执行投影。
+- `UpProjectionContract`：检查输出 `[B,T,4C]`。
+- `ReferenceChecker`：检查数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=2,C=2]
+W_up[C=2,O=8]
+b_up[O=8]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,O]`
-- shape 可以随认证宽度变化，但语义不变。
+期望输出：
 
-## 6. 通过标准
+```text
+up[B=1,T=2,4C=8]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,O]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `hidden: HiddenSource[B,T,C]`
+- `w_up: WeightPlate[C,4C]`
+- `b_up: BiasVector[4C]`
+- `up_out: UpProjectionContract`
+- `width_probe: WidthMultiplierProbe`
+- `reference: ReferenceChecker`
+
+缺少 Linear 和 weight contract。
+
+## 6. 目标内部实现
+
+```text
+hidden.out -> width_probe.hidden
+w_up.out -> weight_contract.weight
+width_probe.out -> weight_contract.expected_width
+hidden.out -> linear.hidden
+weight_contract.out -> linear.weight
+b_up.out -> linear.bias
+linear.out -> up_out.x
+up_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `WidthMultiplierProbe`。
+2. 拖入 `UpWeightContract`，验证 O=4C。
+3. 拖入 `Linear v1`。
+4. 接入 hidden、W_up、b_up。
+5. 接入输出合约和 reference。
+6. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- O 硬编码为 8：C=3 hidden case 失败。
+- 使用普通 Linear 但不验证 width：结构断言失败。
+- weight 转置成 `[4C,C]`：Linear 内维错。
+- 输出 `[B,T,C]`：没有完成 up projection。
+- 使用预制 MLPUp：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须使用 `component.linear.v1`。
+- 必须存在 WidthMultiplierProbe 和 UpWeightContract。
+- 输出 axes 为 `[B,T,4C]`。
+- 输出 allclose 到 Linear reference。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`C=3`。
+
+```text
+O must be 12
+```
+
+Hidden case B：`B=2,T=1`。
+
+检查 B/T carrier axes 保留。
+
+Hidden case C：错误 bias 长度。
+
+```text
+b_up[O=8] when C=3
+```
+
+必须失败。
+
+## 11. 认证后接口
+
+```text
+component.mlp_up.v1
+inputs:
+  hidden: float32[B,T,C]
+  weight: float32[C,4C]
+  bias: float32[4C]
+output:
+  up: float32[B,T,4C]
+```
+
+## 12. 后续调用
+
+Activation 会消费 up projection 输出。Down projection 之后再回到 C 维。

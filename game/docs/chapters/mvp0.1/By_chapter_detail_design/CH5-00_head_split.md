@@ -1,45 +1,102 @@
-# Chapter 5-0 Head Split：HeadWidth D=C/H
+# Chapter 5-0 Head Split: HeadWidth and HeadSplit
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 5 Multi-Head Attention
-- 构建组件：`HeadWidth D=C/H`
-- 输入来源：shape arithmetic
-- 学习目标：C 被分成 H 个头
-- 后续用途：MHA
+HeadSplit 把单条 C 维 hidden/projection 通道拆成 H 个 attention head：
 
-## 2. 当前案例
+```text
+C = H * D
+x[B,T,C] -> x_heads[B,H,T,D]
+```
 
-HeadWidth D=C/H 把「shape arithmetic」变成可复用的图组件。
+本关让玩家理解 D 不是新的参数，而是由 `C/H` 推导出来的 head width。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 HeadWidth D=C/H 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[H]`，示例 shape 为 `[4]`。
+- `component.axis_tensor.v1`
+- `component.single_head_attention.v1`
 
-## 3. 玩家操作
+单头 attention 已经使用 `[B,H,T,D]`。本关把 H 从 1 扩展到多个 head。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `HeadWidth D=C/H` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `DivisibilityGate`：检查 C 能被 H 整除。
+- `HeadWidthGate`：计算 `D=C/H`。
+- `ReshapeToHeads`：把 `[B,T,C]` reshape 为 `[B,H,T,D]`。
+- `HeadAxisProbe`：显示某个 channel 落入哪个 head。
+- `ReferenceChecker`：检查 reshape 不改变元素顺序。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+x[B=1,T=2,C=6]
+H = 3
+D = 2
+out[B=1,H=3,T=2,D=2]
+```
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[H]`
-- shape 可以随认证宽度变化，但语义不变。
+示例映射：
 
-## 6. 通过标准
+```text
+x[0,1,4] -> out[0,2,1,0]
+x[0,1,5] -> out[0,2,1,1]
+```
 
-当前任务通过：输出必须保持 dtype=int，轴为 [H]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出 `x`、`head_count`、`split_out`、`head_axis_probe`、`reference`。缺少整除检查、D 计算和 reshape。
+
+## 6. 目标内部实现
+
+```text
+x.out -> divisible.x
+head_count.out -> divisible.h
+divisible.out -> head_width.c
+head_count.out -> head_width.h
+x.out -> reshape.x
+head_width.d -> reshape.d
+head_count.out -> reshape.h
+reshape.out -> split_out.x
+reshape.out -> head_axis_probe.x
+split_out.out -> reference.x
+```
+
+## 7. 玩家操作
+
+1. 拖入 `DivisibilityGate`。
+2. 拖入 `HeadWidthGate` 计算 D。
+3. 拖入 `ReshapeToHeads`，设置输出 axes `[B,H,T,D]`。
+4. 连接 probe 与 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 不检查整除：C=7,H=3 hidden case 应失败。
+- 输出 `[B,T,H,D]`：axis 顺序错。
+- 复制数据而不是 reshape：checksum/reference 失败。
+- 硬编码 D=2：H/C 变体失败。
+- 用单头 attention 代替 split：职责错误。
+
+## 9. 测试设计
+
+- Visible：`C=6,H=3,D=2`，元素映射 allclose。
+- Hidden A：`C=8,H=4,D=2`。
+- Hidden B：`C=7,H=3` 必须报整除错误。
+- Hidden C：`T==H`，防止按长度猜 axis。
+
+## 10. 认证后接口
+
+```text
+component.head_split.v1
+inputs:
+  x: float32[B,T,C]
+  head_count: int[]
+output:
+  x_heads: float32[B,H,T,D]
+```
+
+## 11. 后续调用
+
+ParallelHeads 会在每个 head 上运行 attention。HeadSplit 的关键是 axis 语义和元素顺序，不能只检查 shape。

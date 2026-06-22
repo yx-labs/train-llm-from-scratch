@@ -1,45 +1,130 @@
-# Chapter 2-5 Hidden Init：Token + Position Add
+# Chapter 2-5 Hidden Init: Token + Position Add
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 2 Embedding 与 Hidden Tensor
-- 构建组件：`Token + Position Add`
-- 输入来源：broadcast add
-- 学习目标：token vector + position vector
-- 后续用途：block 输入
+HiddenInit 把 token embedding 和 position embedding 相加，生成 transformer block 的初始 hidden states：
 
-## 2. 当前案例
+```text
+hidden[b,t,c] = token_emb[b,t,c] + pos_emb[t,c]
+```
 
-Token + Position Add 把「broadcast add」变成可复用的图组件。
+本关核心是把 `[T,C]` position vectors 正确 broadcast 到 `[B,T,C]`。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Token + Position Add 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,4]`。
+- `component.embedding_lookup.v1`
+- `component.position_embedding.v1`
+- `component.bias_add.v1`
 
-## 3. 玩家操作
+玩家已经见过 bias broadcast。本关复用 broadcast 思维，但对齐轴是 `[T,C]`。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Token + Position Add` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `PositionBroadcast`：把 `[T,C]` 扩展到 `[B,T,C]`。
+- `AddGate`：逐元素相加。
+- `HiddenContract`：检查输出 `[B,T,C]`。
+- `TokenPositionTrace`：展示某个 hidden cell 的两个来源。
+- `ReferenceChecker`：检查数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+token_emb[B=1,T=3,C=2]
+pos_emb[T=3,C=2]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+示例：
 
-## 6. 通过标准
+```text
+token_emb[0,1,:] = [0.4, -0.2]
+pos_emb[1,:] = [0.1, 0.3]
+hidden[0,1,:] = [0.5, 0.1]
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `token_emb: TokenEmbeddingOutput[B,T,C]`
+- `pos_emb: PositionEmbeddingOutput[T,C]`
+- `hidden_out: HiddenContract`
+- `trace: TokenPositionTrace`
+- `reference: ReferenceChecker`
+
+缺少 PositionBroadcast 和 AddGate。
+
+## 6. 目标内部实现
+
+```text
+token_emb.out -> pos_broadcast.target
+pos_emb.out -> pos_broadcast.small
+token_emb.out -> add.left
+pos_broadcast.out -> add.right
+add.out -> hidden_out.x
+add.out -> trace.hidden
+token_emb.out -> trace.token
+pos_emb.out -> trace.position
+hidden_out.out -> reference.x
+```
+
+其中：
+
+- `pos_broadcast.alignAxes = [T,C]`
+- `hidden_out.expectedAxes = [B,T,C]`
+
+## 7. 玩家操作
+
+1. 拖入 `PositionBroadcast`。
+2. 将 token_emb 作为 target，pos_emb 作为 small。
+3. 设置对齐轴 `[T,C]`。
+4. 用 `AddGate` 相加。
+5. 连接 trace、contract 和 reference。
+6. 检查当前任务并提交认证。
+
+## 8. 错误路径
+
+- 对齐 `[C]`：每个位置使用同一 position vector，reference 失败。
+- 把 position 加到 batch 轴：B 变体失败。
+- concat token 和 position：shape 变成 `[B,T,2C]`。
+- 忘记 position：shape 对但数值少一项。
+- 直接使用预制 HiddenInit：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 PositionBroadcast 和 AddGate。
+- 输出 axes 为 `[B,T,C]`。
+- 输出 allclose 到 `token_emb + pos_emb`。
+- TraceProbe 能显示 token 与 position 两个加数。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`B=2`。
+
+同一 position embedding 应广播到两个 batch。
+
+Hidden case B：`T=1`。
+
+只加 position 0。
+
+Hidden case C：位置向量乱序。
+
+如果上一关 position ids 是 `[2,0,1]`，HiddenInit 必须使用传入的 position vectors，不重新生成默认顺序。
+
+## 11. 认证后接口
+
+```text
+component.hidden_init.v1
+inputs:
+  token_emb: float32[B,T,C]
+  pos_emb: float32[T,C]
+output:
+  hidden: float32[B,T,C]
+```
+
+## 12. 后续调用
+
+Linear、Attention 和 MLP 都消费 hidden `[B,T,C]`。HiddenInit 是文本数据第一次进入模型隐藏空间。

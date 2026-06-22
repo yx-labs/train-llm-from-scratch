@@ -1,45 +1,79 @@
-# Chapter 9-2 Next Logits：ForwardLastToken
+# Chapter 9-2 Next Logits: ForwardLastToken
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`ForwardLastToken`
-- 输入来源：model forward
-- 学习目标：取最后位置 logits
-- 后续用途：sampler
+NextLogits 对当前上下文运行模型，并取最后一个有效位置的 logits：
 
-## 2. 当前案例
+```text
+logits_all[B,T,V] -> next_logits[V]
+```
 
-ForwardLastToken 把「model forward」变成可复用的图组件。
+## 2. 前置组件
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 ForwardLastToken 连接到合约探针。
+- `component.context_crop.v1`
+- `component.forward_pass.v1`
+- `component.logits_board.v1`
 
-案例数据输出合约：`float32[V]`，示例 shape 为 `[20]`。
+## 3. 本关新增能力
 
-## 3. 玩家操作
+- `ForwardPassCall`：运行模型。
+- `LastValidIndexGate`：从 mask 找最后有效位置。
+- `GatherLastLogits`：取该位置的 V 维向量。
+- `NextLogitProbe`：显示 top few logits。
+- `ReferenceChecker`：检查取值。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `ForwardLastToken` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 4. 具体案例
 
-## 4. 挑战设计
+Visible case:
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+```text
+context_ids = [[12,4,7,0]]
+mask = [[1,1,1,0]]
+last_valid = 2
+next_logits = logits[0,2,:]
+```
 
-## 5. 认证变体
+## 5. 初始错误图
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+画布给出 context、mask、model、next_logits_out、probe、reference。缺少 forward、last index、gather。
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[V]`
-- shape 可以随认证宽度变化，但语义不变。
+## 6. 目标内部实现
 
-## 6. 通过标准
+```text
+context + mask + model -> forward_call
+mask -> last_valid_index
+forward_call.logits + last_valid_index -> gather_last_logits
+gather_last_logits -> next_logits_out
+gather_last_logits -> probe
+next_logits_out -> reference
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [V]。
+## 7. 错误路径
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+- 取最后槽位 T-1：padding prompt 失败。
+- 取所有 logits `[B,T,V]`：Sampler 需要 `[V]`。
+- 不传 mask：forward 行为错。
+- 用 argmax id 代替 logits：Sampler 无法调整策略。
+
+## 8. 测试设计
+
+- Visible：last_valid=2。
+- Hidden A：无 padding，last=T-1。
+- Hidden B：B=1 但 T 变化。
+- Hidden C：全 mask 必须失败。
+
+## 9. 认证后接口
+
+```text
+component.forward_last_token.v1
+inputs:
+  context_ids: int[B,T]
+  context_mask: bool[B,T]
+  weights: TinyModelWeights
+output:
+  logits: float32[V]
+```
+
+## 10. 后续调用
+
+Sampler 把 next logits 转成下一个 token id。

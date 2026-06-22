@@ -1,45 +1,101 @@
-# Chapter 6-6 Block Stack：TransformerStack
+# Chapter 6-6 Block Stack: TransformerStack
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 6 LayerNorm、Residual、Transformer Block
-- 构建组件：`TransformerStack`
-- 输入来源：N 个 Block
-- 学习目标：深层模型
-- 后续用途：full model
+TransformerStack 把 N 个 TransformerBlock 串起来：
 
-## 2. 当前案例
+```text
+h0 = hidden
+h1 = Block0(h0)
+h2 = Block1(h1)
+...
+hN = BlockN-1(hN-1)
+```
 
-TransformerStack 把「N 个 Block」变成可复用的图组件。
+它是从单层 block 进入小模型主体的最后一步。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 TransformerStack 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.transformer_block.v1`
 
-## 3. 玩家操作
+本关复用同一个 block 接口，但每层有自己的参数。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `TransformerStack` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `LayerLoopGate`：按层数 N 顺序应用 block。
+- `BlockWeightSelector`：为每层选择对应权重。
+- `StackTraceProbe`：显示每层输出 checksum。
+- `ReferenceChecker`：端到端 stack reference。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+N = 2
+hidden[B=1,T=3,C=6]
+out[B=1,T=3,C=6]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+StackTraceProbe 显示：
 
-## 6. 通过标准
+```text
+layer 0 checksum
+layer 1 checksum
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出 hidden、block_weights[2]、mask、stack_out、stack_trace、reference。缺少 loop 和 weight selector。
+
+## 6. 目标内部实现
+
+```text
+hidden -> layer_loop.initial
+block_weights -> weight_selector.weights
+weight_selector.layer_weight -> layer_loop.block_weights
+mask -> layer_loop.mask
+layer_loop.out -> stack_out
+layer_loop.trace -> stack_trace
+stack_out -> reference
+```
+
+## 7. 玩家操作
+
+1. 拖入 `LayerLoopGate`。
+2. 设置层数 N 来自输入，不硬编码。
+3. 拖入 `BlockWeightSelector`。
+4. 将每层权重按 index 传给 block。
+5. 接入 StackTraceProbe 和 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 重复使用第 0 层权重：hidden layer-specific reference 失败。
+- 所有 block 并行后相加：结构顺序错。
+- 只执行一层：N=2 visible 失败。
+- 硬编码 N=2：N=3 hidden 失败。
+- 每层重新使用原 hidden：trace 失败。
+
+## 9. 测试设计
+
+- Visible：N=2。
+- Hidden A：N=3。
+- Hidden B：第 1 层权重设置 identity-like，检查顺序。
+- Hidden C：mask 必须传入每一层。
+
+## 10. 认证后接口
+
+```text
+component.transformer_stack.v1
+inputs:
+  hidden: float32[B,T,C]
+  weights: BlockWeights[N]
+  mask: bool[T,T]
+output:
+  out: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+Chapter 7 会把 stack 输出接入 final norm、LM head 和 loss。BlockStack 是 tiny model 的主干。

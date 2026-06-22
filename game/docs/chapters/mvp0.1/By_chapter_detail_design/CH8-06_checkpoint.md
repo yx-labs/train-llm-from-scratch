@@ -1,45 +1,81 @@
-# Chapter 8-6 Checkpoint：CheckpointSaver
+# Chapter 8-6 Checkpoint: CheckpointSaver
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 8 Training Loop
-- 构建组件：`CheckpointSaver`
-- 输入来源：params snapshot
-- 学习目标：保存模型
-- 后续用途：generation
+CheckpointSaver 把当前训练状态保存成可恢复快照：
 
-## 2. 当前案例
+```text
+checkpoint = {params, optimizer_state, step, config_hash}
+```
 
-CheckpointSaver 把「params snapshot」变成可复用的图组件。
+本关不训练模型，只验证保存内容完整、可恢复。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 CheckpointSaver 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[P]`，示例 shape 为 `[128]`。
+- `component.adamw_step.v1`
+- `component.parameter_matrix.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `CheckpointSaver` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `StatePackGate`：打包 params、optimizer state、step。
+- `ConfigHashGate`：记录模型配置 hash。
+- `CheckpointHashGate`：生成快照 hash。
+- `RestoreProbe`：从 checkpoint 读取一个参数并比对。
+- `ReferenceChecker`：检查 snapshot 完整性。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+step = 10
+params = 3 tensors
+optimizer_state = m/v for each tensor
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+Checkpoint 必须包含每个参数名和 shape。
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[P]`
-- shape 可以随认证宽度变化，但语义不变。
+## 5. 初始错误图
 
-## 6. 通过标准
+画布给出 params、state、step、checkpoint_out、restore_probe、reference。缺少 pack/hash/restore。
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [P]。
+## 6. 目标内部实现
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+params + state + step -> state_pack
+model_config -> config_hash
+state_pack + config_hash -> checkpoint_hash
+checkpoint_hash -> checkpoint_out
+checkpoint_hash -> restore_probe
+checkpoint_out -> reference
+```
+
+## 7. 错误路径
+
+- 只保存 params，不保存 optimizer state：恢复训练不一致。
+- 参数名丢失：无法匹配更新。
+- config hash 缺失：结构变化时误加载。
+- hash 不随参数变化：integrity 失败。
+
+## 8. 测试设计
+
+- Visible：3 个参数。
+- Hidden A：参数值改变，checkpoint hash 应改变。
+- Hidden B：optimizer state 缺项，失败。
+- Hidden C：restore probe 读取指定参数并 allclose。
+
+## 9. 认证后接口
+
+```text
+component.checkpoint_saver.v1
+inputs:
+  params: Parameter[P]
+  optimizer_state: OptimizerState[P]
+  step: int[]
+output:
+  checkpoint: Checkpoint
+```
+
+## 10. 后续调用
+
+Generation 可以加载 checkpoint 参数运行模型。

@@ -1,45 +1,92 @@
-# Chapter 6-0 Mean / Variance：MeanVar
+# Chapter 6-0 Mean and Variance: ChannelStats
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 6 LayerNorm、Residual、Transformer Block
-- 构建组件：`MeanVar`
-- 输入来源：reduce over C
-- 学习目标：LayerNorm 的基础
-- 后续用途：LayerNorm
+ChannelStats 在每个 token 的 C 维上计算 mean 和 variance：
 
-## 2. 当前案例
+```text
+mean[b,t] = avg_c x[b,t,c]
+var[b,t] = avg_c (x[b,t,c] - mean[b,t])^2
+```
 
-MeanVar 把「reduce over C」变成可复用的图组件。
+LayerNorm 会用这两个统计量标准化 hidden。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 MeanVar 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,O]`，示例 shape 为 `[2,6,2]`。
+- `component.sum_reduce.v1`
+- `component.axis_tensor.v1`
 
-## 3. 玩家操作
+本关重点是沿 C 轴 reduce，而不是沿 T 或 B。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `MeanVar` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `MeanReduce`：沿 C 轴求均值。
+- `CenterBroadcast`：把 mean 广播回 `[B,T,C]`。
+- `SquareGate`：平方中心化结果。
+- `VarianceReduce`：沿 C 轴求均值。
+- `StatsProbe`：展示某个 token 的 mean/var。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+x[0,1,:] = [1,3,5]
+mean[0,1] = 3
+var[0,1] = ((-2)^2 + 0^2 + 2^2)/3 = 2.6667
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,O]`
-- shape 可以随认证宽度变化，但语义不变。
+## 5. 初始错误图
 
-## 6. 通过标准
+画布给出 x、stats_out、stats_probe、reference。缺少 mean/center/square/variance。
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,O]。
+## 6. 目标内部实现
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+x -> mean_reduce
+x + mean_reduce -> center_broadcast/subtract
+centered -> square
+square -> variance_reduce
+mean_reduce + variance_reduce -> stats_out
+stats_out -> stats_probe
+stats_out -> reference
+```
+
+## 7. 玩家操作
+
+1. 拖入 `MeanReduce`，axis 设为 C。
+2. 将 mean broadcast 回原 shape 并 subtract。
+3. 平方 centered 值。
+4. 拖入 `VarianceReduce`，axis 仍为 C。
+5. 连接 stats probe 和 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 沿 T 求 mean：shape 可能可广播但语义错。
+- 用 sample variance 除以 C-1：reference 失败。
+- 漏掉中心化直接平方 x：variance 错。
+- reduce 掉 B/T：stats shape 错。
+- 使用预制 LayerNorm：shortcut。
+
+## 9. 测试设计
+
+- Visible：C=3，检查 mean/var。
+- Hidden A：C=4。
+- Hidden B：T==C，防止轴混淆。
+- Hidden C：常量向量，variance 应为 0。
+
+## 10. 认证后接口
+
+```text
+component.channel_stats.v1
+inputs:
+  x: float32[B,T,C]
+outputs:
+  mean: float32[B,T]
+  variance: float32[B,T]
+```
+
+## 11. 后续调用
+
+LayerNorm 使用 mean/variance 进行标准化。ChannelStats 是 LayerNorm 的可解释核心。

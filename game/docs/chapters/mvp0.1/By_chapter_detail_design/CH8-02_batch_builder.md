@@ -1,45 +1,84 @@
-# Chapter 8-2 Batch Builder：BatchBuilder[B,T]
+# Chapter 8-2 Batch Builder: BatchBuilder[B,T]
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 8 Training Loop
-- 构建组件：`BatchBuilder[B,T]`
-- 输入来源：多个窗口
-- 学习目标：batch 并行
-- 后续用途：training
+BatchBuilder 把多个 `T+1` 窗口堆叠成训练 batch，并生成 input ids 与 target ids：
 
-## 2. 当前案例
+```text
+windows[B,T+1] -> input_ids[B,T], targets[B,T]
+```
 
-BatchBuilder[B,T] 把「多个窗口」变成可复用的图组件。
+## 2. 前置组件
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 BatchBuilder[B,T] 连接到合约探针。
+- `component.context_window.v1`
+- `component.target_shift.v1`
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[2,6]`。
+## 3. 本关新增能力
 
-## 3. 玩家操作
+- `WindowStacker`：把多个窗口堆成 B 轴。
+- `BatchShiftGate`：对每行做 input/target shift。
+- `BatchContract`：检查 `[B,T]`。
+- `BatchPreviewProbe`：显示 batch row。
+- `ReferenceChecker`：检查切片。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `BatchBuilder[B,T]` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 4. 具体案例
 
-## 4. 挑战设计
+Visible case:
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+```text
+windows =
+  [[12,4,7,0],
+   [ 4,7,0,12]]
 
-## 5. 认证变体
+inputs =
+  [[12,4,7],
+   [ 4,7,0]]
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+targets =
+  [[4,7,0],
+   [7,0,12]]
+```
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+## 5. 初始错误图
 
-## 6. 通过标准
+画布给出 windows、batch_out、preview、reference。缺少 stacker 和 shift。
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+## 6. 目标内部实现
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+```text
+windows -> window_stacker
+window_stacker -> batch_shift
+batch_shift.inputs -> batch_out.inputs
+batch_shift.targets -> batch_out.targets
+batch_shift -> preview
+batch_out -> reference
+```
+
+## 7. 错误路径
+
+- 把 windows concat 成 `[B*(T+1)]`：batch 轴丢失。
+- 每行 target 不右移：loss 学错。
+- B 轴与 T 轴交换：shape/axis hidden 失败。
+- 不检查窗口长度一致：stacker 应失败。
+
+## 8. 测试设计
+
+- Visible：B=2,T=3。
+- Hidden A：B=1。
+- Hidden B：B=3。
+- Hidden C：某窗口长度不同必须失败。
+
+## 9. 认证后接口
+
+```text
+component.batch_builder.v1
+inputs:
+  windows: int[B,T+1]
+outputs:
+  input_ids: int[B,T]
+  targets: int[B,T]
+```
+
+## 10. 后续调用
+
+ForwardRunner 使用 input_ids 运行模型，CrossEntropy 使用 targets。

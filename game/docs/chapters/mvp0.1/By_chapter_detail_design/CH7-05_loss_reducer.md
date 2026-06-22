@@ -1,45 +1,80 @@
-# Chapter 7-5 Loss Reducer：LossMean
+# Chapter 7-5 Loss Reducer: MaskedLossMean
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 7 LM Head 与 Loss
-- 构建组件：`LossMean`
-- 输入来源：reduce over B/T
-- 学习目标：batch loss
-- 后续用途：optimizer
+LossReducer 把 `[B,T]` 的 token losses 按有效 target mask 求平均：
 
-## 2. 当前案例
+```text
+loss = sum(losses * mask) / sum(mask)
+```
 
-LossMean 把「reduce over B/T」变成可复用的图组件。
+padding 位置不能参与训练 loss。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 LossMean 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[]`，示例 shape 为 `[]`。
+- `component.cross_entropy.v1`
+- `component.attention_mask.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `LossMean` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `TargetMaskShift`：将 input mask 对齐到 target positions。
+- `MaskMultiply`：无效位置 loss 置 0。
+- `SumReduce`：求 masked loss 总和和 mask 总数。
+- `SafeDivide`：防止除以 0。
+- `LossMeanProbe`：显示分子/分母。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+losses = [[0.2, 0.5, 1.0]]
+target_mask = [[1,1,0]]
+mean = (0.2 + 0.5) / 2 = 0.35
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 losses、attention_mask、loss_out、mean_probe、reference。缺少 mask shift、multiply、sum、divide。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=float32，轴为 []。
+```text
+attention_mask -> target_mask_shift
+losses + target_mask -> mask_multiply
+mask_multiply -> sum_loss
+target_mask -> sum_count
+sum_loss + sum_count -> safe_divide
+safe_divide -> loss_out
+safe_divide -> mean_probe
+loss_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 对所有位置平均：padding loss 污染结果。
+- mask 不右移：target 对齐错。
+- 分母用 T 而不是有效数量：reference 失败。
+- 全 mask 时产生 NaN：SafeDivide 失败。
+
+## 8. 测试设计
+
+- Visible：mask 掉最后一位。
+- Hidden A：无 padding。
+- Hidden B：只有一个有效 token。
+- Hidden C：全 padding，返回 guarded loss 0 并 warning。
+
+## 9. 认证后接口
+
+```text
+component.loss_mean.v1
+inputs:
+  losses: float32[B,T]
+  attention_mask: bool[B,T+1]
+output:
+  loss: float32[]
+```
+
+## 10. 后续调用
+
+BackwardTrace 从这个标量 loss 开始传播梯度。

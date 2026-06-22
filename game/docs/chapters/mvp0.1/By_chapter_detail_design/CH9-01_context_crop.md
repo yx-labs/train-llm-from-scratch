@@ -1,45 +1,80 @@
-# Chapter 9-1 Context Crop：ContextWindow
+# Chapter 9-1 Context Crop: LastTContext
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`ContextWindow`
-- 输入来源：last T tokens
-- 学习目标：不能超过 context
-- 后续用途：generation
+ContextCrop 从不断增长的 token buffer 中保留最后 T 个 token：
 
-## 2. 当前案例
+```text
+context = tokens[-T:]
+```
 
-ContextWindow 把「last T tokens」变成可复用的图组件。
+生成时模型只能看到固定上下文长度。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 ContextWindow 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[1,6]`。
+- `component.prompt_encode.v1`
+- `component.token_buffer.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `ContextWindow` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `LengthProbe`：读取当前 token 数。
+- `StartForLastTGate`：计算 `max(0, len - T)`。
+- `SliceLastGate`：裁剪最后 T 个。
+- `CropMaskGate`：同步裁剪 mask。
+- `ReferenceChecker`：检查裁剪。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+tokens = [12,4,7,8,9]
+T = 3
+context = [7,8,9]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 tokens、mask、T、context_out、probe、reference。缺少 start 计算和 slice。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+```text
+tokens -> length_probe
+length_probe + T -> start_for_last_t
+tokens + start -> slice_last
+mask + start -> crop_mask
+slice_last + crop_mask -> context_out
+context_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 取前 T 个 token：长 prompt hidden 失败。
+- token 裁剪了但 mask 未裁剪：shape/behavior 错。
+- len<T 时左侧填错：应保留已有 token 并由 mask 表达。
+- 硬编码 T=3：变体失败。
+
+## 8. 测试设计
+
+- Visible：len=5,T=3。
+- Hidden A：len<T。
+- Hidden B：len=T。
+- Hidden C：mask 含 padding。
+
+## 9. 认证后接口
+
+```text
+component.context_crop.v1
+inputs:
+  tokens: int[N]
+  mask: bool[N]
+  context_length: int[]
+outputs:
+  context_ids: int[T]
+  context_mask: bool[T]
+```
+
+## 10. 后续调用
+
+NextLogits 用裁剪后的上下文运行模型。

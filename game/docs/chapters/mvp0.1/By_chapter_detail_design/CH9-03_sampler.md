@@ -1,45 +1,83 @@
-# Chapter 9-3 Sampler：SampleNextToken
+# Chapter 9-3 Sampler: SampleNextToken
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`SampleNextToken`
-- 输入来源：softmax + temperature/top-k
-- 学习目标：从概率选 token
-- 后续用途：generation
+Sampler 根据 logits、temperature、top-k 和随机 seed 选择下一个 token：
 
-## 2. 当前案例
+```text
+prob = softmax(logits / temperature)
+candidate = top_k(prob)
+next_id = sample(candidate, seed)
+```
 
-SampleNextToken 把「softmax + temperature/top-k」变成可复用的图组件。
+## 2. 前置组件
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 SampleNextToken 连接到合约探针。
+- `component.forward_last_token.v1`
+- `component.softmax_last_dim.v1`
 
-案例数据输出合约：`int[]`，示例 shape 为 `[]`。
+## 3. 本关新增能力
 
-## 3. 玩家操作
+- `TemperatureScaleGate`：按 temperature 缩放 logits。
+- `TopKGate`：只保留 top-k 候选。
+- `SeededCategoricalGate`：按 seed 采样。
+- `SamplerProbe`：显示候选概率和选中 id。
+- `ReferenceChecker`：检查确定性 seed 输出。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `SampleNextToken` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 4. 具体案例
 
-## 4. 挑战设计
+Visible case:
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+```text
+logits = [1.0, 3.0, 2.0, -1.0]
+temperature = 1.0
+top_k = 2
+seed = 42
+```
 
-## 5. 认证变体
+候选只来自 id 1 和 id 2。
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 logits、temperature、top_k、seed、sample_out、probe、reference。缺少 scale/topk/sample。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=int，轴为 []。
+```text
+logits + temperature -> temperature_scale
+temperature_scale + top_k -> top_k_gate
+top_k_gate + seed -> seeded_categorical
+seeded_categorical -> sample_out
+seeded_categorical -> sampler_probe
+sample_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 永远 argmax：temperature/seed 失效。
+- top-k 后不重新归一化：概率错。
+- temperature=0 不处理：必须使用 greedy guard。
+- 输出概率而非 id：AppendToken 需要 int scalar。
+
+## 8. 测试设计
+
+- Visible：seed 固定输出。
+- Hidden A：top_k=1 等价 greedy。
+- Hidden B：temperature=0 guard。
+- Hidden C：同 seed 可重复，不同 seed 可变化。
+
+## 9. 认证后接口
+
+```text
+component.sample_next_token.v1
+inputs:
+  logits: float32[V]
+  temperature: float32[]
+  top_k: int[]
+  seed: int[]
+output:
+  next_id: int[]
+```
+
+## 10. 后续调用
+
+AppendToken 会把 next_id 加到生成 buffer 尾部。

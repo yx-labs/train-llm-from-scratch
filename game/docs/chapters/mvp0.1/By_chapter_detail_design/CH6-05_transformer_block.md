@@ -1,45 +1,96 @@
-# Chapter 6-5 Transformer Block：Block
+# Chapter 6-5 Transformer Block: Block
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 6 LayerNorm、Residual、Transformer Block
-- 构建组件：`Block`
-- 输入来源：Attention Sublayer + MLP Sublayer
-- 学习目标：最小 Transformer 单元
-- 后续用途：block stack
+TransformerBlock 串联 attention sublayer 和 MLP sublayer：
 
-## 2. 当前案例
+```text
+h1 = AttentionSublayer(hidden)
+h2 = MLPSublayer(h1)
+```
 
-Block 把「Attention Sublayer + MLP Sublayer」变成可复用的图组件。
+输出仍是 `[B,T,C]`，可以继续进入下一层 block。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Block 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.attention_sublayer.v1`
+- `component.mlp_sublayer.v1`
 
-## 3. 玩家操作
+本关是 block 级编排，不允许拖预制 Block。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Block` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `BlockStageContract`：检查 Attention -> MLP 顺序。
+- `ResidualStreamProbe`：展示 h0/h1/h2 的变化。
+- `ReferenceChecker`：端到端 block reference。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+hidden[B=1,T=3,C=6]
+block_out[B=1,T=3,C=6]
+```
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+ResidualStreamProbe 展示三段：
 
-## 6. 通过标准
+```text
+h0 input
+h1 after attention
+h2 after mlp
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出 hidden、block weights、mask、block_out、stream_probe、reference。缺少两个 sublayer。
+
+## 6. 目标内部实现
+
+```text
+hidden -> attention_sublayer.hidden
+mask -> attention_sublayer.mask
+attention_sublayer.out -> mlp_sublayer.hidden
+mlp_sublayer.out -> block_out
+hidden + attention_sublayer + mlp_sublayer -> stream_probe
+block_out -> reference
+```
+
+## 7. 玩家操作
+
+1. 拖入 AttentionSublayer。
+2. 拖入 MLPSublayer。
+3. 将 attention 输出接到 MLP 输入。
+4. 接入 StreamProbe 和 reference。
+5. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- MLP 和 Attention 顺序反了：reference 失败。
+- 两个 sublayer 都吃原 hidden：结构断言失败。
+- 漏掉 mask：future leak。
+- 输出 h1 而非 h2：数值错。
+- 使用预制 Block：shortcut。
+
+## 9. 测试设计
+
+- Visible：端到端 allclose。
+- Hidden A：attention branch zero，block 仍执行 MLP。
+- Hidden B：MLP branch zero，输出等于 h1。
+- Hidden C：T=1，无 future mask 干扰。
+
+## 10. 认证后接口
+
+```text
+component.transformer_block.v1
+inputs:
+  hidden: float32[B,T,C]
+  weights: BlockWeights
+  mask: bool[T,T]
+output:
+  out: float32[B,T,C]
+```
+
+## 11. 后续调用
+
+BlockStack 会重复使用同一个 Block 结构多次。Block 的价值是封装一层完整 transformer 计算。

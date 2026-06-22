@@ -1,45 +1,138 @@
-# Chapter 0-2 Scalar Add：AddScalar
+# Chapter 0-2 Scalar Add: AddScalar
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 0 Graph OS 与数字基础
-- 构建组件：`AddScalar`
-- 输入来源：两个 ScalarCell
-- 学习目标：运算节点、输入检查
-- 后续用途：residual add 的起点
+AddScalar 是玩家第一次把两个已经合格的标量组合成新标量。它的作用很小，但设计目标很关键：让玩家知道“组件可用”以后可以继续进入下一张图，而不是每次都重新输入裸数字。
 
-## 2. 当前案例
+```text
+out = left + right
+```
 
-AddScalar 把「两个 ScalarCell」变成可复用的图组件。
+本关不允许拖入预制 `AddScalar`。玩家要用两个 `component.scalar_cell.v1`、一个标量加法门和输出合约，构造出可复用的 `component.add_scalar.v1`。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 AddScalar 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[]`，示例 shape 为 `[]`。
+- `component.scalar_cell.v1`
 
-## 3. 玩家操作
+ScalarCell 已经保证输入是有限 float32 rank-0 标量。本关复用它，而不是让裸数字直接参与计算。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `AddScalar` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `component.scalar_cell.v1`：提供两个合格 rank-0 输入。
+- `ScalarAddGate`：只接受两个 rank-0 float32，输出 rank-0 float32。
+- `ScalarOutputContract`：检查输出仍然是标量。
+- `ReferenceChecker`：检查数值等于当前案例的 `left + right`。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+`ReferenceChecker` 是探针，不是目标组件的一部分。它的作用是证明玩家没有只满足 shape，而是真的完成加法。
 
-## 5. 认证变体
+## 4. 具体案例
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+Visible case 是一个很小的训练旋钮合成：
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+```text
+base_gain = 0.50
+correction = 0.10
+expected = 0.60
+```
 
-## 6. 通过标准
+玩家应该看到：0.6 不是“必须等于示例值”的答案，而是两个当前输入相加后的结果。认证时数值会变化。
 
-当前任务通过：输出必须保持 dtype=float32，轴为 []。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `left_source: Float32Literal`
+- `right_source: Float32Literal`
+- `scalar_out: ScalarOutputContract`
+- `reference: ReferenceChecker`
+
+两个 source 默认没有被封装成 ScalarCell，也没有加法门。直接把 source 接到合约不能通过结构断言。
+
+## 6. 目标内部实现
+
+```text
+left_source.out -> left_cell.x
+right_source.out -> right_cell.x
+left_cell.out -> add.left
+right_cell.out -> add.right
+add.out -> scalar_out.x
+scalar_out.out -> reference.x
+```
+
+其中：
+
+- `left_cell.moduleId = component.scalar_cell.v1`
+- `right_cell.moduleId = component.scalar_cell.v1`
+- `add.moduleId = ScalarAddGate`
+
+## 7. 玩家操作
+
+1. 拖入两个 `ScalarCell v1`。
+2. 拖入 `ScalarAddGate`。
+3. 分别把两个原始数值接进 ScalarCell。
+4. 将两个 ScalarCell 输出接进加法门。
+5. 将加法结果接入合约和 reference。
+6. 修改任意输入值，确认当前任务重新按新值计算。
+7. 点击“检查当前任务”，再提交认证。
+
+## 8. 错误路径
+
+- 裸数字直接接加法：结构断言失败，因为输入没有被认证成 ScalarCell。
+- 裸数字直接接合约：当前案例看似 rank-0，但没有证明“可复用组件”。
+- 只接 left 或 right：合约报缺失输入。
+- 输入 `"0.5"` 文本：ScalarCell 报 dtype 错误。
+- 硬编码输出 `0.6`：visible case 通过不了变体，hidden allclose 失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在两个 `component.scalar_cell.v1` 节点。
+- 必须存在 `ScalarAddGate`。
+- 加法门输出必须经过 `ScalarOutputContract`。
+- 输出 dtype 为 `float32`，shape 为 `[]`。
+- 输出数值 allclose 到 `left + right`。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：负数和零。
+
+```text
+left = -0.25
+right = 0.25
+expected = 0.0
+```
+
+Hidden case B：不同有限 float32。
+
+```text
+left = 8.5
+right = 12.25
+expected = 20.75
+```
+
+这里没有“不能超过 10”的规则。只要是有限 float32 标量，就应该被接受。
+
+Hidden case C：非 float 输入。
+
+```text
+left = "0.5"
+right = 0.1
+```
+
+认证必须失败，并显示 dtype 错误，而不是把文本偷偷解析成数字。
+
+## 11. 认证后接口
+
+```text
+component.add_scalar.v1
+inputs:
+  left: float32[]
+  right: float32[]
+output:
+  out: float32[]
+```
+
+## 12. 后续调用
+
+Bias、scale、loss mean 等关卡都会复用“两个同形数值相加”的概念。AddScalar 不是为了加 0.5 + 0.1，而是为了让玩家建立：组件输出可以继续成为下一个组件的输入。

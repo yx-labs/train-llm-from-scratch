@@ -1,45 +1,77 @@
-# Chapter 9-0 Prompt Encoder：PromptEncode
+# Chapter 9-0 Prompt Encoder: PromptEncode
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`PromptEncode`
-- 输入来源：Tokenizer
-- 学习目标：prompt 变 ids
-- 后续用途：inference
+PromptEncoder 把用户 prompt 变成模型输入 ids 和 mask：
 
-## 2. 当前案例
+```text
+prompt -> TextInput -> Tokenizer -> input_ids[B,T], attention_mask[B,T]
+```
 
-PromptEncode 把「Tokenizer」变成可复用的图组件。
+它复用训练时构造好的 tokenizer，不重新定义词表。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 PromptEncode 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[1,6]`。
+- `component.text_input.v1`
+- `component.tokenizer.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `PromptEncode` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `PromptTextGate`：验证 prompt 是 raw_text。
+- `TokenizerCall`：调用已认证 tokenizer。
+- `PromptEncodeProbe`：显示 prompt、pieces、ids、mask。
+- `ReferenceChecker`：检查 tokenizer 输出。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+prompt = "we train"
+ids = tokenizer(prompt)
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 prompt、tokenizer、encoded_out、probe、reference。缺少 text gate 和 tokenizer call。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+```text
+prompt -> prompt_text_gate
+prompt_text_gate -> tokenizer_call.text
+tokenizer -> tokenizer_call.tokenizer
+tokenizer_call.ids/mask -> encoded_out
+tokenizer_call -> probe
+encoded_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 手写 ids：prompt 变体失败。
+- 使用训练 batch builder：生成时只有一个 prompt。
+- 丢掉 mask：padding 位置不可见信息缺失。
+- prompt 被 trim/lowercase：reference 失败。
+
+## 8. 测试设计
+
+- Visible：`"we train"`。
+- Hidden A：未知词，必须走 `<unk>`。
+- Hidden B：带前导空格 piece。
+- Hidden C：空 prompt 产生 guarded warning。
+
+## 9. 认证后接口
+
+```text
+component.prompt_encode.v1
+inputs:
+  prompt: raw_text[]
+  tokenizer: component.tokenizer.v1
+outputs:
+  ids: int[B,T]
+  mask: bool[B,T]
+```
+
+## 10. 后续调用
+
+ContextCrop 会把 prompt ids 裁到模型上下文长度。

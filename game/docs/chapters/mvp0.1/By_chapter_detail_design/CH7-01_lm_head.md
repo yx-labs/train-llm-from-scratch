@@ -1,45 +1,84 @@
-# Chapter 7-1 LM Head：LMHead
+# Chapter 7-1 LM Head: LMHead
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 7 LM Head 与 Loss
-- 构建组件：`LMHead`
-- 输入来源：Linear C→V
-- 学习目标：每个 token 输出 vocab 分数
-- 后续用途：next token
+LMHead 把 hidden channel 投影到 vocabulary 维度：
 
-## 2. 当前案例
+```text
+logits = Linear(normed[B,T,C], W_lm[C,V], b_lm[V])
+```
 
-LMHead 把「Linear C→V」变成可复用的图组件。
+每个 token 位置都会得到一个对全 vocab 的打分向量。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 LMHead 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,V]`，示例 shape 为 `[2,6,20]`。
+- `component.final_layernorm.v1`
+- `component.linear.v1`
+- `component.vocab_table.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `LMHead` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `VocabWidthContract`：检查输出 V 覆盖 vocab id 空间。
+- `LMWeightContract`：检查 weight axes `[C,V]`。
+- `component.linear.v1`：执行投影。
+- `LogitTraceProbe`：展示某个 vocab id 的 logit 来源。
+- `ReferenceChecker`：检查数值。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+normed[B=1,T=2,C=4]
+vocab V=13
+W_lm[C=4,V=13]
+logits[B=1,T=2,V=13]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,V]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 normed、W_lm、b_lm、vocab、lm_out、trace、reference。缺少 vocab/weight contract 和 Linear。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,V]。
+```text
+vocab -> vocab_width
+w_lm -> lm_weight_contract
+normed -> linear.hidden
+lm_weight_contract -> linear.weight
+b_lm -> linear.bias
+linear.out -> lm_out
+linear.out -> trace
+lm_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 输出 C 维而不是 V 维：不能采样 token。
+- V 小于最大 vocab id：部分 token 没有 logit。
+- weight 转置 `[V,C]`：内维错。
+- 复用 embedding table 未转置：如果设计 weight tying，必须显式 TieWeightGate；本关默认独立 W_lm。
+- 漏 bias：reference 失败。
+
+## 8. 测试设计
+
+- Visible：V=13。
+- Hidden A：V=21。
+- Hidden B：C=3。
+- Hidden C：vocab 最大 id 超过 V，必须失败。
+
+## 9. 认证后接口
+
+```text
+component.lm_head.v1
+inputs:
+  normed: float32[B,T,C]
+  weight: float32[C,V]
+  bias: float32[V]
+output:
+  logits: float32[B,T,V]
+```
+
+## 10. 后续调用
+
+LogitsBoard 会把 logits 与 vocab 语义绑定，CrossEntropy 和 Sampler 都消费这张 board。

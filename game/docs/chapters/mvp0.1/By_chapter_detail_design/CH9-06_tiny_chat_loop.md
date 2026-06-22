@@ -1,45 +1,99 @@
-# Chapter 9-6 Tiny Chat Loop：GenerateLoop
+# Chapter 9-6 Tiny Chat Loop: GenerateLoop
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 9 Generation
-- 构建组件：`GenerateLoop`
-- 输入来源：encoder + model + sampler + decoder
-- 学习目标：可运行 tiny LLM
-- 后续用途：最终演示
+TinyChatLoop 把生成所需组件串成可重复执行的循环：
 
-## 2. 当前案例
+```text
+prompt -> encode -> crop -> next_logits -> sample -> append -> decode
+repeat N times
+```
 
-GenerateLoop 把「encoder + model + sampler + decoder」变成可复用的图组件。
+这是 MVP0.1 的闭环：训练得到的 tiny model 可以用来生成文本。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 GenerateLoop 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`raw_text[]`，示例 shape 为 `[]`。
+- `component.prompt_encode.v1`
+- `component.context_crop.v1`
+- `component.forward_last_token.v1`
+- `component.sample_next_token.v1`
+- `component.append_token.v1`
+- `component.token_decode.v1`
+- `component.checkpoint_saver.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `GenerateLoop` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `GenerationLoopGate`：按 max_new_tokens 重复执行。
+- `LoopStateProbe`：显示每步 tokens、next_id、text。
+- `StopTokenGate`：遇到 EOS 时提前停止。
+- `ReferenceChecker`：用固定 seed 检查生成序列。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+prompt = "we"
+max_new_tokens = 3
+seed = 42
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+LoopStateProbe 展示每一步：
 
-- dtype 必须保持：`raw_text`
-- axis 必须保持：`[]`
-- shape 可以随认证宽度变化，但语义不变。
+```text
+step 0: prompt ids
+step 1: append next_id
+step 2: append next_id
+step 3: decode text
+```
 
-## 6. 通过标准
+## 5. 初始错误图
 
-当前任务通过：输出必须保持 dtype=raw_text，轴为 []。
+画布给出 prompt、tokenizer、model checkpoint、sampling config、chat_out、loop_probe、reference。缺少循环和停止条件。
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 6. 目标内部实现
+
+```text
+prompt + tokenizer -> prompt_encode
+prompt_encode -> generation_loop.initial_tokens
+checkpoint.weights -> generation_loop.model
+sampling_config -> generation_loop.sampler_config
+generation_loop uses:
+  context_crop -> forward_last_token -> sample_next_token -> append_token -> stop_token
+generation_loop.tokens -> token_decode
+token_decode.text -> chat_out
+generation_loop.trace -> loop_probe
+chat_out -> reference
+```
+
+## 7. 错误路径
+
+- 只生成一步：max_new_tokens 变体失败。
+- 不 crop context：长 prompt 超出模型窗口。
+- 不传 seed：认证不可重复。
+- 遇 EOS 不停：stop policy 失败。
+- 每步都重新从 prompt 开始：tokens 不累积。
+
+## 8. 测试设计
+
+- Visible：固定 seed 生成 3 步。
+- Hidden A：max_new_tokens=1。
+- Hidden B：模型第一步输出 EOS，必须提前停止。
+- Hidden C：prompt 长于 context，必须 crop。
+
+## 9. 认证后接口
+
+```text
+component.generate_loop.v1
+inputs:
+  prompt: raw_text[]
+  checkpoint: Checkpoint
+  tokenizer: component.tokenizer.v1
+  config: GenerationConfig
+output:
+  text: raw_text[]
+```
+
+## 10. 课程闭环
+
+本关证明玩家构建的组件链可以从字符输入走到 token、hidden、transformer、logits、采样，再回到文本输出。它是 MVP0.1 全路线的最终验收关。

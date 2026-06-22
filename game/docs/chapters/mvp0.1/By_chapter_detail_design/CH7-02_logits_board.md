@@ -1,45 +1,72 @@
-# Chapter 7-2 Logits Board：Logits[B,T,V]
+# Chapter 7-2 Logits Board: Logits[B,T,V]
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 7 LM Head 与 Loss
-- 构建组件：`Logits[B,T,V]`
-- 输入来源：hidden + LMHead
-- 学习目标：每个位置有 V 个候选
-- 后续用途：loss/generation
+LogitsBoard 给 LMHead 输出绑定 `[B,T,V]` 语义，并连接 vocab id 到 logit 列。
 
-## 2. 当前案例
+它不改变数值，只证明最后一维确实是 vocabulary axis。
 
-Logits[B,T,V] 把「hidden + LMHead」变成可复用的图组件。
+## 2. 前置组件
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 Logits[B,T,V] 连接到合约探针。
+- `component.lm_head.v1`
+- `component.vocab_table.v1`
 
-案例数据输出合约：`float32[B,T,V]`，示例 shape 为 `[2,6,20]`。
+## 3. 本关新增能力
 
-## 3. 玩家操作
+- `VocabAxisBinder`：把最后一维绑定为 V。
+- `LogitColumnProbe`：查看某个 token id 的 logit。
+- `LogitsContract`：检查 dtype/axes。
+- `ReferenceChecker`：检查不改变 LMHead 输出。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `Logits[B,T,V]` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 4. 具体案例
 
-## 4. 挑战设计
+Visible case:
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+```text
+logits[B=1,T=2,V=13]
+id 7 = " llm"
+logits[0,1,7] 表示位置 1 下一个 token 为 " llm" 的分数
+```
 
-## 5. 认证变体
+## 5. 初始错误图
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+画布给出 logits_source、vocab、board_out、column_probe、reference。缺少 VocabAxisBinder。
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,V]`
-- shape 可以随认证宽度变化，但语义不变。
+## 6. 目标内部实现
 
-## 6. 通过标准
+```text
+logits_source -> vocab_axis_binder.logits
+vocab -> vocab_axis_binder.vocab
+vocab_axis_binder -> board_out
+vocab_axis_binder -> column_probe
+board_out -> reference
+```
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,V]。
+## 7. 错误路径
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+- 把 T 当 V：shape 可能相似，但 vocab lookup 失败。
+- 对 logits 做 softmax：LogitsBoard 不负责概率化。
+- 裁剪 vocab 列：reference 失败。
+- 不接 vocab：无法解释 V 轴。
+
+## 8. 测试设计
+
+- Visible：id 7 column probe。
+- Hidden A：稀疏 vocab 最大 id 20。
+- Hidden B：T==V 小尺寸陷阱。
+- Hidden C：logits 值必须原样保留。
+
+## 9. 认证后接口
+
+```text
+component.logits_board.v1
+inputs:
+  logits: float32[B,T,V]
+  vocab: vocab_table
+output:
+  board: logits[B,T,V]
+```
+
+## 10. 后续调用
+
+训练时 CrossEntropy 读取目标 id 对应列；生成时 Sampler 读取最后一个位置的 V 维分布。

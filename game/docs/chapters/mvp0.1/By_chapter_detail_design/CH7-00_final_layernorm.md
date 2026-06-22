@@ -1,45 +1,80 @@
-# Chapter 7-0 Final LayerNorm：FinalNorm
+# Chapter 7-0 Final LayerNorm: FinalNorm
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 7 LM Head 与 Loss
-- 构建组件：`FinalNorm`
-- 输入来源：LayerNorm
-- 学习目标：输出前归一化
-- 后续用途：logits
+FinalNorm 在 TransformerStack 输出后再做一次 LayerNorm，稳定进入 LM head 的 hidden：
 
-## 2. 当前案例
+```text
+normed = LayerNorm(stack_out, gamma_final, beta_final)
+```
 
-FinalNorm 把「LayerNorm」变成可复用的图组件。
+它复用 LayerNorm，但参数名和位置不同。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 FinalNorm 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,C]`，示例 shape 为 `[2,6,8]`。
+- `component.transformer_stack.v1`
+- `component.layernorm.v1`
 
-## 3. 玩家操作
+## 3. 本关新增能力
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `FinalNorm` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+- `FinalNormParamContract`：检查 gamma/beta 属于 final norm。
+- `component.layernorm.v1`：执行标准化。
+- `FinalNormProbe`：展示 stack_out 与 normed 的分布变化。
+- `ReferenceChecker`：数值参考。
 
-## 4. 挑战设计
+## 4. 具体案例
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+Visible case:
 
-## 5. 认证变体
+```text
+stack_out[B=1,T=3,C=4]
+gamma_final[C=4]
+beta_final[C=4]
+normed[B=1,T=3,C=4]
+```
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,C]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 stack_out、gamma、beta、final_norm_out、probe、reference。缺少参数合约和 LayerNorm。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,C]。
+```text
+gamma/beta -> final_param_contract
+stack_out -> layernorm.x
+final_param_contract.gamma -> layernorm.gamma
+final_param_contract.beta -> layernorm.beta
+layernorm.y -> final_norm_out
+layernorm.y -> probe
+final_norm_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 跳过 final norm：shape 对但 logits 分布错误。
+- 使用 block 内部 LN 参数：参数身份错。
+- 只减 mean 不除 std：reference 失败。
+- gamma/beta 对齐 T：axis 错。
+
+## 8. 测试设计
+
+- Visible：allclose 到 LayerNorm reference。
+- Hidden A：非默认 gamma/beta。
+- Hidden B：常量 token，无 NaN。
+- Hidden C：参数名错必须失败。
+
+## 9. 认证后接口
+
+```text
+component.final_layernorm.v1
+inputs:
+  hidden: float32[B,T,C]
+  gamma: float32[C]
+  beta: float32[C]
+output:
+  normed: float32[B,T,C]
+```
+
+## 10. 后续调用
+
+LMHead 消费 final norm 输出，生成每个 token 的 vocabulary logits。

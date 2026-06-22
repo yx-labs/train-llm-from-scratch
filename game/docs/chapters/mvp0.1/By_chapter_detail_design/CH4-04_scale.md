@@ -1,45 +1,140 @@
-# Chapter 4-4 Scale：ScaleBySqrtD
+# Chapter 4-4 Scale: ScaleBySqrtD
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 4 Attention Head
-- 构建组件：`ScaleBySqrtD`
-- 输入来源：Scalar + multiply
-- 学习目标：稳定 softmax
-- 后续用途：attention
+ScaleBySqrtD 把 QKScore 的分数除以 `sqrt(D)`：
 
-## 2. 当前案例
+```text
+scaled = scores / sqrt(D)
+```
 
-ScaleBySqrtD 把「Scalar + multiply」变成可复用的图组件。
+它的作用是让 dot product 的幅度随 head width D 变化时保持稳定。玩家不需要背推导，但必须知道 scale factor 来自 D，不能硬编码 visible case 的数字。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 ScaleBySqrtD 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`float32[B,T,T]`，示例 shape 为 `[2,6,6]`。
+- `component.qk_score.v1`
+- `component.scalar_cell.v1`
+- `component.add_scalar.v1`
 
-## 3. 玩家操作
+本关复用 score board，并构造一个由 D 计算出来的标量 scale。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `ScaleBySqrtD` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `HeadWidthProbe`：读取 score 来源中的 D。
+- `SqrtGate`：计算 `sqrt(D)`。
+- `ReciprocalGate`：计算 `1 / sqrt(D)`。
+- `BroadcastMultiply`：把 rank-0 scale 乘到 `[B,H,T,T]` 分数上。
+- `ReferenceChecker`：检查 scale 数值。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+`HeadWidthProbe` 是探针和参数来源。它解释为什么当前 case 的 factor 是 0.5，而不是任意常数。
 
-## 5. 认证变体
+## 4. 具体案例
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+Visible case:
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[B,T,T]`
-- shape 可以随认证宽度变化，但语义不变。
+```text
+scores[B=1,H=1,T=3,T=3]
+D = 4
+scale = 1 / sqrt(4) = 0.5
+```
 
-## 6. 通过标准
+示例单元：
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [B,T,T]。
+```text
+scores[0,0,1,2] = 6.0
+scaled[0,0,1,2] = 3.0
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 5. 初始错误图
+
+画布给出：
+
+- `scores: QKScoreOutput[B,H,T,T]`
+- `head_width: HeadWidthProbe`
+- `scaled_out: ScoreContract`
+- `reference: ReferenceChecker`
+
+缺少 sqrt、reciprocal 和 broadcast multiply。
+
+## 6. 目标内部实现
+
+```text
+head_width.out -> sqrt.x
+sqrt.out -> reciprocal.x
+scores.out -> scale_mul.tensor
+reciprocal.out -> scale_mul.scalar
+scale_mul.out -> scaled_out.x
+scaled_out.out -> reference.x
+```
+
+其中：
+
+- `sqrt.moduleId = SqrtGate`
+- `reciprocal.moduleId = ReciprocalGate`
+- `scale_mul.moduleId = BroadcastMultiply`
+- `scaled_out.expectedAxes = [B,H,T,T]`
+
+## 7. 玩家操作
+
+1. 拖入 `SqrtGate` 和 `ReciprocalGate`。
+2. 将 `HeadWidthProbe` 输出接入 sqrt，再接 reciprocal。
+3. 拖入 `BroadcastMultiply`。
+4. 将 scores 与 scalar scale 相乘。
+5. 接入合约和 reference。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 硬编码 `0.5`：visible case 可能过，D=9 hidden 失败。
+- 乘以 `sqrt(D)`：数值放大，allclose 失败。
+- 除以 T 而不是 D：当 T=D 时才可能混过，变体失败。
+- 只检查 shape：scale 不改变 shape，必须有 reference。
+- 直接使用预制 ScaleBySqrtD：shortcut，结构断言失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 `SqrtGate`、`ReciprocalGate`、`BroadcastMultiply`。
+- scale 来自 `HeadWidthProbe`。
+- 输出 axes 保持 `[B,H,T,T]`。
+- 输出 allclose 到 `scores / sqrt(D)`。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：`D=9`。
+
+```text
+scale = 1/3
+```
+
+Hidden case B：`T == D`。
+
+```text
+T=4, D=4
+```
+
+这个 case 会配合另一个变体区分“拿 T 做 scale”和“拿 D 做 scale”。
+
+Hidden case C：非平方 D。
+
+```text
+D=5
+```
+
+认证使用浮点容差检查，不要求玩家手算。
+
+## 11. 认证后接口
+
+```text
+component.scale_by_sqrt_d.v1
+inputs:
+  scores: float32[B,H,T,T]
+  d: int[]
+output:
+  scaled: float32[B,H,T,T]
+```
+
+## 12. 后续调用
+
+CausalMask 和 Softmax 都接在 scaled scores 后面。如果 scale 被硬编码，模型在不同 head width 下会表现完全不稳定。

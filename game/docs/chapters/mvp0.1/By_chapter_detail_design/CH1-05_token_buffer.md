@@ -1,45 +1,137 @@
-# Chapter 1-5 Token Buffer：TokenBuffer[B,T]
+# Chapter 1-5 Token Buffer: TokenBuffer
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 1 Text → Token Pipeline
-- 构建组件：`TokenBuffer[B,T]`
-- 输入来源：token ids + T slots
-- 学习目标：T 是上下文窗口长度
-- 后续用途：Transformer 输入
+TokenBuffer 把一串变长 token ids 放入固定容量 T 的槽位，并保留哪些槽位是真实 token。
 
-## 2. 当前案例
+```text
+ids = [12,4,7]
+capacity T = 5
+buffer = [12,4,7,EMPTY,EMPTY]
+valid = [true,true,true,false,false]
+```
 
-TokenBuffer[B,T] 把「token ids + T slots」变成可复用的图组件。
+Padder 会在下一关把 EMPTY 填成 pad id。本关不能提前 padding。
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 TokenBuffer[B,T] 连接到合约探针。
+## 2. 前置组件
 
-案例数据输出合约：`int[B,T]`，示例 shape 为 `[1,8]`。
+- `component.vocab_lookup.v1`
 
-## 3. 玩家操作
+玩家已经能得到 token ids。本关处理固定上下文窗口。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `TokenBuffer[B,T]` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 3. 本关新增能力
 
-## 4. 挑战设计
+- `CapacityScalar`：上下文长度 T。
+- `SlotWriter`：按顺序写入 ids。
+- `BoundsGate`：检查 token 数不能超过 T。
+- `ValidityMaskProbe`：显示每个槽位是否有效。
+- `BufferContract`：输出 buffer 和 valid mask。
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+## 4. 具体案例
 
-## 5. 认证变体
+Visible case:
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+```text
+token_ids = [12,4,7]
+T = 5
+```
 
-- dtype 必须保持：`int`
-- axis 必须保持：`[B,T]`
-- shape 可以随认证宽度变化，但语义不变。
+期望：
 
-## 6. 通过标准
+```text
+buffer = [12,4,7,EMPTY,EMPTY]
+valid  = [1,1,1,0,0]
+```
 
-当前任务通过：输出必须保持 dtype=int，轴为 [B,T]。
+## 5. 初始错误图
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+画布给出：
+
+- `token_ids: TokenIdSource`
+- `capacity: CapacityScalar`
+- `buffer_out: BufferContract`
+- `valid_probe: ValidityMaskProbe`
+
+缺少 SlotWriter 和 BoundsGate。
+
+## 6. 目标内部实现
+
+```text
+token_ids.out -> bounds.ids
+capacity.out -> bounds.capacity
+bounds.out -> slot_writer.ids
+capacity.out -> slot_writer.capacity
+slot_writer.buffer -> buffer_out.buffer
+slot_writer.valid -> buffer_out.valid
+slot_writer.valid -> valid_probe.x
+```
+
+## 7. 玩家操作
+
+1. 查看 token ids 和容量 T。
+2. 拖入 `BoundsGate`，防止溢出。
+3. 拖入 `SlotWriter`，按顺序写槽。
+4. 同时连接 buffer 和 valid mask。
+5. 检查 ValidityMaskProbe。
+6. 检查当前任务，再提交认证。
+
+## 8. 错误路径
+
+- 直接输出 `[12,4,7,0,0]`：提前 padding，valid 信息丢失。
+- 不检查 bounds：长输入 hidden case 溢出。
+- 反向写槽：buffer 数值顺序失败。
+- 丢掉 valid mask：后续无法区分真实 id 0 和 pad 0。
+- 把 T 写死为 5：认证 T=3/6 失败。
+
+## 9. Visible 测试
+
+Visible 测试要求：
+
+- 必须存在 BoundsGate 和 SlotWriter。
+- buffer 前三位为 `[12,4,7]`。
+- valid 为 `[true,true,true,false,false]`。
+- EMPTY 不能被误认为 pad id。
+
+## 10. Hidden / Mutation 测试
+
+Hidden case A：刚好填满。
+
+```text
+ids = [2,3,4]
+T = 3
+valid = [1,1,1]
+```
+
+Hidden case B：溢出。
+
+```text
+ids length = 6
+T = 5
+```
+
+必须失败并提示超出上下文容量。
+
+Hidden case C：真实 id 0。
+
+```text
+ids = [12,0,7]
+valid = [1,1,1,0]
+```
+
+认证必须保留 valid mask，不能靠 `id != 0` 判断。
+
+## 11. 认证后接口
+
+```text
+component.token_buffer.v1
+inputs:
+  ids: int[N]
+  capacity: int[]
+outputs:
+  buffer: int_or_empty[T]
+  valid: bool[T]
+```
+
+## 12. 后续调用
+
+Padder 使用 buffer 和 valid mask 产生 `[B,T]` token ids。TokenBuffer 的关键认知是“容量”和“有效长度”分离。

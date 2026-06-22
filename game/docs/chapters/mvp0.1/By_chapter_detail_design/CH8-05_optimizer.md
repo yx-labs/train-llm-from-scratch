@@ -1,45 +1,83 @@
-# Chapter 8-5 Optimizer：AdamW
+# Chapter 8-5 Optimizer: AdamW Step
 
-## 1. 关卡定位
+## 1. 组件真实用途
 
-- 所属章节：Chapter 8 Training Loop
-- 构建组件：`AdamW`
-- 输入来源：params + grads
-- 学习目标：更新权重
-- 后续用途：training loop
+Optimizer 根据参数和梯度产生更新后的参数。MVP0.1 使用简化 AdamW：
 
-## 2. 当前案例
+```text
+m = beta1*m + (1-beta1)*grad
+v = beta2*v + (1-beta2)*grad^2
+param_next = param - lr * (m_hat/(sqrt(v_hat)+eps) + weight_decay*param)
+```
 
-AdamW 把「params + grads」变成可复用的图组件。
+## 2. 前置组件
 
-任务不是背公式，而是处理一个具体图案例：把准备好的案例数据通过 AdamW 连接到合约探针。
+- `component.backward_pass.v1`
+- `component.parameter_matrix.v1`
 
-案例数据输出合约：`float32[P]`，示例 shape 为 `[128]`。
+## 3. 本关新增能力
 
-## 3. 玩家操作
+- `OptimizerStateGate`：读取 m/v/step。
+- `AdamMomentUpdate`：更新一阶和二阶矩。
+- `WeightDecayGate`：添加 decoupled weight decay。
+- `ParamUpdateGate`：生成新参数。
+- `StepProbe`：显示 lr、grad norm、delta norm。
 
-1. 观察预制输入节点和合约探针节点。
-2. 添加或修复 `AdamW` 节点。
-3. 将输入端口按语义连接到组件，再将组件输出连接到合约节点。
-4. 点击「检查当前任务」确认当前案例通过。
-5. 在认证变体中调整公开参数，点击「提交认证」。
+## 4. 具体案例
 
-## 4. 挑战设计
+Visible case 使用一个小参数：
 
-- 主要挑战：识别当前组件的输入/输出语义，而不是只按位置连线。
-- 常见错误：漏连输入、把输出直接接到合约、忽略 dtype 或 axis 语义。
-- 反馈方式：合约节点报 dtype/shape/axis 错误，Trace 面板定位第一个失败节点。
+```text
+param = [1.0, -2.0]
+grad = [0.1, -0.2]
+lr = 0.01
+step = 1
+```
 
-## 5. 认证变体
+输出 `param_next` 必须与 AdamW reference 一致。
 
-公开认证不要求玩家手写完整 tensor。玩家只调整少量结构参数，系统生成变体输入。
+## 5. 初始错误图
 
-- dtype 必须保持：`float32`
-- axis 必须保持：`[P]`
-- shape 可以随认证宽度变化，但语义不变。
+画布给出 params、grads、optimizer_state、updated_params_out、step_probe、reference。缺少 moment/update gates。
 
-## 6. 通过标准
+## 6. 目标内部实现
 
-当前任务通过：输出必须保持 dtype=float32，轴为 [P]。
+```text
+params + grads + state -> adam_moment_update
+params + adam_moment_update + weight_decay -> weight_decay_gate
+weight_decay_gate + lr -> param_update
+param_update -> updated_params_out
+param_update -> step_probe
+updated_params_out -> reference
+```
 
-认证通过：同一张图在公开变体和系统变体下仍满足组件合约，组件变为可用并进入下一关。
+## 7. 错误路径
+
+- 普通 SGD 代替 AdamW：visible 可能接近，hidden step 失败。
+- weight decay 乘到 grad 上而非 decoupled：reference 失败。
+- 更新 frozen 参数：contract 失败。
+- 忽略 optimizer state：step>1 hidden 失败。
+
+## 8. 测试设计
+
+- Visible：step=1。
+- Hidden A：step=2，已有 m/v。
+- Hidden B：weight_decay=0。
+- Hidden C：frozen 参数不更新。
+
+## 9. 认证后接口
+
+```text
+component.adamw_step.v1
+inputs:
+  params: Parameter[P]
+  grads: Gradient[P]
+  state: OptimizerState[P]
+output:
+  next_params: Parameter[P]
+  next_state: OptimizerState[P]
+```
+
+## 10. 后续调用
+
+Checkpoint 会保存更新后的参数和 optimizer state。
