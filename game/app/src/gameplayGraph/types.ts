@@ -122,6 +122,8 @@ export type TestAssertion =
   | { type: "allclose"; nodeId: string; referenceNodeId: string; atol: number }
   | { type: "requires_node"; nodeId: string; moduleId?: string }
   | { type: "requires_edge_path"; from: string; through: string; to: string }
+  | { type: "requires_module"; moduleId: string }
+  | { type: "requires_edge_path_by_module"; from: string; throughModules: string[]; to: string }
   | { type: "pieces_non_empty"; nodeId: string }
   | { type: "pieces_equal"; nodeId: string; expected: string[] }
   | { type: "no_oov"; nodeId: string }
@@ -156,6 +158,8 @@ export type ModuleContext = {
   node: GraphNode;
   inputs: Record<string, RuntimeValue>;
   testInputs: Record<string, RuntimeValue>;
+  graph: GraphSpec;
+  incomingEdges: GraphEdge[];
 };
 
 export type CodeEmitContext = {
@@ -282,7 +286,7 @@ export type LevelSpec = {
   id: string;
   title: string;
   mode: "graph_challenge";
-  routeStatus?: "playable" | "roadmap";
+  routeStatus?: "playable" | "design_ready";
   chapter: string;
   goal: string;
   modulePalette: string[];

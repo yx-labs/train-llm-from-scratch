@@ -1,4 +1,4 @@
-import type { AxisName, DType, ModuleDef, RuntimeError, RuntimeValue, TensorShape } from "../types";
+import type { AxisName, DType, GraphEdge, GraphSpec, ModuleDef, RuntimeError, RuntimeValue, TensorShape } from "../types";
 import { makeTensor, sampleValues, shapeOf, type TinyTensor } from "../runtime/tinyTensor";
 import { mvp01CourseInputCount, type Mvp01CourseLevelDef } from "../../mvp01/mvp01CourseCatalog";
 import { matMulGateModule } from "./tensorModules";
@@ -54,17 +54,38 @@ export const vectorRailModule: ModuleDef = {
   outputs: [{ id: "out", label: "vector[C]", direction: "out", emits: "float32" }],
   defaultParams: {},
   summary: "Combines three ScalarCell outputs into a feature vector with axis C.",
-  pseudoCode: "vector = stack([c0, c1, c2], axis='C')",
-  execute: ({ node, inputs }) => {
-    const scalars = ["c0", "c1", "c2"].map((portId) => scalarNumber(inputs[portId]));
+  pseudoCode: "vector = stack(inputs_in_source_order, axis='C')",
+  execute: ({ node, inputs, graph, incomingEdges }) => {
+    const orderedPorts = orderedVectorInputPorts(graph, incomingEdges, ["c0", "c1", "c2"]);
+    const scalars = orderedPorts.map((portId) => scalarNumber(inputs[portId]));
     if (scalars.some((value) => value === undefined)) {
       return { outputs: {}, error: moduleError("shape_mismatch", node.id, "VectorRail requires three rank-0 scalar inputs", "float32[]", inputs) };
     }
     const tensor = makeTensor("float32", [3], ["C"], scalars as number[]);
-    return { outputs: { out: tensorValue(tensor, { combinedFrom: ["c0", "c1", "c2"] }) }, samples: { out: sampleValues(tensor) } };
+    return { outputs: { out: tensorValue(tensor, { combinedFrom: orderedPorts }) }, samples: { out: sampleValues(tensor) } };
   },
   infer: () => ({ outputs: { out: { dtype: "float32", dims: [3], axes: ["C"] } } })
 };
+
+function orderedVectorInputPorts(graph: GraphSpec, incomingEdges: GraphEdge[], fallbackPorts: string[]) {
+  const indexedEdges = incomingEdges
+    .filter((edge) => fallbackPorts.includes(edge.to.portId))
+    .map((edge, index) => ({ edge, index }));
+  if (indexedEdges.length !== fallbackPorts.length) return fallbackPorts;
+
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  return indexedEdges
+    .sort((left, right) => {
+      const leftNode = nodeById.get(left.edge.from.nodeId);
+      const rightNode = nodeById.get(right.edge.from.nodeId);
+      const yDelta = (leftNode?.position.y ?? 0) - (rightNode?.position.y ?? 0);
+      if (Math.abs(yDelta) > 1) return yDelta;
+      const xDelta = (leftNode?.position.x ?? 0) - (rightNode?.position.x ?? 0);
+      if (Math.abs(xDelta) > 1) return xDelta;
+      return left.index - right.index;
+    })
+    .map((item) => item.edge.to.portId);
+}
 
 export const matrixStructModule: ModuleDef = {
   id: "MatrixStruct",

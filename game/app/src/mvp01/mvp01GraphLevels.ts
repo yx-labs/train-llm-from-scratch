@@ -113,7 +113,7 @@ const manualCourseLevelFactories: Record<string, () => LevelSpec> = {
 export const mvp01GraphLevels: LevelSpec[] = mvp01CourseLevels.map((courseLevel) => {
   const playable = playableCourseCodes.has(courseLevel.code);
   const level = manualCourseLevelFactories[courseLevel.code]?.() ?? courseCatalogLevel(courseLevel);
-  return playable ? { ...level, routeStatus: "playable" } : { ...level, routeStatus: "roadmap", modulePalette: [], certification: undefined };
+  return playable ? { ...level, routeStatus: "playable" } : { ...level, routeStatus: "design_ready", modulePalette: [], certification: undefined };
 });
 
 function wireAndProbeTutorialLevel(): LevelSpec {
@@ -181,7 +181,7 @@ function wireAndProbeTutorialLevel(): LevelSpec {
     debrief: {
       completeTitle: "Wire and probe circuit ready",
       fixedProblem: "The test circuit now has a real data path from source to contract to probe.",
-      learned: "Probe nodes are prebuilt testing equipment. They help certify your graph, but they are not your reusable component.",
+      learned: "Probe nodes are prebuilt testing equipment. They help validate your graph, but they are not your reusable component.",
       nextUse: "Next you will build the first reusable value component: ScalarCell."
     }
   };
@@ -193,7 +193,7 @@ function scalarCellLevel(): LevelSpec {
     title: "MVP0.1-1 Scalar Cell",
     mode: "graph_challenge",
     chapter: "MVP0.1 Component Arc",
-    goal: "Build ScalarCell v1 from a raw finite float32 literal, then certify its rank-0 output contract.",
+    goal: "Build ScalarCell v1 from a raw finite float32 literal, then validate its rank-0 output contract.",
     modulePalette: ["Float32Literal", "OutputContractGate", "ReferenceChecker"],
     initialGraph: createMvp01ScalarInitialGraph(),
     targetGraph: createMvp01ScalarSolutionGraph(),
@@ -216,7 +216,7 @@ function scalarCellLevel(): LevelSpec {
       )
     ],
     hiddenTests: [
-      shapeContractCase("scalar_hidden", "scalar stays finite under certification", { reference: runtimeValue(scalarHidden) }, "scalar_out", [], [])
+      shapeContractCase("scalar_hidden", "scalar stays finite under validation", { reference: runtimeValue(scalarHidden) }, "scalar_out", [], [])
     ],
     certification: scalarCertification(),
     onboarding: {
@@ -238,10 +238,10 @@ function scalarCellLevel(): LevelSpec {
       successObservation: "The output is float32[] and the value is finite, so the Scalar is valid."
     },
     debrief: {
-      completeTitle: "ScalarCell certified",
+      completeTitle: "ScalarCell validated",
       fixedProblem: "The ScalarCell blueprint now wraps a finite float32 literal behind a clean output contract.",
-      learned: "Constructing a component is different from using it: ScalarCell becomes available only after the current task check and certification pass.",
-      nextUse: "VectorRail will combine several certified scalar cells into a C axis."
+      learned: "Constructing a component is different from using it: ScalarCell becomes available only after the current task check and validation pass.",
+      nextUse: "VectorRail will combine several validated scalar cells into a C axis."
     }
   };
 }
@@ -275,13 +275,13 @@ function vectorRailLevel(): LevelSpec {
       )
     ],
     hiddenTests: [
-      shapeAndReferenceCase("vector_hidden", "vector keeps scalar order c0,c1,c2", { reference: runtimeValue(vectorHidden) }, "vector_out", ["C"], [3])
+      shapeAndReferenceCase("vector_hidden", "vector keeps source input order", { reference: runtimeValue(vectorHidden) }, "vector_out", ["C"], [3])
     ],
     certification: vectorCertification(),
     onboarding: {
       story: "A feature vector is a row of scalar cells with a named C rail.",
       startingProblem: "The scalar cells exist, but nothing stacks them into vector[C].",
-      firstAction: "Add VectorRail and wire c0, c1, c2 in order.",
+      firstAction: "Add VectorRail and feed the three ScalarCell outputs from top to bottom.",
       targetRecipe: ["c0.out -> vector.c0", "c1.out -> vector.c1", "c2.out -> vector.c2", "vector.out -> vector_out.x", "vector_out.out -> reference.x"],
       winCondition: "vector_out has shape float32[C]=[3] and matches the reference order."
     },
@@ -297,7 +297,7 @@ function vectorRailLevel(): LevelSpec {
       successObservation: "The output is float32[C=3], so the Vector is valid."
     },
     debrief: {
-      completeTitle: "VectorRail certified",
+      completeTitle: "VectorRail validated",
       fixedProblem: "Three scalar cells now form one semantic feature rail.",
       learned: "Composition is a graph operation: value order becomes axis position.",
       nextUse: "MatrixStruct will stack vectors into a rank-2 component."
@@ -325,6 +325,12 @@ function dotProductLevel(): LevelSpec {
             "Concept: DotProduct multiplies matching vector cells and sums over C.",
             "Task: Build score = sum(query[C] * key[C]).",
             "Check: The output must be one scalar float32[] and match the numeric reference."
+          ]),
+          calculation: textBatch([
+            "query = [0.2, -0.5, 1.0]",
+            "key = [0.4, 0.1, -0.3]",
+            "products = [0.08, -0.05, -0.30]",
+            "score = 0.08 + (-0.05) + (-0.30) = -0.27"
           ]),
           query: runtimeValue(dotQueryVisible),
           key: runtimeValue(dotKeyVisible),
@@ -361,6 +367,7 @@ function dotProductLevel(): LevelSpec {
       visibleInputFocus: "Task: Build score = sum(query[C] * key[C]).",
       dataPanels: [
         { type: "text_batch", title: "Task Brief", inputKey: "case", focusText: "Task: Build score = sum(query[C] * key[C])." },
+        { type: "text_batch", title: "Computation trace", inputKey: "calculation", focusText: "score = 0.08 + (-0.05) + (-0.30) = -0.27" },
         { type: "tensor_preview", title: "Query vector", inputKey: "query" },
         { type: "tensor_preview", title: "Key vector", inputKey: "key" },
         { type: "tensor_preview", title: "Expected scalar score", inputKey: "reference" }
@@ -369,9 +376,9 @@ function dotProductLevel(): LevelSpec {
       successObservation: "The output is float32[] and numerically matches sum(query * key)."
     },
     debrief: {
-      completeTitle: "DotProduct certified",
+      completeTitle: "DotProduct validated",
       fixedProblem: "The score is now computed by a real multiply-then-reduce graph.",
-      learned: "A component certification must prove behavior, not just dtype and shape.",
+      learned: "A component validation must prove behavior, not just dtype and shape.",
       nextUse: "MatrixStruct and MatMulGate will build larger tables from repeated dot-product thinking."
     }
   };
@@ -423,7 +430,7 @@ function matrixStructLevel(): LevelSpec {
       startingProblem: "Two vector sources are present, but the matrix contract has no internal graph.",
       firstAction: "Add MatrixStruct and feed the two vectors as O0 and O1 columns.",
       targetRecipe: ["col0.out -> matrix.o0", "col1.out -> matrix.o1", "matrix.out -> matrix_out.x", "matrix_out.out -> reference.x"],
-      winCondition: "matrix_out is float32[C,O] and hidden C mutations still pass."
+      winCondition: "matrix_out is float32[C,O] and validation C variants still pass."
     },
     caseStudy: {
       title: "Create a valid Matrix",
@@ -439,7 +446,7 @@ function matrixStructLevel(): LevelSpec {
       successObservation: "The output is float32[C=3,O=2], so the Matrix is valid."
     },
     debrief: {
-      completeTitle: "MatrixStruct certified",
+      completeTitle: "MatrixStruct validated",
       fixedProblem: "Two vector rails are now represented as one rank-2 structure.",
       learned: "A matrix component is a value plus a shape contract.",
       nextUse: "TensorBox will introduce batch and token axes."
@@ -493,7 +500,7 @@ function tensorBoxLevel(): LevelSpec {
       startingProblem: "Token vectors are available, but no component introduces B and T axes.",
       firstAction: "Add TensorBox and connect t0 and t1 as token rows.",
       targetRecipe: ["t0.out -> tensor.t0", "t1.out -> tensor.t1", "tensor.out -> tensor_out.x", "tensor_out.out -> reference.x"],
-      winCondition: "tensor_out has axes [B,T,C] and hidden C width mutations pass."
+      winCondition: "tensor_out has axes [B,T,C] and validation C-width variants pass."
     },
     caseStudy: {
       title: "Create a valid Tensor",
@@ -509,7 +516,7 @@ function tensorBoxLevel(): LevelSpec {
       successObservation: "The output is float32[B=1,T=2,C=3], so the Tensor is valid."
     },
     debrief: {
-      completeTitle: "TensorBox certified",
+      completeTitle: "TensorBox validated",
       fixedProblem: "Token vectors now form a batch-token-feature tensor.",
       learned: "Tensor rank is not decoration; later MatMul depends on C being the innermost axis.",
       nextUse: "MatMulGate will consume C and emit O."
@@ -551,7 +558,7 @@ function splitterLevel(): LevelSpec {
       firstAction: "Add BoundarySplitter and PieceBuffer. Route raw text into the splitter, then buffer the produced pieces before the contract.",
       targetRecipe: ["text.out -> splitter.text", "splitter.pieces -> piece_buffer.pieces", "piece_buffer.out -> pieces_out.x"],
       winCondition: "pieces_out is string_piece[T] and exactly matches the expected word/punctuation pieces.",
-      allowedMistakes: ["Dropping punctuation", "Connecting raw_text directly into the contract", "Skipping PieceBuffer so the implementation path cannot be certified"]
+      allowedMistakes: ["Dropping punctuation", "Connecting raw_text directly into the contract", "Skipping PieceBuffer so the implementation path cannot be validated"]
     },
     caseStudy: {
       title: "Create a valid BoundarySplitter",
@@ -567,9 +574,9 @@ function splitterLevel(): LevelSpec {
       successObservation: "The output is string_piece[T=4] and the sequence is tokenizers | are | useful | !."
     },
     debrief: {
-      completeTitle: "BoundarySplitter certified",
+      completeTitle: "BoundarySplitter validated",
       fixedProblem: "Raw text now has a reusable graph-built boundary splitter.",
-      learned: "Text components also need behavior certification: dtype and T shape are not enough unless the actual pieces are correct.",
+      learned: "Text components also need behavior validation: dtype and T shape are not enough unless the actual pieces are correct.",
       nextUse: "Merge rules and tokenizer sockets will build on these ordered pieces."
     }
   };
@@ -621,7 +628,7 @@ function matMulGateLevel(): LevelSpec {
       startingProblem: "hidden and weight are present, but the graph has no compute gate between them.",
       firstAction: "Add MatMulGate, connect hidden to left and weight to right.",
       targetRecipe: ["hidden.out -> matmul.left", "weight.out -> matmul.right", "matmul.out -> matmul_out.x", "matmul_out.out -> reference.x"],
-      winCondition: "matmul_out is [B,T,O] and certification mutations pass."
+      winCondition: "matmul_out is [B,T,O] and validation variants pass."
     },
     caseStudy: {
       title: "Create a valid MatMulGate",
@@ -637,7 +644,7 @@ function matMulGateLevel(): LevelSpec {
       successObservation: "The output is float32[B,T,O], so the MatMulGate is valid."
     },
     debrief: {
-      completeTitle: "MatMulGate certified",
+      completeTitle: "MatMulGate validated",
       fixedProblem: "The projection gate now consumes hidden and weight with the correct operand roles.",
       learned: "MatMul is an axis contract, not just a table multiply.",
       nextUse: "Linear will compose MatMul plus bias broadcast and add."
@@ -693,7 +700,7 @@ function linearBuildLevel(): LevelSpec {
     ],
     certification: linearCertification(),
     onboarding: {
-      story: "The first complete component is built by composing smaller certified pieces.",
+      story: "The first complete component is built by composing smaller validated pieces.",
       startingProblem: "The interface ports are present, but the internal graph for Linear is empty.",
       firstAction: "Add MatMulGate, BroadcastRail, and AddGate. Broadcast bias along O before adding.",
       targetRecipe: [
@@ -706,7 +713,7 @@ function linearBuildLevel(): LevelSpec {
         "linear_add.out -> linear_out.x",
         "linear_out.out -> reference.x"
       ],
-      winCondition: "linear_out passes the task check and certification as [B,T,O]."
+      winCondition: "linear_out passes the task check and validation as [B,T,O]."
     },
     caseStudy: {
       title: "Create a valid Linear",
@@ -723,10 +730,10 @@ function linearBuildLevel(): LevelSpec {
       successObservation: "The output is float32[B,T,O], so the Linear is valid."
     },
     debrief: {
-      completeTitle: "Linear certified",
+      completeTitle: "Linear validated",
       fixedProblem: "Linear is now a graph-built component, not a prebuilt shortcut.",
       learned: "Available components can preserve their internal graph while exposing a clean interface.",
-      nextUse: "The same component system can support upgrades, certification variants, and Expand Inside."
+      nextUse: "The same component system can support upgrades, validation variants, and Expand Inside."
     }
   };
 }
@@ -737,7 +744,7 @@ function qkScoreLevel(): LevelSpec {
     title: "Chapter 4-3 QK Score",
     mode: "graph_challenge",
     chapter: "Chapter 4: Attention Core",
-    goal: "Build QKScore from K transpose plus certified MatMulGate, then prove the score board numerically.",
+    goal: "Build QKScore from K transpose plus validated MatMulGate, then prove the score board numerically.",
     modulePalette: ["InputTensor", "TransposeSwitch", "component.matmul_gate.v1", "ScoreBoard", "CellTrace", "ReferenceChecker"],
     initialGraph: createMvp01QkScoreInitialGraph(),
     targetGraph: createMvp01QkScoreSolutionGraph(),
@@ -785,8 +792,8 @@ function qkScoreLevel(): LevelSpec {
     certification: qkScoreCertification(),
     onboarding: {
       story: "Attention scores are not Q @ K directly; K must present feature D as the inner dimension and key token T as the output column.",
-      startingProblem: "Q and K sources are ready, but the score board cannot be certified until K is transposed before MatMul.",
-      firstAction: "Add TransposeSwitch, certified MatMulGate, ScoreBoard, CellTrace, and ReferenceChecker. Route K through the transpose before qk_matmul.right.",
+      startingProblem: "Q and K sources are ready, but the score board cannot be validated until K is transposed before MatMul.",
+      firstAction: "Add TransposeSwitch, validated MatMulGate, ScoreBoard, CellTrace, and ReferenceChecker. Route K through the transpose before qk_matmul.right.",
       targetRecipe: [
         "q.out -> qk_matmul.left",
         "k.out -> k_transpose.x",
@@ -815,9 +822,9 @@ function qkScoreLevel(): LevelSpec {
       successObservation: "The score board is float32[B,H,T,T] and matches Q @ K^T."
     },
     debrief: {
-      completeTitle: "QKScore certified",
-      fixedProblem: "The attention score board now uses the correct K transpose path and certified MatMulGate.",
-      learned: "QKScore certification needs a numerical hidden trap: when T==D, shape alone can look plausible while the score cells are wrong.",
+      completeTitle: "QKScore validated",
+      fixedProblem: "The attention score board now uses the correct K transpose path and validated MatMulGate.",
+      learned: "QKScore validation needs a numerical hidden trap: when T==D, shape alone can look plausible while the score cells are wrong.",
       nextUse: "Scale, mask, softmax, and weighted value sum will consume this score board."
     }
   };
@@ -863,11 +870,11 @@ function courseCatalogLevel(courseLevel: Mvp01CourseLevelDef): LevelSpec {
         { type: "text_batch", title: "Task Brief", inputKey: "case", focusText: courseLevel.task },
         ...Array.from({ length: inputCount }, (_, index) => ({ type: "tensor_preview" as const, title: `Input ${courseInputPortId(index)}`, inputKey: `input_${index}` }))
       ],
-      playerQuestion: `Can this graph turn the prepared case into a certified ${courseLevel.component} output?`,
+      playerQuestion: `Can this graph turn the prepared case into a validated ${courseLevel.component} output?`,
       successObservation: courseLevel.check
     },
     debrief: {
-      completeTitle: `${courseLevel.component} certified`,
+      completeTitle: `${courseLevel.component} validated`,
       fixedProblem: `${courseLevel.component} now has a graph path from source inputs to a checked output contract.`,
       learned: courseLevel.learn,
       nextUse: courseLevel.futureUse
@@ -877,8 +884,8 @@ function courseCatalogLevel(courseLevel: Mvp01CourseLevelDef): LevelSpec {
 
 function courseCertification(courseLevel: Mvp01CourseLevelDef): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: `The current task checks one ${courseLevel.component} case. Certification mutates the generated case while preserving the component contract.`,
+    title: "Validation variant",
+    narrative: `The current task checks one ${courseLevel.component} case. Validation mutates the generated case while preserving the component contract.`,
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Adjust a compact generated variant. The system changes shape data without asking you to handwrite the full tensor.",
     systemVariantDescription: "System variants keep the same dtype and axis contract while changing the generated case seed.",
@@ -1051,10 +1058,10 @@ function courseRuntimeValue(courseLevel: Mvp01CourseLevelDef, seed: string, dims
 
 function scalarCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks the shown scalar. Certification asks whether the component still satisfies the scalar contract when the value changes.",
+    title: "Validation variant",
+    narrative: "The current task checks the shown scalar. Validation asks whether the component still satisfies the scalar contract when the value changes.",
     publicVariantLabel: "Public variant",
-    publicVariantDescription: "Choose another finite float32 value. The system will temporarily use it as the scalar source during certification.",
+    publicVariantDescription: "Choose another finite float32 value. The system will temporarily use it as the scalar source during validation.",
     systemVariantDescription: "System variants also check finite rank-0 output without revealing their exact values.",
     controls: [
       { id: "value", label: "Scalar value", kind: "number", defaultValue: 0.6, step: 0.1, help: "Any finite float32 value should remain a rank-0 scalar." }
@@ -1064,7 +1071,7 @@ function scalarCertification(): LevelCertificationSpec {
       return [
         {
           graph: withNodeParams(graph, { scalar_source: { value } }),
-          testCase: shapeContractCase("scalar_hidden_public_variant", "public certification: finite scalar variant", { reference: runtimeValue(scalar(value)) }, "scalar_out", [], [])
+          testCase: shapeContractCase("scalar_hidden_public_variant", "public validation: finite scalar variant", { reference: runtimeValue(scalar(value)) }, "scalar_out", [], [])
         }
       ];
     }
@@ -1073,11 +1080,11 @@ function scalarCertification(): LevelCertificationSpec {
 
 function vectorCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one vector. Certification changes the scalar values and verifies that order still maps to C positions.",
+    title: "Validation variant",
+    narrative: "The current task checks one vector. Validation changes the scalar values and verifies that order still maps to C positions.",
     publicVariantLabel: "Public variant",
-    publicVariantDescription: "Edit three scalar values. Certification will temporarily feed them through c0, c1, and c2.",
-    systemVariantDescription: "System variants keep checking the vector contract and the c0,c1,c2 order.",
+    publicVariantDescription: "Edit three scalar values. Validation will temporarily feed them through c0, c1, and c2.",
+    systemVariantDescription: "System variants keep checking the vector contract and source input order.",
     controls: [
       { id: "c0", label: "c0 value", kind: "number", defaultValue: 1.25, step: 0.1, help: "First C-axis slot." },
       { id: "c1", label: "c1 value", kind: "number", defaultValue: 0.25, step: 0.1, help: "Second C-axis slot." },
@@ -1094,7 +1101,7 @@ function vectorCertification(): LevelCertificationSpec {
           }),
           testCase: shapeAndReferenceCase(
             "vector_hidden_public_variant",
-            "public certification: changed scalar values keep C order",
+            "public validation: changed scalar values keep C order",
             { reference: runtimeValue(vector(vectorValues)) },
             "vector_out",
             ["C"],
@@ -1108,8 +1115,8 @@ function vectorCertification(): LevelCertificationSpec {
 
 function dotProductCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one dot product. Certification changes the C width and data while requiring the same multiply-then-sum graph.",
+    title: "Validation variant",
+    narrative: "The current task checks one dot product. Validation changes the C width and data while requiring the same multiply-then-sum graph.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose C width and a data seed. The system generates compatible query/key vectors.",
     systemVariantDescription: "System variants mutate C again and still require numeric allclose, not just scalar shape.",
@@ -1124,7 +1131,7 @@ function dotProductCertification(): LevelCertificationSpec {
         {
           testCase: shapeAndReferenceCase(
             "dot_product_public_variant",
-            "public certification: generated C-width dot product",
+            "public validation: generated C-width dot product",
             { query: runtimeValue(query), key: runtimeValue(key), reference: runtimeValue(reference) },
             "dot_out",
             [],
@@ -1139,8 +1146,8 @@ function dotProductCertification(): LevelCertificationSpec {
 
 function splitterCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one sentence. Certification changes the raw text while requiring the same boundary split graph and exact pieces.",
+    title: "Validation variant",
+    narrative: "The current task checks one sentence. Validation changes the raw text while requiring the same boundary split graph and exact pieces.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose a compact text fixture. The system supplies raw text and expected pieces so you do not handwrite arrays.",
     systemVariantDescription: "System variants keep punctuation and word boundaries private while checking the same string_piece[T] contract.",
@@ -1162,7 +1169,7 @@ function splitterCertification(): LevelCertificationSpec {
       const fixture = splitterFixture(controlString(values, "text_case", "shape-buffer"));
       return [
         {
-          testCase: splitterCase("splitter_public_variant", "public certification: text fixture split", fixture.text, fixture.pieces)
+          testCase: splitterCase("splitter_public_variant", "public validation: text fixture split", fixture.text, fixture.pieces)
         }
       ];
     }
@@ -1171,8 +1178,8 @@ function splitterCertification(): LevelCertificationSpec {
 
 function matrixCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks C=3. Certification changes C width while preserving the two O columns.",
+    title: "Validation variant",
+    narrative: "The current task checks C=3. Validation changes C width while preserving the two O columns.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose a C width and data seed. The system generates two vector[C] columns for you.",
     systemVariantDescription: "System variants mutate C again and still require matrix[C,O].",
@@ -1187,7 +1194,7 @@ function matrixCertification(): LevelCertificationSpec {
         {
           testCase: shapeAndReferenceCase(
             "matrix_hidden_public_variant",
-            "public certification: generated C width variant",
+            "public validation: generated C width variant",
             { col0: runtimeValue(col0), col1: runtimeValue(col1), reference: runtimeValue(reference) },
             "matrix_out",
             ["C", "O"],
@@ -1201,8 +1208,8 @@ function matrixCertification(): LevelCertificationSpec {
 
 function tensorCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one token pair. Certification changes feature width C while keeping B and T semantics.",
+    title: "Validation variant",
+    narrative: "The current task checks one token pair. Validation changes feature width C while keeping B and T semantics.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose a C width and data seed. The system generates two token vector[C] rows.",
     systemVariantDescription: "System variants keep C mutable while requiring tensor[B,T,C].",
@@ -1217,7 +1224,7 @@ function tensorCertification(): LevelCertificationSpec {
         {
           testCase: shapeAndReferenceCase(
             "tensor_hidden_public_variant",
-            "public certification: generated token feature variant",
+            "public validation: generated token feature variant",
             { t0: runtimeValue(t0), t1: runtimeValue(t1), reference: runtimeValue(reference) },
             "tensor_out",
             ["B", "T", "C"],
@@ -1231,8 +1238,8 @@ function tensorCertification(): LevelCertificationSpec {
 
 function matMulCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one [B,T,C] @ [C,O]. Certification changes the dimensions while preserving the C-to-O contract.",
+    title: "Validation variant",
+    narrative: "The current task checks one [B,T,C] @ [C,O]. Validation changes the dimensions while preserving the C-to-O contract.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose B/T/C/O and a seed. The system generates compatible hidden and weight tensors.",
     systemVariantDescription: "System variants use additional B/T/C/O sizes that are not shown here.",
@@ -1250,7 +1257,7 @@ function matMulCertification(): LevelCertificationSpec {
         {
           testCase: shapeAndReferenceCase(
             "matmul_hidden_public_variant",
-            "public certification: generated B/T/C/O variant",
+            "public validation: generated B/T/C/O variant",
             { hidden: runtimeValue(hidden), weight: runtimeValue(weight), reference: runtimeValue(reference) },
             "matmul_out",
             ["B", "T", "O"],
@@ -1264,8 +1271,8 @@ function matMulCertification(): LevelCertificationSpec {
 
 function linearCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one Linear shape. Certification changes dimensions and verifies MatMul plus bias broadcast together.",
+    title: "Validation variant",
+    narrative: "The current task checks one Linear shape. Validation changes dimensions and verifies MatMul plus bias broadcast together.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose B/T/C/O and a seed. The system generates hidden, weight, and bias tensors.",
     systemVariantDescription: "System variants add private B/T/C/O mutations before Linear becomes available.",
@@ -1284,7 +1291,7 @@ function linearCertification(): LevelCertificationSpec {
         {
           testCase: shapeAndReferenceCase(
             "linear_hidden_public_variant",
-            "public certification: generated Linear dimension variant",
+            "public validation: generated Linear dimension variant",
             { hidden: runtimeValue(hidden), weight: runtimeValue(weight), bias: runtimeValue(bias), reference: runtimeValue(reference) },
             "linear_out",
             ["B", "T", "O"],
@@ -1298,8 +1305,8 @@ function linearCertification(): LevelCertificationSpec {
 
 function qkScoreCertification(): LevelCertificationSpec {
   return {
-    title: "Certification variant",
-    narrative: "The current task checks one QK score board. Certification mutates B/H/T/D and seed while requiring the same K-transpose implementation path.",
+    title: "Validation variant",
+    narrative: "The current task checks one QK score board. Validation mutates B/H/T/D and seed while requiring the same K-transpose implementation path.",
     publicVariantLabel: "Public variant",
     publicVariantDescription: "Choose B/H/T/D and a seed. The system generates compatible Q/K tensors and reference scores.",
     systemVariantDescription: "System variants include equal T/D traps and carrier-axis mutations.",
@@ -1317,7 +1324,7 @@ function qkScoreCertification(): LevelCertificationSpec {
         {
           testCase: shapeAndReferenceCase(
             "qk_score_public_variant",
-            "public certification: generated QK score board",
+            "public validation: generated QK score board",
             { q: runtimeValue(q), k: runtimeValue(k), reference: runtimeValue(reference) },
             "score_board",
             ["B", "H", "T", "T"],
@@ -1331,19 +1338,28 @@ function qkScoreCertification(): LevelCertificationSpec {
 }
 
 function cWidthControl(defaultValue: number) {
-  return { id: "c", label: "C width", kind: "integer" as const, defaultValue, min: 2, max: 6, step: 1, help: "Feature/channel width used by the generated certification variant." };
+  return {
+    id: "c",
+    label: "C width",
+    kind: "integer" as const,
+    defaultValue,
+    min: 2,
+    max: 64,
+    step: 1,
+    help: "Validation sample generator cap: 2-64. The component concept itself has no C-width limit."
+  };
 }
 
 function bSizeControl(defaultValue: number) {
-  return { id: "b", label: "B size", kind: "integer" as const, defaultValue, min: 1, max: 3, step: 1, help: "Batch size for the generated certification variant." };
+  return { id: "b", label: "B size", kind: "integer" as const, defaultValue, min: 1, max: 3, step: 1, help: "Batch size for the generated validation variant." };
 }
 
 function tLengthControl(defaultValue: number) {
-  return { id: "t", label: "T length", kind: "integer" as const, defaultValue, min: 1, max: 4, step: 1, help: "Token length for the generated certification variant." };
+  return { id: "t", label: "T length", kind: "integer" as const, defaultValue, min: 1, max: 4, step: 1, help: "Token length for the generated validation variant." };
 }
 
 function hSizeControl(defaultValue: number) {
-  return { id: "h", label: "H heads", kind: "integer" as const, defaultValue, min: 1, max: 3, step: 1, help: "Attention head count for the generated certification variant." };
+  return { id: "h", label: "H heads", kind: "integer" as const, defaultValue, min: 1, max: 3, step: 1, help: "Attention head count for the generated validation variant." };
 }
 
 function dWidthControl(defaultValue: number) {
@@ -1351,7 +1367,7 @@ function dWidthControl(defaultValue: number) {
 }
 
 function oWidthControl(defaultValue: number) {
-  return { id: "o", label: "O width", kind: "integer" as const, defaultValue, min: 1, max: 5, step: 1, help: "Output channel width for the generated certification variant." };
+  return { id: "o", label: "O width", kind: "integer" as const, defaultValue, min: 1, max: 5, step: 1, help: "Output channel width for the generated validation variant." };
 }
 
 function seedControl(defaultValue: string) {
@@ -1725,11 +1741,11 @@ function splitterCase(id: string, title: string, text: string, expected: string[
 
 function dotProductStructureAssertions(): TestAssertion[] {
   return [
-    { type: "requires_node", nodeId: "multiply", moduleId: "ElementwiseMultiply" },
-    { type: "requires_node", nodeId: "sum", moduleId: "SumReduce" },
-    { type: "requires_edge_path", from: "query", through: "multiply", to: "sum" },
-    { type: "requires_edge_path", from: "key", through: "multiply", to: "sum" },
-    { type: "requires_edge_path", from: "sum", through: "dot_out", to: "reference" }
+    { type: "requires_module", moduleId: "ElementwiseMultiply" },
+    { type: "requires_module", moduleId: "SumReduce" },
+    { type: "requires_edge_path_by_module", from: "query", throughModules: ["ElementwiseMultiply", "SumReduce"], to: "dot_out" },
+    { type: "requires_edge_path_by_module", from: "key", throughModules: ["ElementwiseMultiply", "SumReduce"], to: "dot_out" },
+    { type: "requires_edge_path", from: "dot_out", through: "reference", to: "reference" }
   ];
 }
 

@@ -60,7 +60,7 @@ export const mvp01CourseZhText: Record<string, string> = Object.fromEntries(
     [`Task: ${level.task}`, `任务：${level.taskZh}`],
     [`Check: ${level.check}`, `检查：${level.checkZh}`],
     [`Build ${level.component}`, `构造 ${level.componentZh}`],
-    [`Certify ${level.component}`, `认证 ${level.componentZh}`],
+    [`Validate ${level.component}`, `验证 ${level.componentZh}`],
     [`${level.component} contract`, `${level.componentZh} 合约`]
   ])
 );

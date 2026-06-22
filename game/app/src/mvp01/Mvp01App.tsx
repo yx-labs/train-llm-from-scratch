@@ -91,7 +91,7 @@ export function Mvp01App() {
         <div>
           <p className="eyebrow">{t("MVP0.1 Component Builder")}</p>
           <h1>Chapter 0-9 Component Map</h1>
-          <small>{t("Build key LLM components deeply; roadmap nodes stay visible until their internal challenges are ready.")}</small>
+          <small>{t("Build key LLM components deeply; design-ready roadmap nodes stay visible but cannot be entered until implemented.")}</small>
         </div>
         <nav className="mvp01GraphActions" aria-label="MVP0.1 navigation">
           <div className="modeSwitch mvp01LanguageSwitch" aria-label={t("Language")}>

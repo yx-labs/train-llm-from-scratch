@@ -748,7 +748,7 @@ h3 {
   opacity: 0.54;
 }
 
-.graphChallengeMapNode.roadmap {
+.graphChallengeMapNode.design_ready {
   border-color: rgba(71, 85, 105, 0.78);
   background: #08111f;
   color: #94a3b8;
@@ -1088,6 +1088,228 @@ h3 {
 .graphCompletionNotice small {
   color: #a7f3d0;
   line-height: 1.35;
+}
+
+.graphCertificationRunOverlay {
+  position: absolute;
+  inset: 62px 12px 12px;
+  z-index: 15;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px 0;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(34, 197, 94, 0.12), transparent 34%),
+    linear-gradient(rgba(2, 6, 23, 0.7), rgba(2, 6, 23, 0.32));
+}
+
+.graphCertificationRunPanel {
+  display: grid;
+  grid-template-rows: auto auto minmax(96px, 1fr) auto auto;
+  gap: 12px;
+  width: min(880px, calc(100% - 18px));
+  max-height: min(690px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgba(34, 197, 94, 0.58);
+  border-radius: 8px;
+  background: rgba(5, 18, 23, 0.98);
+  color: #d1fae5;
+  box-shadow: 0 26px 76px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.graphCertificationRunPanel.fail,
+.graphCertificationRunPanel.blocked {
+  border-color: rgba(251, 113, 133, 0.66);
+  background: rgba(24, 12, 18, 0.98);
+}
+
+.graphCertificationRunHeader,
+.graphCertificationRunFooter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graphCertificationRunHeader span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.graphCertificationRunHeader h3 {
+  margin: 0;
+  color: #ecfdf5;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.graphCertificationRunHeader small,
+.graphCertificationRunFooter span,
+.graphCertificationRunResult small {
+  color: #a7f3d0;
+  font-size: 0.74rem;
+  line-height: 1.36;
+}
+
+.graphCertificationRunHeader code {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid rgba(34, 197, 94, 0.46);
+  border-radius: 999px;
+  background: rgba(6, 78, 59, 0.32);
+  color: #bbf7d0;
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.graphCertificationRunValues,
+.graphCertificationRunResult {
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid rgba(34, 197, 94, 0.34);
+  border-radius: 7px;
+  background: rgba(4, 10, 19, 0.58);
+}
+
+.graphCertificationRunValues > b,
+.graphCertificationRunResult > b {
+  color: #ecfdf5;
+  font-size: 0.78rem;
+}
+
+.graphCertificationRunValues > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 58px;
+  overflow: auto;
+}
+
+.graphCertificationRunValues code,
+.graphCertificationRunResult code {
+  padding: 4px 7px;
+  border: 1px solid rgba(49, 95, 148, 0.58);
+  border-radius: 6px;
+  background: #07111f;
+  color: #dbeafe;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.graphCertificationRunCode {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid rgba(49, 95, 148, 0.72);
+  border-radius: 8px;
+  background: #07111f;
+  box-shadow: inset 0 0 0 1px rgba(4, 10, 19, 0.38);
+}
+
+.graphCertificationRunLine {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 26px;
+  padding: 5px 9px;
+  color: #8aa6bf;
+  font-family: "Fira Code", Consolas, ui-monospace, monospace;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  animation: certificationRunLineIn 120ms ease both;
+}
+
+.graphCertificationRunLine span {
+  color: #4b6b8c;
+  text-align: right;
+  user-select: none;
+}
+
+.graphCertificationRunLine code {
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.graphCertificationRunLine.section {
+  color: #7dd3fc;
+  font-weight: 950;
+}
+
+.graphCertificationRunLine.done:not(.section) {
+  color: #c7dcf2;
+}
+
+.graphCertificationRunLine.active {
+  background: rgba(96, 165, 250, 0.1);
+  color: #dcfce7;
+  box-shadow: inset 3px 0 0 #60a5fa;
+}
+
+.graphCertificationRunLine .syntaxKeyword {
+  color: #93c5fd;
+  font-weight: 900;
+}
+
+.graphCertificationRunLine .syntaxFunction {
+  color: #67e8f9;
+}
+
+.graphCertificationRunLine .syntaxString {
+  color: #fde68a;
+}
+
+.graphCertificationRunLine .syntaxNumber {
+  color: #86efac;
+}
+
+.graphCertificationRunLine .syntaxComment {
+  color: #6ee7b7;
+  opacity: 0.8;
+}
+
+.graphCertificationRunLine .syntaxOperator {
+  color: #c4b5fd;
+}
+
+@keyframes certificationRunLineIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.graphCertificationRunResult {
+  max-height: 112px;
+  overflow: auto;
+  opacity: 0.42;
+  transform: translateY(2px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.graphCertificationRunResult.shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.graphCertificationRunFooter {
+  align-items: center;
+}
+
+.graphCertificationRunFooter .ghostButton {
+  background: rgba(7, 17, 31, 0.9);
 }
 
 .graphCanvasToolbar {
@@ -1440,7 +1662,6 @@ h3 {
 
 .targetGhostLayer {
   position: absolute;
-  inset: 0;
   pointer-events: none;
 }
 
@@ -1462,20 +1683,30 @@ h3 {
   position: absolute;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .graphEdge {
-  pointer-events: visiblePainted;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
-.graphEdgeLayer path {
+.graphEdgeLayer .graphEdgeHit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  stroke-linecap: round;
+  opacity: 0;
+  pointer-events: stroke;
+}
+
+.graphEdgeLayer .graphEdgeLine {
   fill: none;
   stroke: #60a5fa;
   stroke-width: 2;
   stroke-linecap: round;
   opacity: 0.75;
-  pointer-events: stroke;
+  pointer-events: none;
   transition: stroke 140ms ease, stroke-width 140ms ease, opacity 140ms ease;
 }
 
@@ -1487,8 +1718,8 @@ h3 {
   pointer-events: none;
 }
 
-.graphEdge:hover path,
-.graphEdge.selected path {
+.graphEdge:hover .graphEdgeLine,
+.graphEdge.selected .graphEdgeLine {
   stroke: #fbbf24;
   stroke-width: 3;
   opacity: 1;
@@ -1538,6 +1769,10 @@ h3 {
   cursor: grabbing;
 }
 
+.graphNode:hover {
+  z-index: 4;
+}
+
 .graphNodeHeader {
   display: grid;
   gap: 6px;
@@ -1567,8 +1802,46 @@ h3 {
 }
 
 .graphNodeCaseSlot {
+  position: relative;
   display: grid;
   gap: 4px;
+}
+
+.graphNodeCaseSlot[data-tooltip] {
+  cursor: help;
+}
+
+.graphNodeCaseSlot[data-tooltip]:hover::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: calc(100% + 1px);
+  z-index: 28;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid rgba(49, 95, 148, 0.94);
+  border-left: 6px solid transparent;
+  pointer-events: none;
+}
+
+.graphNodeCaseSlot[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 7px);
+  z-index: 29;
+  width: max-content;
+  max-width: 275px;
+  padding: 8px 10px;
+  border: 1px solid rgba(49, 95, 148, 0.94);
+  border-radius: 7px;
+  background: rgba(4, 10, 19, 0.98);
+  color: #dbeafe;
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: normal;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
 }
 
 .graphNodeCase code {

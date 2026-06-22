@@ -66,6 +66,26 @@ type CompletionNotice = {
   routeComplete: boolean;
 };
 
+type CertificationRunPreview = {
+  id: string;
+  levelId: string;
+  title: string;
+  graph: GraphSpec;
+  controls: CertificationControlSpec[];
+  values: Record<string, CertificationControlValue>;
+  testCase: TestCase;
+  publicCase: TestCaseRunResult;
+  result: RunTestsResult;
+  codeLines: CertificationAnimationLine[];
+  outputLines: string[];
+};
+
+type CertificationAnimationLine = {
+  id: string;
+  text: string;
+  section?: boolean;
+};
+
 type CertificationValuesByLevel = Record<string, Record<string, CertificationControlValue>>;
 
 type WireSource = PortRef & {
@@ -145,6 +165,13 @@ const graphNodeWidth = 240;
 const graphNodeMinHeight = 156;
 const graphWorldWidth = 2400;
 const graphWorldHeight = 1600;
+const graphWorldDragMargin = 1200;
+const graphWorldMinX = -graphWorldDragMargin;
+const graphWorldMinY = -graphWorldDragMargin;
+const graphWorldMaxX = graphWorldWidth + graphWorldDragMargin;
+const graphWorldMaxY = graphWorldHeight + graphWorldDragMargin;
+const graphWorldLayerWidth = graphWorldMaxX - graphWorldMinX;
+const graphWorldLayerHeight = graphWorldMaxY - graphWorldMinY;
 const minCanvasScale = 0.45;
 const maxCanvasScale = 1.8;
 const defaultWorkbenchLayout: WorkbenchLayout = {
@@ -169,7 +196,7 @@ function useGraphT() {
 }
 
 function isLevelPlayable(level: LevelSpec) {
-  return level.routeStatus !== "roadmap";
+  return level.routeStatus === "playable";
 }
 
 function firstPlayableLevel(levels: LevelSpec[]) {
@@ -209,6 +236,7 @@ export function GraphWorkbench({
   const [missionOpen, setMissionOpen] = useState(false);
   const [challengeMapOpen, setChallengeMapOpen] = useState(false);
   const [completionNotice, setCompletionNotice] = useState<CompletionNotice>();
+  const [certificationRun, setCertificationRun] = useState<CertificationRunPreview>();
   const [layout, setLayout] = useState<WorkbenchLayout>(defaultWorkbenchLayout);
   const [portAnchors, setPortAnchors] = useState<PortAnchorMap>({});
   const workbenchRef = useRef<HTMLElement>(null);
@@ -234,7 +262,7 @@ export function GraphWorkbench({
   const activeTraceCase = resolveTraceCase(runState, traceSelection);
   const activeTraceFrame = activeTraceCase && traceSelection?.caseId === activeTraceCase.id ? activeTraceCase.execution.trace[traceSelection.step] : undefined;
   const certificationLocked = runState.visible?.status !== "pass";
-  const canSubmitCertification = !certificationLocked && !componentLevelLocked && certificationErrors.length === 0;
+  const canSubmitCertification = !certificationLocked && !componentLevelLocked && certificationErrors.length === 0 && !certificationRun;
   const workbenchStyle = {
     "--graph-sidebar-width": `${layout.sidebarWidth}px`,
     "--graph-inspector-width": `${layout.inspectorWidth}px`
@@ -302,7 +330,7 @@ export function GraphWorkbench({
 
   function selectLevel(level: LevelSpec) {
     if (!isLevelPlayable(level)) {
-      setCanvasNotice("roadmap level is not playable yet");
+      setCanvasNotice("design_ready level is not playable yet");
       return;
     }
     if (autoAdvanceTimerRef.current) {
@@ -317,6 +345,7 @@ export function GraphWorkbench({
     setTraceSelection(undefined);
     setInspectorTab("summary");
     setCompletionNotice(undefined);
+    setCertificationRun(undefined);
     setCanvasNotice("ready");
   }
 
@@ -330,6 +359,7 @@ export function GraphWorkbench({
     setTraceSelection(undefined);
     setInspectorTab("summary");
     setCompletionNotice(undefined);
+    setCertificationRun(undefined);
     setViewport({ x: 0, y: 0, scale: 1 });
     setCanvasNotice("reset");
   }
@@ -366,15 +396,33 @@ export function GraphWorkbench({
       return;
     }
     if (certificationErrors.length > 0) {
-      setCanvasNotice("certification variant needs valid inputs");
+      setCanvasNotice("validation variant needs valid inputs");
       return;
     }
-    const result = runCertificationTests(
+    const certificationTests = selectedLevel.certification
+      ? [...selectedLevel.certification.makePublicTests(graph, certificationValues), ...selectedLevel.hiddenTests.map((testCase) => ({ testCase }))]
+      : selectedLevel.hiddenTests.map((testCase) => ({ testCase }));
+    const result = runCertificationTests(graph, certificationTests);
+    const preview = buildCertificationRunPreview({
+      level: selectedLevel,
       graph,
-      selectedLevel.certification
-        ? [...selectedLevel.certification.makePublicTests(graph, certificationValues), ...selectedLevel.hiddenTests.map((testCase) => ({ testCase }))]
-        : selectedLevel.hiddenTests.map((testCase) => ({ testCase }))
-    );
+      modules,
+      certificationTests,
+      result,
+      values: certificationValues
+    });
+    if (preview) {
+      setMissionOpen(false);
+      setCompletionNotice(undefined);
+      setCertificationRun(preview);
+      setCanvasNotice("validation running");
+      return;
+    }
+    finishCertificationRun(result);
+  }
+
+  function finishCertificationRun(result: RunTestsResult) {
+    setCertificationRun(undefined);
     setRuns((current) => {
       const previous = current[selectedLevel.id] ?? createEmptyRunState();
       return {
@@ -451,6 +499,40 @@ export function GraphWorkbench({
     const cases = certificationTests.map((item) => runTestCaseDetailed(item.graph ?? defaultGraph, registry, item.testCase));
     const results = cases.flatMap((testCase) => testCase.results);
     return { status: statusFromResults(results), results, cases };
+  }
+
+  function buildCertificationRunPreview({
+    level,
+    graph: baseGraph,
+    modules: graphModules,
+    certificationTests,
+    result,
+    values
+  }: {
+    level: LevelSpec;
+    graph: GraphSpec;
+    modules: ModuleDef[];
+    certificationTests: CertificationTestSpec[];
+    result: RunTestsResult;
+    values: Record<string, CertificationControlValue>;
+  }): CertificationRunPreview | undefined {
+    const publicSpec = certificationTests[0];
+    const publicCase = result.cases[0];
+    if (!publicSpec || !publicCase) return undefined;
+    const runGraph = publicSpec.graph ?? baseGraph;
+    return {
+      id: `${level.id}:${publicSpec.testCase.id}:${Date.now()}`,
+      levelId: level.id,
+      title: level.certification?.title ?? "Validation",
+      graph: runGraph,
+      controls: level.certification?.controls ?? [],
+      values,
+      testCase: publicSpec.testCase,
+      publicCase,
+      result,
+      codeLines: buildCertificationAnimationLines(level, runGraph, graphModules, publicSpec.testCase, level.certification?.controls ?? [], values),
+      outputLines: buildCertificationOutputLines(publicSpec.testCase, publicCase, result)
+    };
   }
 
   function focusFirstBadNode(result: RunTestsResult) {
@@ -716,7 +798,7 @@ export function GraphWorkbench({
     if (!selection) return;
     if (selection.type === "edge") {
       setGraphForSelectedLevel((current) => ({ ...current, edges: current.edges.filter((edge) => edge.id !== selection.id) }));
-      setSelection(graph.nodes[0] ? { type: "node", id: graph.nodes[0].id } : undefined);
+      setSelection(undefined);
       clearWireSource();
       setWirePointer(undefined);
       setCanvasNotice("edge deleted");
@@ -1009,7 +1091,7 @@ export function GraphWorkbench({
             </button>
             <button className="runButton" disabled={!canSubmitCertification} onClick={runHidden}>
               <Play size={15} />
-              {t("Submit Certification")}
+              {t("Submit Validation")}
             </button>
             <button className="ghostButton" disabled={!selection} onClick={deleteSelection}>
               <Trash2 size={15} />
@@ -1042,6 +1124,12 @@ export function GraphWorkbench({
               setChallengeMapOpen(false);
             }}
             onClose={() => setChallengeMapOpen(false)}
+          />
+        ) : null}
+        {certificationRun ? (
+          <GraphCertificationRunModal
+            run={certificationRun}
+            onComplete={() => finishCertificationRun(certificationRun.result)}
           />
         ) : null}
 
@@ -1109,7 +1197,15 @@ export function GraphWorkbench({
             }}
           >
             <TargetGhostGraph targetGraph={selectedLevel.targetGraph} currentGraph={graph} />
-            <svg className="graphEdgeLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} role="img" aria-label="graph edges">
+            <svg
+              className="graphEdgeLayer"
+              width={graphWorldLayerWidth}
+              height={graphWorldLayerHeight}
+              viewBox={`${graphWorldMinX} ${graphWorldMinY} ${graphWorldLayerWidth} ${graphWorldLayerHeight}`}
+              style={{ left: graphWorldMinX, top: graphWorldMinY, width: graphWorldLayerWidth, height: graphWorldLayerHeight }}
+              role="img"
+              aria-label="graph edges"
+            >
               {wirePreview ? <path className="graphWirePreview" d={wirePreview} /> : null}
               {graph.edges.map((edge) => {
                 const fromNode = graph.nodes.find((node) => node.id === edge.from.nodeId);
@@ -1121,9 +1217,23 @@ export function GraphWorkbench({
                 const to = getPortAnchor(toNode, toModule, edge.to.portId, "in", portAnchors);
                 const selected = selectedEdge?.id === edge.id;
                 const edgeCaseLabel = getEdgeCaseLabel(selectedLevel, graph, modules, edge);
+                const pathD = `M ${from.x} ${from.y} C ${from.x + 88} ${from.y}, ${to.x - 88} ${to.y}, ${to.x} ${to.y}`;
                 return (
-                  <g key={edge.id} className={`graphEdge ${selected ? "selected" : ""}`} onClick={() => setSelection({ type: "edge", id: edge.id })}>
-                    <path d={`M ${from.x} ${from.y} C ${from.x + 88} ${from.y}, ${to.x - 88} ${to.y}, ${to.x} ${to.y}`} />
+                  <g
+                    key={edge.id}
+                    className={`graphEdge ${selected ? "selected" : ""}`}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelection({ type: "edge", id: edge.id });
+                      setCanvasNotice("edge selected");
+                    }}
+                  >
+                    <path className="graphEdgeHit" d={pathD} />
+                    <path className="graphEdgeLine" d={pathD} />
                     <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}>
                       {`${edge.from.portId} -> ${edge.to.portId}`}
                     </text>
@@ -1254,7 +1364,7 @@ export function GraphWorkbench({
         <GraphCodePanel level={selectedLevel} graph={graph} modules={modules} />
         <GraphRankPanel level={selectedLevel} graph={graph} runState={runState} />
         <GraphRunPanel title="Task Check" result={runState.visible} onLocateNode={focusNode} onShowNextStep={showNextHint} />
-        <GraphRunPanel title="Certification Check" result={runState.hidden} locked={certificationLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
+        <GraphRunPanel title="Validation Check" result={runState.hidden} locked={certificationLocked} onLocateNode={focusNode} onShowNextStep={showNextHint} />
       </aside>
     </section>
     </GraphLanguageContext.Provider>
@@ -1310,7 +1420,7 @@ function GraphMissionModal({
           </div>
           <div>
             <b>{t(caseStudy ? "Pass Condition" : "Win condition")}</b>
-            <small>{t(caseStudy?.successObservation ?? onboarding?.winCondition ?? "Task check and certification pass.")}</small>
+            <small>{t(caseStudy?.successObservation ?? onboarding?.winCondition ?? "Task check and validation pass.")}</small>
           </div>
         </div>
 
@@ -1356,7 +1466,14 @@ function TargetGhostGraph({
   if (!targetGraph) return null;
   const currentNodeSizes = estimateCurrentNodeSizes(currentGraph);
   return (
-    <svg className="targetGhostLayer" width={graphWorldWidth} height={graphWorldHeight} viewBox={`0 0 ${graphWorldWidth} ${graphWorldHeight}`} aria-hidden="true">
+    <svg
+      className="targetGhostLayer"
+      width={graphWorldLayerWidth}
+      height={graphWorldLayerHeight}
+      viewBox={`${graphWorldMinX} ${graphWorldMinY} ${graphWorldLayerWidth} ${graphWorldLayerHeight}`}
+      style={{ left: graphWorldMinX, top: graphWorldMinY, width: graphWorldLayerWidth, height: graphWorldLayerHeight }}
+      aria-hidden="true"
+    >
       {targetGraph.nodes.map((node) => {
         const matched = currentGraph.nodes.some((item) => item.id === node.id && item.moduleId === node.moduleId);
         if (matched) return null;
@@ -1376,6 +1493,7 @@ type CaseChip = {
   label: string;
   value: string;
   tone?: "ok" | "warn" | "bad" | "muted";
+  help?: string;
   error?: string;
   editable?: {
     paramKey: string;
@@ -1407,15 +1525,22 @@ function GraphNodeCaseChips({
       <div>
         {chips.map((chip) => {
           const editable = chip.editable;
+          const tooltip = chip.error ? t(chip.error) : chip.help ? t(chip.help) : undefined;
           return (
-          <div key={`${chip.label}:${editable?.paramKey ?? chip.value}`} className="graphNodeCaseSlot">
+          <div
+            key={`${chip.label}:${editable?.paramKey ?? chip.value}`}
+            className="graphNodeCaseSlot"
+            title={tooltip}
+            aria-label={tooltip}
+            data-tooltip={tooltip}
+          >
             {editable ? (
               <label className={`graphNodeCaseEditable ${chip.tone ?? "muted"}`}>
                 <b>{t(chip.label)}</b>
                 <input
                   value={chip.value}
                   aria-invalid={Boolean(chip.error)}
-                  title={chip.error ? t(chip.error) : undefined}
+                  title={tooltip}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => event.stopPropagation()}
@@ -1536,7 +1661,7 @@ type ChallengeMapNode = {
   y: number;
   cx: number;
   cy: number;
-  status: "active" | "available" | "locked" | "draft" | "roadmap";
+  status: "active" | "available" | "locked" | "draft" | "design_ready";
   lifecycle?: string;
 };
 
@@ -1846,9 +1971,9 @@ function buildChallengeMapLayout(
       const component = componentFlow?.specs[level.id];
       const missingCount = component?.requires.filter((componentId) => !availableComponentIds.has(componentId)).length ?? 0;
       const available = component ? availableComponentIds.has(component.componentId) : false;
-      const roadmap = !isLevelPlayable(level);
-      const lifecycle = roadmap ? "Roadmap" : component ? lifecycleLabel({ available, missingCount }) : undefined;
-      const status = level.id === selectedLevelId ? "active" : roadmap ? "roadmap" : missingCount > 0 ? "locked" : available ? "available" : "draft";
+      const designReady = !isLevelPlayable(level);
+      const lifecycle = designReady ? "design_ready" : component ? lifecycleLabel({ available, missingCount }) : undefined;
+      const status = level.id === selectedLevelId ? "active" : designReady ? "design_ready" : missingCount > 0 ? "locked" : available ? "available" : "draft";
       nodes.push({ level, x, y, cx: x + nodeWidth / 2, cy: y + nodeHeight / 2, status, lifecycle });
       routeIndex += 1;
     });
@@ -1942,7 +2067,7 @@ function GraphTaskDataPanels({
   const visibleCase = level.visibleTests[0];
   if (!caseStudy) return null;
   const panels = level.id.startsWith("mvp01_")
-    ? caseStudy.dataPanels.filter((panel) => panel.type !== "text_batch")
+    ? caseStudy.dataPanels.filter((panel) => panel.type !== "text_batch" || panel.inputKey !== "case")
     : caseStudy.dataPanels;
   if (!panels.length) return null;
 
@@ -2143,7 +2268,7 @@ function GraphTraceTimeline({
   const { t, status } = useGraphT();
   const runs: Array<{ key: TraceRunKey; label: string; result?: RunTestsResult }> = [
     { key: "visible", label: "Task Check", result: visible },
-    { key: "hidden", label: "Certification", result: hidden }
+    { key: "hidden", label: "Validation", result: hidden }
   ];
   const hasTrace = runs.some((run) => run.result?.cases.length);
 
@@ -2677,6 +2802,292 @@ function GraphCompletionNotice({ notice }: { notice: CompletionNotice }) {
   );
 }
 
+function buildCertificationAnimationLines(
+  level: LevelSpec,
+  graph: GraphSpec,
+  modules: ModuleDef[],
+  testCase: TestCase,
+  controls: CertificationControlSpec[],
+  values: Record<string, CertificationControlValue>
+): CertificationAnimationLine[] {
+  const sections = generateGraphCodeSections(level, graph, modules, testCase);
+  return [
+    { id: "cert-section-values", text: "# Validation values", section: true },
+    ...certificationValueLines(controls, values),
+    { id: "cert-section-input", text: "# Generated task input", section: true },
+    ...sections.caseCode.map((line) => ({ id: `cert-case-${line.id}`, text: line.text })),
+    { id: "cert-section-graph", text: "# Execute implementation graph", section: true },
+    ...sections.graphCode.map((line) => ({ id: `cert-graph-${line.id}`, text: line.text })),
+    { id: "cert-section-test", text: "# Validation assertions", section: true },
+    ...sections.testCode.map((line) => ({ id: `cert-test-${line.id}`, text: line.text }))
+  ];
+}
+
+function certificationValueLines(controls: CertificationControlSpec[], values: Record<string, CertificationControlValue>): CertificationAnimationLine[] {
+  if (!controls.length) return [{ id: "cert-value-system", text: "variant = system_validation_case()" }];
+  return controls.map((control) => ({
+    id: `cert-value-${control.id}`,
+    text: `${control.id} = ${formatCertificationLiteral(values[control.id] ?? control.defaultValue)}`
+  }));
+}
+
+function formatCertificationLiteral(value: CertificationControlValue) {
+  return typeof value === "string" ? JSON.stringify(value) : String(value);
+}
+
+function buildCertificationOutputLines(testCase: TestCase, publicCase: TestCaseRunResult, result: RunTestsResult) {
+  const outputNodeId = firstAssertionOutputNodeId(testCase.assertions);
+  const outputValue = outputNodeId ? runtimeValueForNode(publicCase.execution.values, outputNodeId) : undefined;
+  const lines = [
+    `public_variant = ${publicCase.status}`,
+    `all_variants = ${result.status}`
+  ];
+  if (outputNodeId) {
+    lines.push(`${outputNodeId} -> ${formatRuntimeValueSummary(outputValue)}`);
+  }
+  const firstFailure = result.results.find((item) => item.status !== "pass");
+  if (firstFailure) {
+    lines.push(`first_failure = ${firstFailure.message}`);
+  }
+  return lines;
+}
+
+function firstAssertionOutputNodeId(assertions: TestAssertion[]) {
+  for (const assertion of assertions) {
+    const nodeId = assertionOutputNodeId(assertion);
+    if (nodeId) return nodeId;
+  }
+  return undefined;
+}
+
+function assertionOutputNodeId(assertion: TestAssertion) {
+  switch (assertion.type) {
+    case "dtype":
+    case "shape":
+    case "axis_semantics":
+    case "allclose":
+    case "pieces_non_empty":
+    case "pieces_equal":
+    case "no_oov":
+    case "tokens_include":
+    case "eos_preserved":
+    case "token_budget":
+    case "future_attention_zero":
+    case "row_sum":
+      return assertion.nodeId;
+    case "mask_pad":
+      return assertion.maskNodeId;
+    default:
+      return undefined;
+  }
+}
+
+function runtimeValueForNode(values: Record<string, RuntimeValue>, nodeId: string) {
+  if (values[nodeId]) return values[nodeId];
+  if (nodeId.includes(".")) return values[nodeId];
+  return values[`${nodeId}.out`] ?? Object.entries(values).find(([key]) => key.startsWith(`${nodeId}.`))?.[1];
+}
+
+function formatRuntimeValueSummary(value: RuntimeValue | undefined) {
+  if (!value) return "no runtime value";
+  const shape = value.shape ? formatShape(value.shape) : value.dtype;
+  if (Array.isArray(value.data)) return `${shape} sample=${formatSmallSample(value.data)}`;
+  if (value.data !== undefined) return `${shape} value=${formatUnknown(value.data)}`;
+  return shape;
+}
+
+function GraphCertificationRunModal({
+  run,
+  onComplete
+}: {
+  run: CertificationRunPreview;
+  onComplete: () => void;
+}) {
+  const { t, status } = useGraphT();
+  const [activeLine, setActiveLine] = useState(0);
+  const [phase, setPhase] = useState<"running" | "result">("running");
+  const completedRef = useRef(false);
+  const visibleCodeLines = phase === "result" ? run.codeLines : run.codeLines.slice(0, activeLine + 1);
+
+  function completeOnce() {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    onComplete();
+  }
+
+  useEffect(() => {
+    let lineIndex = 0;
+    completedRef.current = false;
+    setActiveLine(0);
+    setPhase("running");
+
+    const interval = window.setInterval(() => {
+      lineIndex += 1;
+      if (lineIndex >= run.codeLines.length) {
+        window.clearInterval(interval);
+        setPhase("result");
+        return;
+      }
+      setActiveLine(lineIndex);
+    }, 115);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [onComplete, run.id, run.codeLines.length]);
+
+  const resultStatus = run.result.status;
+  return (
+    <div className="graphCertificationRunOverlay" role="dialog" aria-modal="true" aria-labelledby="graphCertificationRunTitle">
+      <section className={`graphCertificationRunPanel ${phase} ${resultStatus}`}>
+        <div className="graphCertificationRunHeader">
+          <span>
+            <p className="eyebrow">{t("Validation Run")}</p>
+            <h3 id="graphCertificationRunTitle">{t(run.title)}</h3>
+            <small>{t("Running generated validation code with your filled values.")}</small>
+          </span>
+          <code>{phase === "running" ? t("running") : status(resultStatus)}</code>
+        </div>
+
+        <div className="graphCertificationRunValues">
+          <b>{t("Filled values")}</b>
+          <div>
+            {run.controls.length ? run.controls.map((control) => (
+              <code key={control.id}>{t(control.label)} = {formatUnknown(run.values[control.id] ?? control.defaultValue)}</code>
+            )) : <code>{t("System validation input")}</code>}
+          </div>
+        </div>
+
+        <div className="graphCertificationRunCode" aria-live="polite">
+          {visibleCodeLines.map((line, index) => (
+            <div
+              key={line.id}
+              className={`graphCertificationRunLine ${line.section ? "section" : ""} ${index === activeLine && phase === "running" ? "active" : ""} ${index < activeLine || phase === "result" ? "done" : ""}`}
+            >
+              <span>{line.section ? ">" : String(index + 1).padStart(2, "0")}</span>
+              <code>{renderHighlightedCode(line.text)}</code>
+            </div>
+          ))}
+        </div>
+
+        <div className={`graphCertificationRunResult ${phase === "result" ? "shown" : ""}`}>
+          <b>{t("Result")}: {status(resultStatus)}</b>
+          <small>{t(run.publicCase.title)}</small>
+          {run.outputLines.map((line) => (
+            <code key={line}>{line}</code>
+          ))}
+        </div>
+
+        <div className="graphCertificationRunFooter">
+          <span>{phase === "running" ? t("Executing trace...") : t("Validation result captured.")}</span>
+          <button className="ghostButton" type="button" onClick={completeOnce}>
+            {phase === "running" ? t("Skip animation") : t("Continue")}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function renderHighlightedCode(text: string) {
+  return tokenizeCodeLine(text).map((token, index) => (
+    <span key={`${index}:${token.text}`} className={token.className}>
+      {token.text}
+    </span>
+  ));
+}
+
+function tokenizeCodeLine(text: string): Array<{ text: string; className?: string }> {
+  const tokens: Array<{ text: string; className?: string }> = [];
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index];
+
+    if (/\s/.test(char)) {
+      const start = index;
+      while (index < text.length && /\s/.test(text[index])) index += 1;
+      tokens.push({ text: text.slice(start, index) });
+      continue;
+    }
+
+    if (char === "#") {
+      tokens.push({ text: text.slice(index), className: "syntaxComment" });
+      break;
+    }
+
+    if (char === "\"" || char === "'") {
+      const quote = char;
+      const start = index;
+      index += 1;
+      while (index < text.length) {
+        if (text[index] === "\\") {
+          index += 2;
+          continue;
+        }
+        if (text[index] === quote) {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      tokens.push({ text: text.slice(start, index), className: "syntaxString" });
+      continue;
+    }
+
+    const numberMatch = text.slice(index).match(/^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i);
+    if (numberMatch) {
+      tokens.push({ text: numberMatch[0], className: "syntaxNumber" });
+      index += numberMatch[0].length;
+      continue;
+    }
+
+    const identifierMatch = text.slice(index).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+    if (identifierMatch) {
+      const word = identifierMatch[0];
+      const nextChar = text.slice(index + word.length).trimStart()[0];
+      const previousChar = previousNonSpace(text, index);
+      tokens.push({
+        text: word,
+        className: codeKeywordSet.has(word)
+          ? "syntaxKeyword"
+          : nextChar === "(" || previousChar === "."
+            ? "syntaxFunction"
+            : undefined
+      });
+      index += word.length;
+      continue;
+    }
+
+    tokens.push({
+      text: char,
+      className: "=+-*/@<>!~:,[](){}.".includes(char) ? "syntaxOperator" : undefined
+    });
+    index += 1;
+  }
+  return tokens;
+}
+
+function previousNonSpace(text: string, index: number) {
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    if (!/\s/.test(text[cursor])) return text[cursor];
+  }
+  return undefined;
+}
+
+const codeKeywordSet = new Set([
+  "assert",
+  "True",
+  "False",
+  "None",
+  "and",
+  "or",
+  "not",
+  "in",
+  "is",
+  "like",
+  "module"
+]);
+
 function GraphCertificationPanel({
   certification,
   values,
@@ -2700,12 +3111,12 @@ function GraphCertificationPanel({
     <section className={`graphCertificationPanel ${taskPassed ? "ready" : "locked"} ${certificationResult?.status ?? ""}`}>
       <div className="graphCertificationHeader">
         <span>
-          <p className="eyebrow">{t("Certification")}</p>
+          <p className="eyebrow">{t("Validation")}</p>
           <h3>{t(certification.title)}</h3>
         </span>
         <code>{certificationResult ? status(certificationResult.status) : taskPassed ? t("ready") : t("locked")}</code>
       </div>
-      <p>{t(taskPassed ? certification.narrative : "The current task must pass before certification can start.")}</p>
+      <p>{t(taskPassed ? certification.narrative : "The current task must pass before validation can start.")}</p>
       <div className="graphCertificationVariant">
         <b>{t(certification.publicVariantLabel)}</b>
         <small>{t(certification.publicVariantDescription)}</small>
@@ -2728,7 +3139,7 @@ function GraphCertificationPanel({
       ) : null}
       <button className="runButton" type="button" disabled={!canSubmit} onClick={onSubmit}>
         <Play size={14} />
-        {t("Submit Certification")}
+        {t("Submit Validation")}
       </button>
     </section>
   );
@@ -2797,7 +3208,7 @@ function GraphRunPanel({
         <h3>{t(title)}</h3>
         <code>{locked ? t("locked") : status(result?.status ?? "idle")}</code>
       </div>
-      {locked ? <p>{t("Task check must pass before certification.")}</p> : null}
+      {locked ? <p>{t("Task check must pass before validation.")}</p> : null}
       {result ? (
         <div className="graphResultList">
           {result.results.map((item) => (
@@ -2875,7 +3286,7 @@ function certificationControlErrors(certification: LevelCertificationSpec | unde
     const value = values[control.id] ?? control.defaultValue;
     if (control.kind === "select") {
       const valid = (control.options ?? []).some((option) => option.value === String(value));
-      return valid ? [] : ["Invalid certification option"];
+      return valid ? [] : ["Invalid validation option"];
     }
 
     const parsed = typeof value === "number" ? value : Number(value);
@@ -3117,9 +3528,9 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const value = node.params.value ?? 0.5;
     const error = finiteFloat32InputError(value);
     return [
-      { label: "Source", value: "scalar value", tone: "muted" },
-      { label: "VALUE", value: String(value), tone: error ? "bad" : "ok", error, editable: { paramKey: "value", kind: "finite_float32" } },
-      { label: "SHAPE", value: error ? "blocked" : "float32[]", tone: error ? "bad" : "ok" }
+      { label: "Source", value: "scalar value", tone: "muted", help: "A raw finite number primitive used to build the ScalarCell implementation." },
+      { label: "VALUE", value: String(value), tone: error ? "bad" : "ok", help: "Edit this literal; any finite float32 value is valid for the scalar contract.", error, editable: { paramKey: "value", kind: "finite_float32" } },
+      { label: "SHAPE", value: error ? "blocked" : "float32[]", tone: error ? "bad" : "ok", help: "A scalar has rank 0: no row, column, or axis dimensions." }
     ];
   }
 
@@ -3127,9 +3538,9 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const value = node.params.value ?? 0.5;
     const error = finiteFloat32InputError(value);
     return [
-      { label: "Component", value: "ScalarCell", tone: "ok" },
-      { label: "VALUE", value: String(value), tone: error ? "bad" : "ok", error, editable: { paramKey: "value", kind: "finite_float32" } },
-      { label: "Output", value: error ? "blocked" : "float32[]", tone: error ? "bad" : "muted" }
+      { label: "Component", value: "ScalarCell", tone: "ok", help: "Validated ScalarCell can be reused as a small component in later graphs." },
+      { label: "VALUE", value: String(value), tone: error ? "bad" : "ok", help: "Edit this scalar instance; it must remain a finite float32 value.", error, editable: { paramKey: "value", kind: "finite_float32" } },
+      { label: "Output", value: error ? "blocked" : "float32[]", tone: error ? "bad" : "muted", help: "The reusable component still exposes a rank-0 float32 output." }
     ];
   }
 
@@ -3137,34 +3548,66 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const inputKey = String(node.params.inputKey ?? node.id);
     const value = visibleCase.inputs[inputKey];
     return [
-      ...(caseHeadline ? [{ label: "Task", value: "visible input", tone: "muted" as const }] : []),
-      { label: "INPUT", value: inputKey, tone: "muted" },
-      ...(value?.shape ? [{ label: "SHAPE", value: formatShape(value.shape), tone: "ok" as const }] : []),
-      ...(Array.isArray(value?.data) ? [{ label: "Sample", value: formatSmallSample(value.data), tone: "muted" as const }] : [])
+      ...(caseHeadline ? [{ label: "Source", value: "current case", tone: "muted" as const, help: "This node reads the current task case. Validation can replace it with variant inputs." }] : []),
+      { label: "INPUT", value: inputKey, tone: "muted", help: "The case field consumed by this source node." },
+      ...(value?.shape ? [{ label: "SHAPE", value: formatShape(value.shape), tone: "ok" as const, help: "Shape and axis labels carried by the current case value." }] : []),
+      ...(Array.isArray(value?.data) ? [{ label: "Sample", value: formatSmallSample(value.data), tone: "muted" as const, help: "A small preview of the current case value; do not hard-code only this sample." }] : [])
+    ];
+  }
+
+  if (node.moduleId === "TextInput") {
+    const inputKey = String(node.params.inputKey ?? "texts");
+    const texts = getCaseTexts(visibleCase, inputKey);
+    const focusText = getFocusText(level, texts);
+    return [
+      { label: "Source", value: "current case", tone: "muted", help: "This node reads the current text case. Validation can swap in different text." },
+      { label: "INPUT", value: inputKey, tone: "muted", help: "The text field consumed by this source node." },
+      ...(focusText ? [{ label: "Sample", value: quoteShort(focusText), tone: "muted" as const, help: "A preview of the sentence being split in the current task." }] : [])
     ];
   }
 
   if (node.moduleId === "VectorRail") {
     return [
-      { label: "Task", value: "three scalars", tone: "muted" },
-      { label: "Combine", value: "c0,c1,c2 -> C", tone: "ok" },
-      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[C=3]", tone: "ok" }
+      { label: "Role", value: "make vector[C]", tone: "muted", help: "Combines scalar cells into one ordered C-axis feature vector." },
+      { label: "Combine", value: "inputs -> C", tone: "ok", help: "Input source order becomes C-axis position." },
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[C=3]", tone: "ok", help: "The vector carries one semantic C axis." }
     ];
   }
 
   if (node.moduleId === "MatrixStruct") {
     return [
-      { label: "Task", value: "two output columns", tone: "muted" },
-      { label: "Structure", value: "O0/O1 columns", tone: "ok" },
-      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[C=3,O=2]", tone: "ok" }
+      { label: "Role", value: "build matrix[C,O]", tone: "muted", help: "Stacks vector columns while preserving C as the input feature axis." },
+      { label: "Structure", value: "O0/O1 columns", tone: "ok", help: "Each input vector becomes one O-axis column." },
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[C=3,O=2]", tone: "ok", help: "The matrix has C rows and O output columns." }
     ];
   }
 
   if (node.moduleId === "TensorBox") {
     return [
-      { label: "Task", value: "three axes", tone: "muted" },
-      { label: "Stack", value: "t0,t1 -> T", tone: "ok" },
-      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[B=1,T=2,C=3]", tone: "ok" }
+      { label: "Role", value: "make tensor[B,T,C]", tone: "muted", help: "Wraps token vectors into batch and time axes without losing the C feature rail." },
+      { label: "Stack", value: "t0,t1 -> T", tone: "ok", help: "Each vector becomes one token row along T." },
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "float32[B=1,T=2,C=3]", tone: "ok", help: "The tensor carries batch B, token T, and channel C axes." }
+    ];
+  }
+
+  if (node.moduleId === "ElementwiseMultiply") {
+    const left = estimateOutputShape(level, graph, node, "left");
+    const right = estimateOutputShape(level, graph, node, "right");
+    const compatible = Boolean(left && right && left.dims.join(",") === right.dims.join(",") && left.axes.join(",") === right.axes.join(","));
+    return [
+      { label: "Role", value: "cellwise multiply", tone: "muted", help: "Multiplies matching cells from the two inputs and keeps the same shape and axes." },
+      ...(left ? [{ label: "LEFT", value: formatShape(left), tone: "muted" as const, help: "Left tensor entering the cellwise multiply." }] : []),
+      ...(right ? [{ label: "RIGHT", value: formatShape(right), tone: compatible ? "ok" as const : "warn" as const, help: "Right tensor must match the left shape and axes cell by cell." }] : [])
+    ];
+  }
+
+  if (node.moduleId === "SumReduce") {
+    const input = estimateOutputShape(level, graph, node, "x");
+    const axis = String(node.params.axis ?? "C");
+    return [
+      { label: "Role", value: "sum over C", tone: "muted", help: "Adds all values along the selected axis and removes that axis from the output." },
+      ...(input ? [{ label: "INPUT", value: formatShape(input), tone: "muted" as const, help: "Tensor being reduced before the output contract." }] : []),
+      { label: "Axis", value: axis, tone: input?.axes.some((item) => item === axis) ? "ok" : "warn", help: "The semantic axis to reduce. DotProduct reduces the shared C axis." }
     ];
   }
 
@@ -3173,10 +3616,10 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const right = estimateOutputShape(level, graph, node, "right");
     const compatible = Boolean(left && right && left.dims[left.dims.length - 1] === right.dims[0]);
     return [
-      { label: "Task", value: "C axis match", tone: "muted" },
-      ...(left ? [{ label: "LEFT", value: formatShape(left), tone: "muted" as const }] : []),
-      ...(right ? [{ label: "RIGHT", value: formatShape(right), tone: compatible ? "ok" as const : "warn" as const }] : []),
-      { label: "Output", value: outputShape ? formatShape(outputShape) : "[B,T,O]", tone: compatible || outputShape ? "ok" : "warn" }
+      { label: "Role", value: "C axis match", tone: "muted", help: "Consumes the left input's final C axis against the right input's leading C axis." },
+      ...(left ? [{ label: "LEFT", value: formatShape(left), tone: "muted" as const, help: "Left activation tensor entering MatMul." }] : []),
+      ...(right ? [{ label: "RIGHT", value: formatShape(right), tone: compatible ? "ok" as const : "warn" as const, help: "Right weight tensor must expose a matching C axis." }] : []),
+      { label: "Output", value: outputShape ? formatShape(outputShape) : "[B,T,O]", tone: compatible || outputShape ? "ok" : "warn", help: "MatMul keeps carrier axes and emits the O output axis." }
     ];
   }
 
@@ -3184,9 +3627,10 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const target = estimateOutputShape(level, graph, node, "target");
     const small = estimateOutputShape(level, graph, node, "small");
     return [
-      ...(small ? [{ label: "BIAS", value: formatShape(small), tone: "muted" as const }] : []),
-      { label: "Align", value: `O -> ${formatAxisList(target?.axes ?? ["B", "T", "O"])}`, tone: "ok" },
-      ...(target ? [{ label: "Output", value: formatShape(target), tone: "ok" as const }] : [])
+      { label: "Role", value: "broadcast bias", tone: "muted", help: "Expands a small tensor logically across the target carrier axes." },
+      ...(small ? [{ label: "BIAS", value: formatShape(small), tone: "muted" as const, help: "Small tensor being aligned before addition." }] : []),
+      { label: "Align", value: `O -> ${formatAxisList(target?.axes ?? ["B", "T", "O"])}`, tone: "ok", help: "Bias should attach to O, then expand across B and T." },
+      ...(target ? [{ label: "Output", value: formatShape(target), tone: "ok" as const, help: "Broadcast output matches the target tensor shape." }] : [])
     ];
   }
 
@@ -3194,9 +3638,56 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const left = estimateOutputShape(level, graph, node, "left");
     const right = estimateOutputShape(level, graph, node, "right");
     return [
-      ...(left ? [{ label: "SCORE", value: formatShape(left), tone: "muted" as const }] : []),
-      ...(right ? [{ label: "BIAS", value: formatShape(right), tone: "muted" as const }] : []),
-      { label: "Merge", value: "score + bias", tone: "ok" }
+      { label: "Role", value: "add aligned tensors", tone: "muted", help: "Adds two tensors only after their shape and semantic axes match." },
+      ...(left ? [{ label: "SCORE", value: formatShape(left), tone: "muted" as const, help: "Main tensor entering the add gate." }] : []),
+      ...(right ? [{ label: "BIAS", value: formatShape(right), tone: "muted" as const, help: "Aligned bias tensor entering the add gate." }] : []),
+      { label: "Merge", value: "score + bias", tone: "ok", help: "The output is the elementwise sum of both aligned inputs." }
+    ];
+  }
+
+  if (node.moduleId === "BoundarySplitter") {
+    const keepPunctuation = node.params.preservePunctuation !== false;
+    return [
+      { label: "Role", value: "split boundaries", tone: "muted", help: "Cuts raw text into ordered pieces before token IDs exist." },
+      { label: "Policy", value: String(node.params.policy ?? "word"), tone: "ok", help: "Controls how raw text boundaries are chosen." },
+      { label: "Punctuation", value: keepPunctuation ? "keep" : "drop", tone: keepPunctuation ? "ok" : "warn", help: "This challenge needs punctuation to survive as its own piece." }
+    ];
+  }
+
+  if (node.moduleId === "PieceBuffer") {
+    return [
+      { label: "Role", value: "hold string_piece[T]", tone: "muted", help: "Keeps splitter output as an ordered T-axis piece buffer for the contract." },
+      { label: "Capacity", value: String(node.params.maxPieces ?? 12), tone: "ok", help: "Maximum number of pieces allowed before the buffer rejects the output." }
+    ];
+  }
+
+  if (node.moduleId === "TypeContractGate") {
+    return [
+      { label: "Check", value: "string_piece[T]", tone: "ok", help: "Checks that the implementation returns ordered string pieces, not raw text." },
+      { label: "Role", value: "output contract", tone: "muted", help: "A contract gate validates the reusable component boundary before validation." }
+    ];
+  }
+
+  if (node.moduleId === "TransposeSwitch") {
+    const inputShape = estimateOutputShape(level, graph, node, "x");
+    return [
+      { label: "Role", value: "swap last axes", tone: "muted", help: "Swaps only the selected axes while preserving all carrier axes." },
+      ...(inputShape ? [{ label: "INPUT", value: formatShape(inputShape), tone: "muted" as const, help: "Tensor entering the transpose switch." }] : []),
+      { label: "Swap", value: `${node.params.axisA ?? -2} <-> ${node.params.axisB ?? -1}`, tone: "ok", help: "QKScore needs K's final two axes transposed before MatMul." }
+    ];
+  }
+
+  if (node.moduleId === "ScoreBoard") {
+    return [
+      { label: "Check", value: "scores[B,H,T,T]", tone: "ok", help: "Validates the attention score board shape after Q @ K^T." },
+      { label: "Role", value: "attention scores", tone: "muted", help: "This is a contract/probe node for score-board semantics, not the MatMul implementation itself." }
+    ];
+  }
+
+  if (node.moduleId === "CellTrace") {
+    return [
+      { label: "Probe", value: "one score cell", tone: "ok", help: "Shows how one output score is produced from a query/key dot product." },
+      { label: "Role", value: "diagnostic probe", tone: "muted", help: "Use this probe to debug numeric or axis-orientation mistakes." }
     ];
   }
 
@@ -3204,9 +3695,9 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const expectedAxes = Array.isArray(node.params.expectedAxes) ? node.params.expectedAxes.map(String) : [];
     const inputShape = estimateOutputShape(level, graph, node, "x");
     return [
-      ...(inputShape ? [{ label: "Received", value: formatShape(inputShape), tone: "muted" as const }] : []),
-      { label: "Expected", value: expectedAxes.length ? formatAxisList(expectedAxes) : "rank-0 []", tone: "ok" },
-      { label: "Role", value: "certify output", tone: "ok" }
+      ...(inputShape ? [{ label: "Received", value: formatShape(inputShape), tone: "muted" as const, help: "The value currently entering the component output boundary." }] : []),
+      { label: "Expected", value: expectedAxes.length ? formatAxisList(expectedAxes) : "rank-0 []", tone: "ok", help: "The output contract accepts only this axis/rank structure." },
+      { label: "Check", value: "output contract", tone: "ok", help: "This gate checks the component boundary before the reference probe compares behavior." }
     ];
   }
 
@@ -3214,17 +3705,17 @@ function getMvp01NodeCaseChips(level: LevelSpec, graph: GraphSpec, node: GraphNo
     const referenceKey = String(node.params.referenceKey ?? "reference");
     const value = visibleCase.inputs[referenceKey];
     return [
-      { label: "Role", value: "prebuilt probe", tone: "ok" },
-      { label: "INPUT", value: "compare x", tone: "muted" },
-      { label: "REFERENCE", value: referenceKey, tone: "muted" },
-      ...(value?.shape ? [{ label: "SHAPE", value: formatShape(value.shape), tone: "ok" as const }] : []),
-      ...(Array.isArray(value?.data) ? [{ label: "Sample", value: formatSmallSample(value.data), tone: "muted" as const }] : [])
+      { label: "Probe", value: "reference answer", tone: "ok", help: "Prebuilt testing equipment: compares your output with the expected answer for this case." },
+      { label: "INPUT", value: "compare x", tone: "muted", help: "Connect the component output here so the probe can compare behavior." },
+      { label: "REFERENCE", value: referenceKey, tone: "muted", help: "The expected answer comes from the test case, not from the reusable component." },
+      ...(value?.shape ? [{ label: "SHAPE", value: formatShape(value.shape), tone: "ok" as const, help: "Shape of the reference answer for the current case." }] : []),
+      ...(Array.isArray(value?.data) ? [{ label: "Sample", value: formatSmallSample(value.data), tone: "muted" as const, help: "A small preview of the expected answer for this case." }] : [])
     ];
   }
 
   return [
-    ...(caseHeadline ? [{ label: "Task", value: "visible input", tone: "muted" as const }] : []),
-    ...(outputShape ? [{ label: "Output", value: formatShape(outputShape), tone: "ok" as const }] : [{ label: "Node", value: module.label, tone: "muted" as const }])
+    ...(caseHeadline ? [{ label: "Role", value: module.label, tone: "muted" as const, help: "This node participates in the current component build graph." }] : []),
+    ...(outputShape ? [{ label: "Output", value: formatShape(outputShape), tone: "ok" as const, help: "Estimated output shape for the current graph wiring." }] : [{ label: "Node", value: module.label, tone: "muted" as const, help: "Module placed in the current component build graph." }])
   ];
 }
 
@@ -3422,7 +3913,7 @@ function getNextStepCoach(level: LevelSpec, graph: GraphSpec, runState: RunState
     runState.visible?.results.find((result) => result.status !== "pass") ??
     runState.hidden?.results.find((result) => result.status !== "pass");
   if (!firstFail) {
-    if (runState.visible?.status === "pass" && runState.hidden?.status !== "pass") return graphText(language, "Current task passed. Prepare a certification variant, then submit certification.");
+    if (runState.visible?.status === "pass" && runState.hidden?.status !== "pass") return graphText(language, "Current task passed. Prepare a validation variant, then submit validation.");
     return graphText(language, level.onboarding?.firstAction ?? "Click Check Current Task to start the repair loop.");
   }
   if (firstFail.status === "blocked" && firstFail.diagnostic?.errorType === "missing_input") {
@@ -3444,15 +3935,15 @@ function computeRank(level: LevelSpec, graph: GraphSpec, runState: RunState, lan
   const extraModules = countExtraModules(level.id, graph);
   if (runState.hidden?.status === "pass") {
     if (runState.stats.hiddenRuns === 1 && runState.stats.failedRuns === 0 && runState.stats.hintsUsed === 0 && extraModules === 0) {
-      return { rank: "S", message: graphText(language, "Certification passed on the first clean attempt."), extraModules };
+      return { rank: "S", message: graphText(language, "Validation passed on the first clean attempt."), extraModules };
     }
     if (runState.stats.failedRuns <= 2 && runState.stats.hintsUsed === 0) {
-      return { rank: "A", message: graphText(language, "Certification passed with a low failure count."), extraModules };
+      return { rank: "A", message: graphText(language, "Validation passed with a low failure count."), extraModules };
     }
-    return { rank: "B", message: graphText(language, "Certification passed. The graph handles variants beyond the current task."), extraModules };
+    return { rank: "B", message: graphText(language, "Validation passed. The graph handles variants beyond the current task."), extraModules };
   }
   if (runState.visible?.status === "pass") {
-    return { rank: "C", message: graphText(language, "Current task passed. Submit certification with a variant to prove generalization."), extraModules };
+    return { rank: "C", message: graphText(language, "Current task passed. Submit validation with a variant to prove generalization."), extraModules };
   }
   return { rank: "-", message: graphText(language, "Check the current task to start the challenge loop."), extraModules };
 }
@@ -3805,11 +4296,11 @@ function portsCompatible(from: PortDef, to: PortDef) {
 }
 
 function clampNodePosition(x: number, y: number) {
-  const maxX = Math.max(12, graphWorldWidth - graphNodeWidth - 12);
-  const maxY = Math.max(12, graphWorldHeight - graphNodeMinHeight - 12);
+  const maxX = Math.max(graphWorldMinX, graphWorldMaxX - graphNodeWidth);
+  const maxY = Math.max(graphWorldMinY, graphWorldMaxY - graphNodeMinHeight);
   return {
-    x: Math.min(Math.max(12, x), maxX),
-    y: Math.min(Math.max(48, y), maxY)
+    x: Math.min(Math.max(graphWorldMinX, x), maxX),
+    y: Math.min(Math.max(graphWorldMinY, y), maxY)
   };
 }
 

@@ -15,6 +15,12 @@ export function evaluateAssertion(
   if (assertion.type === "requires_edge_path") {
     return assertRequiresEdgePath(assertion.from, assertion.through, assertion.to, graph, visibility, id, assertion);
   }
+  if (assertion.type === "requires_module") {
+    return assertRequiresModule(assertion.moduleId, graph, visibility, id, assertion);
+  }
+  if (assertion.type === "requires_edge_path_by_module") {
+    return assertRequiresEdgePathByModule(assertion.from, assertion.throughModules, assertion.to, graph, visibility, id, assertion);
+  }
 
   if (execution.error) {
     return {
@@ -130,6 +136,64 @@ function assertRequiresEdgePath(
   };
 }
 
+function assertRequiresModule(
+  moduleId: string,
+  graph: GraphSpec | undefined,
+  visibility: TestVisibility,
+  id: string,
+  assertion: TestAssertion
+): TestResult {
+  const node = graph?.nodes.find((item) => item.moduleId === moduleId);
+  const passed = Boolean(node);
+  return {
+    id,
+    visibility,
+    status: passed ? "pass" : "fail",
+    message: passed ? `required module ${moduleId} is present` : `Required module ${moduleId} is missing`,
+    firstBadNodeId: passed ? undefined : moduleId,
+    assertion,
+    diagnostic: passed
+      ? undefined
+      : {
+          errorType: "assertion_failed",
+          expected: { moduleId },
+          received: graph?.nodes.map((item) => ({ nodeId: item.id, moduleId: item.moduleId })) ?? "missing graph",
+          possibleCause: "The graph bypasses the required implementation module.",
+          suggestedProbe: "Drag the required primitive/component from the library, then route data through it."
+        }
+  };
+}
+
+function assertRequiresEdgePathByModule(
+  from: string,
+  throughModules: string[],
+  to: string,
+  graph: GraphSpec | undefined,
+  visibility: TestVisibility,
+  id: string,
+  assertion: TestAssertion
+): TestResult {
+  const matchingPath = graph ? findDirectedPathByModules(graph, from, throughModules, to) : undefined;
+  const passed = Boolean(matchingPath);
+  return {
+    id,
+    visibility,
+    status: passed ? "pass" : "fail",
+    message: passed ? `path ${from} -> ${throughModules.join(" -> ")} -> ${to} exists` : `Missing required path ${from} -> ${throughModules.join(" -> ")} -> ${to}`,
+    firstBadNodeId: passed ? undefined : throughModules[0] ?? to,
+    assertion,
+    diagnostic: passed
+      ? undefined
+      : {
+          errorType: "assertion_failed",
+          expected: { from, throughModules, to },
+          received: graph?.edges.map((edge) => `${edge.from.nodeId}->${edge.to.nodeId}`) ?? "missing graph",
+          possibleCause: "The output contract can receive data without the intended implementation path.",
+          suggestedProbe: "Trace the data path and make sure it flows through the required primitive/module sequence."
+        }
+  };
+}
+
 function hasDirectedPath(graph: GraphSpec, from: string, to: string) {
   if (from === to) return true;
   const seen = new Set<string>();
@@ -143,6 +207,26 @@ function hasDirectedPath(graph: GraphSpec, from: string, to: string) {
     queue.push(...nextNodes.filter((nodeId) => !seen.has(nodeId)));
   }
   return false;
+}
+
+function findDirectedPathByModules(graph: GraphSpec, from: string, throughModules: string[], to: string) {
+  const candidatesByModule = throughModules.map((moduleId) => graph.nodes.filter((node) => node.moduleId === moduleId));
+  if (candidatesByModule.some((candidates) => candidates.length === 0)) return undefined;
+  const candidatePaths = cartesianProduct(candidatesByModule).map((nodes) => nodes.map((node) => node.id));
+  return candidatePaths.find((nodeIds) => {
+    const route = [from, ...nodeIds, to];
+    for (let index = 1; index < route.length; index += 1) {
+      if (!hasDirectedPath(graph, route[index - 1], route[index])) return false;
+    }
+    return true;
+  });
+}
+
+function cartesianProduct<T>(groups: T[][]): T[][] {
+  return groups.reduce<T[][]>(
+    (paths, group) => paths.flatMap((path) => group.map((item) => [...path, item])),
+    [[]]
+  );
 }
 
 function assertPiecesNonEmpty(

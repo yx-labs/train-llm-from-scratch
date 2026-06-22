@@ -31,14 +31,13 @@ export function executeGraph(graph: GraphSpec, registry: ModuleRegistry, testInp
   for (const node of ordered) {
     const module = registry.get(node.moduleId);
     const inputs: Record<string, RuntimeValue> = {};
-    graph.edges
-      .filter((edge) => edge.to.nodeId === node.id)
-      .forEach((edge) => {
-        const value = values[valueKey(edge.from.nodeId, edge.from.portId)];
-        if (value) inputs[edge.to.portId] = value;
-      });
+    const incomingEdges = graph.edges.filter((edge) => edge.to.nodeId === node.id);
+    incomingEdges.forEach((edge) => {
+      const value = values[valueKey(edge.from.nodeId, edge.from.portId)];
+      if (value) inputs[edge.to.portId] = value;
+    });
 
-    const result = module.execute({ node, inputs, testInputs });
+    const result = module.execute({ node, inputs, testInputs, graph, incomingEdges });
     const inputShapes = collectShapes(inputs);
     const outputShapes = collectShapes(result.outputs);
     const frame: TraceFrame = {
